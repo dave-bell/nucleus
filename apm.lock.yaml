@@ -1,0 +1,749 @@
+lockfile_version: '1'
+generated_at: '2026-08-07T21:18:13.153119+00:00'
+apm_version: 0.28.0
+dependencies:
+- repo_url: dave-bell/cerebro
+  name: cerebro
+  host: github.com
+  resolved_commit: 416aacc8b958b509c25a052e7943d279dd40b71c
+  version: 0.2.1
+  package_type: apm_package
+  deployed_files:
+  - .agents/skills/context-manager
+  - .agents/skills/context-manager/SKILL.md
+  - .agents/skills/context-manager/assets/customer-intelligence/configuration-domain.md
+  - .agents/skills/context-manager/assets/customer-intelligence/customer-profile.md
+  - .agents/skills/context-manager/assets/customer-intelligence/customization-log.md
+  - .agents/skills/context-manager/assets/customer-intelligence/living-notes.md
+  - .agents/skills/context-manager/assets/customer-intelligence/navigation.md
+  - .agents/skills/context-manager/assets/customer-intelligence/process-map.md
+  - .agents/skills/context-manager/assets/navigation.md
+  - .agents/skills/context-manager/assets/project-intelligence/business-domain.md
+  - .agents/skills/context-manager/assets/project-intelligence/business-tech-bridge.md
+  - .agents/skills/context-manager/assets/project-intelligence/decisions-log.md
+  - .agents/skills/context-manager/assets/project-intelligence/living-notes.md
+  - .agents/skills/context-manager/assets/project-intelligence/navigation.md
+  - .agents/skills/context-manager/assets/project-intelligence/technical-domain.md
+  - .agents/skills/context-manager/references/context-root-discovery.md
+  - .agents/skills/context-manager/references/domains/labbit-configuration/customer-intelligence-management.md
+  - .agents/skills/context-manager/references/domains/labbit-configuration/customer-intelligence.md
+  - .agents/skills/context-manager/references/domains/labbit-configuration/navigation.md
+  - .agents/skills/context-manager/references/domains/labbit-configuration/standards/bpmn-modeling-patterns.md
+  - .agents/skills/context-manager/references/domains/labbit-configuration/standards/customer-config-governance.md
+  - .agents/skills/context-manager/references/domains/labbit-configuration/standards/jsonc-config-patterns.md
+  - .agents/skills/context-manager/references/domains/software-development/navigation.md
+  - .agents/skills/context-manager/references/domains/software-development/project-intelligence-management.md
+  - .agents/skills/context-manager/references/domains/software-development/project-intelligence.md
+  - .agents/skills/context-manager/references/domains/software-development/standards/api-design.md
+  - .agents/skills/context-manager/references/domains/software-development/standards/clean-code.md
+  - .agents/skills/context-manager/references/domains/software-development/standards/code-analysis.md
+  - .agents/skills/context-manager/references/domains/software-development/standards/code-quality.md
+  - .agents/skills/context-manager/references/domains/software-development/standards/documentation.md
+  - .agents/skills/context-manager/references/domains/software-development/standards/navigation.md
+  - .agents/skills/context-manager/references/domains/software-development/standards/security-patterns.md
+  - .agents/skills/context-manager/references/domains/software-development/standards/test-coverage.md
+  - .agents/skills/context-manager/references/engine/examples/navigation-examples.md
+  - .agents/skills/context-manager/references/engine/examples/navigation.md
+  - .agents/skills/context-manager/references/engine/guides/compact.md
+  - .agents/skills/context-manager/references/engine/guides/creation.md
+  - .agents/skills/context-manager/references/engine/guides/navigation-design-basics.md
+  - .agents/skills/context-manager/references/engine/guides/navigation-templates.md
+  - .agents/skills/context-manager/references/engine/guides/navigation.md
+  - .agents/skills/context-manager/references/engine/guides/organizing-context.md
+  - .agents/skills/context-manager/references/engine/guides/workflows.md
+  - .agents/skills/context-manager/references/engine/navigation.md
+  - .agents/skills/context-manager/references/engine/operations/error.md
+  - .agents/skills/context-manager/references/engine/operations/extract.md
+  - .agents/skills/context-manager/references/engine/operations/harvest.md
+  - .agents/skills/context-manager/references/engine/operations/migrate.md
+  - .agents/skills/context-manager/references/engine/operations/navigation.md
+  - .agents/skills/context-manager/references/engine/operations/organize.md
+  - .agents/skills/context-manager/references/engine/operations/update.md
+  - .agents/skills/context-manager/references/engine/overview.md
+  - .agents/skills/context-manager/references/engine/standards/codebase-references.md
+  - .agents/skills/context-manager/references/engine/standards/frontmatter.md
+  - .agents/skills/context-manager/references/engine/standards/mvi.md
+  - .agents/skills/context-manager/references/engine/standards/navigation.md
+  - .agents/skills/context-manager/references/engine/standards/structure.md
+  - .agents/skills/context-manager/references/engine/standards/templates.md
+  - .agents/skills/context7
+  - .agents/skills/context7/SKILL.md
+  - .agents/skills/context7/references/library-registry.md
+  - .opencode/agents/context-indexer.md
+  - .opencode/agents/context-manager.md
+  - .opencode/agents/context-organizer.md
+  - .opencode/agents/context-retriever.md
+  - .opencode/agents/external-lookup.md
+  - .opencode/commands/add-context.md
+  - .opencode/commands/context.md
+  deployed_file_hashes:
+    .agents/skills/context-manager/SKILL.md: sha256:06693b336998c930b18094ae6ff8449730fa8ba52cb505b6c660d02adb07c74c
+    .agents/skills/context-manager/assets/customer-intelligence/configuration-domain.md: sha256:feab857b177e0d45f264f9dd376820f6f34e50c0e71c4bae95c5e8bbd4d9fef9
+    .agents/skills/context-manager/assets/customer-intelligence/customer-profile.md: sha256:8cd78fceb84d3055ef13fe0349a55f3b237e11e01cd5c9a3ed29750593a34a27
+    .agents/skills/context-manager/assets/customer-intelligence/customization-log.md: sha256:fc27b2040ac41c5d7e82de909dff0404f4be0c619429ee1fdb460e9d98dd9ee2
+    .agents/skills/context-manager/assets/customer-intelligence/living-notes.md: sha256:6fde3ed0c1e554cf344c37678f51c636a54a3bb95ea09e5a7596851506059e62
+    .agents/skills/context-manager/assets/customer-intelligence/navigation.md: sha256:34a27102fb66017c60ea3542a613e5512a8ea8a93a16142aadc35186947e3c87
+    .agents/skills/context-manager/assets/customer-intelligence/process-map.md: sha256:f2852f3ac0fcd7b8504c00665f5709f741ab2f2739006480be0f0084ff976389
+    .agents/skills/context-manager/assets/navigation.md: sha256:e0b7b38ec24cff3d272daeb9d2076e9f067430234403b8b8b2540476ab445d3f
+    .agents/skills/context-manager/assets/project-intelligence/business-domain.md: sha256:b8e18393d8edcc9be854e16ac7d5bbe5dbe5f3b699d6c6aeb8c20173ffb0447a
+    .agents/skills/context-manager/assets/project-intelligence/business-tech-bridge.md: sha256:9f80b2fb86719dec1892dffa7675fcdbbf60dd7d0bd997bddbc0b9b2b39eab5e
+    .agents/skills/context-manager/assets/project-intelligence/decisions-log.md: sha256:3fd1e5de2403f64e5f505c12a7ed74dc083cae3737c4a0e67633a6e09900eed8
+    .agents/skills/context-manager/assets/project-intelligence/living-notes.md: sha256:040d63052bbc2310588e964c77185a34ee8a33d3b25e3db788484946fb2ac127
+    .agents/skills/context-manager/assets/project-intelligence/navigation.md: sha256:ef7254c89424150777ae54e3d00524e7f685a633d94bcf001fafbe772da2af84
+    .agents/skills/context-manager/assets/project-intelligence/technical-domain.md: sha256:ba4e2a0a93b235862b133edd34a481849eb65c208e13cefdf971b177c66e1d6a
+    .agents/skills/context-manager/references/context-root-discovery.md: sha256:317a56e0640ed81b7936fa1e56d71684b348c210ec4583b748a51e12b5c4c9f2
+    .agents/skills/context-manager/references/domains/labbit-configuration/customer-intelligence-management.md: sha256:1b276bf72e558c6c6cb7e5e2d6039d7c4d685c74471358a889589a24b0fcc72d
+    .agents/skills/context-manager/references/domains/labbit-configuration/customer-intelligence.md: sha256:c7890c35d1f96ef35bddf2cd2a43ba3ab944655c605a2549b72ee33bc3af19ee
+    .agents/skills/context-manager/references/domains/labbit-configuration/navigation.md: sha256:ea50f152f28993d9c6a6536a0bee205dacd5fa28fe88658b9be289d3ac01469d
+    .agents/skills/context-manager/references/domains/labbit-configuration/standards/bpmn-modeling-patterns.md: sha256:380594b6fa9d80ee077d70a9484a6b8f77578d2175a5757ba0feda6b3a1248ac
+    .agents/skills/context-manager/references/domains/labbit-configuration/standards/customer-config-governance.md: sha256:fba3244550f88299f034ba8cab216c257f0b1309728ce0e7cbd65baddff9b1dc
+    .agents/skills/context-manager/references/domains/labbit-configuration/standards/jsonc-config-patterns.md: sha256:80eff19163b7371f79fd3649e08160f691e4c498c675ff58b59785a3de64607c
+    .agents/skills/context-manager/references/domains/software-development/navigation.md: sha256:81125e412bed8d9a6aa47a456b1d4e3e491a04bf9cc23f821e9126740a134e85
+    .agents/skills/context-manager/references/domains/software-development/project-intelligence-management.md: sha256:6cb4cd662395708f50a1bdba041e361970d58d80135ceabf07fc722dbfa8d09d
+    .agents/skills/context-manager/references/domains/software-development/project-intelligence.md: sha256:6d16d7d434c5c494167bb787d03d355de9b463437d9b9750cdb8f3014b28b515
+    .agents/skills/context-manager/references/domains/software-development/standards/api-design.md: sha256:b8a88b4bf7f451330dc38011b8a0be9a47b69d64f3c11fa172bbe5a222616495
+    .agents/skills/context-manager/references/domains/software-development/standards/clean-code.md: sha256:426aefbbe30feaba8bdbdc00033bf1361ba596001542d525a9678a6d0e3a8df7
+    .agents/skills/context-manager/references/domains/software-development/standards/code-analysis.md: sha256:a3afc7b7a857b878634b6bc9ef35dad149570a37088dac2b4137226bbd63c23f
+    .agents/skills/context-manager/references/domains/software-development/standards/code-quality.md: sha256:b6785c7ec86c833f5b5efdf72daae4de28d5787cb4ea68ad23c0d69cf356efc0
+    .agents/skills/context-manager/references/domains/software-development/standards/documentation.md: sha256:b6d8df0d317be1dede17478b49ba1f37079a4a02b9ced0063781f5ca9b90e121
+    .agents/skills/context-manager/references/domains/software-development/standards/navigation.md: sha256:d52fe8515e26ed35c0fa502fea8ce9e585569d39bc6396a36a1a332d50ee27d8
+    .agents/skills/context-manager/references/domains/software-development/standards/security-patterns.md: sha256:d437cd44ab8cb1526f5ecc5238e816d2a6391245c70d67c7f4525530522f0317
+    .agents/skills/context-manager/references/domains/software-development/standards/test-coverage.md: sha256:2000448964a5393cf7f49e553610d30973f995275722367f9952a22093743393
+    .agents/skills/context-manager/references/engine/examples/navigation-examples.md: sha256:0c4bcd8c7d12d5199670794e1e70d134fc34575c082538415b8f308f15c925bc
+    .agents/skills/context-manager/references/engine/examples/navigation.md: sha256:62318d316683af66b8a27a18c72d0d6da00d7257768544bb5188207ba252c418
+    .agents/skills/context-manager/references/engine/guides/compact.md: sha256:2be296e78c2a64304bca481f1c9151528f46542ed2c9ad5f9af8d6dcdca3defd
+    .agents/skills/context-manager/references/engine/guides/creation.md: sha256:b2096128fee8005fd8df06661105edcc8cfddb58dabed195d0f3dd0f9f43ba4c
+    .agents/skills/context-manager/references/engine/guides/navigation-design-basics.md: sha256:355c17e0d4e8aae09b22a43a8bf03a51f9bdc830e664da6df7ddb25407c4be6a
+    .agents/skills/context-manager/references/engine/guides/navigation-templates.md: sha256:866a7fee04c9fa8c3f464a88a446a9c4db25effb229f4d92ab9b9d52ae4caa7e
+    .agents/skills/context-manager/references/engine/guides/navigation.md: sha256:184269cbd2f40ac8297dd1a667ffbb827a2f427c80bc80e553a4d2826f3a375e
+    .agents/skills/context-manager/references/engine/guides/organizing-context.md: sha256:69d4ac79ff5023b0fb2831f3f9941e5b270a804a3102d947f36868ecba7d5f18
+    .agents/skills/context-manager/references/engine/guides/workflows.md: sha256:ff51dcaa1f903e9f81a43dc662f50c4e467f944fba6d9efb36c364c3d606b6d9
+    .agents/skills/context-manager/references/engine/navigation.md: sha256:a00e47696461d4e58cf3d27316629422801f8beb03df8943587c8440cc41dfdc
+    .agents/skills/context-manager/references/engine/operations/error.md: sha256:a49b998e8ccde811cac183400a0ea8724c1755ed2b9902f974fccf4d3de89ee5
+    .agents/skills/context-manager/references/engine/operations/extract.md: sha256:3e345b1cdb5757c876fa1a55e3151c7e684f35e7fc68d93ab1b6d69895694a33
+    .agents/skills/context-manager/references/engine/operations/harvest.md: sha256:ce6db3e5219d6101d3f9f3ec806e3adbfe4e96e4d7073999cb76ba519f7a6c1c
+    .agents/skills/context-manager/references/engine/operations/migrate.md: sha256:f62d70f04831b5be1589b39b6151a6665733753612aa1c84416274befc675cb6
+    .agents/skills/context-manager/references/engine/operations/navigation.md: sha256:72837622a53564e635ee8b936941fc956edefbbf602751e9528430e66126e3aa
+    .agents/skills/context-manager/references/engine/operations/organize.md: sha256:6fe90fe548a5b6a615292008a964cc243094ca72907139d4fe64530e7c2c230c
+    .agents/skills/context-manager/references/engine/operations/update.md: sha256:1beb1a990b69746f680b329bb954f96025718cedad6aea6e65afd2b919f31f74
+    .agents/skills/context-manager/references/engine/overview.md: sha256:bc90bb91044499f00d99270830b26c1692affede619da33453e77ab7512c93db
+    .agents/skills/context-manager/references/engine/standards/codebase-references.md: sha256:8f707ea15d8fb77e06cf7e508645bc77a719aa5fd4418d397f3bf6cde2ac7983
+    .agents/skills/context-manager/references/engine/standards/frontmatter.md: sha256:af172579811a545d399983115677406b496b827ba0f4ef8bdd5576328db59bb6
+    .agents/skills/context-manager/references/engine/standards/mvi.md: sha256:d5ba2405bf4500b240332a01e844f466148e9b8554400a4bfd9f43d7ac6b14df
+    .agents/skills/context-manager/references/engine/standards/navigation.md: sha256:d30606a1fbaa6eadcb9419aa90d7d13179a4d1fa2b63d6719be46be378ee8b97
+    .agents/skills/context-manager/references/engine/standards/structure.md: sha256:bff7998b8447ced07e6af6fa5129b095d79139a865eb8b29d0b32a5facfbbd5d
+    .agents/skills/context-manager/references/engine/standards/templates.md: sha256:99181e2edccbf1a1a9ce0ebddfa190e274b142b0cf084cba0275e180323a85e6
+    .agents/skills/context7/SKILL.md: sha256:798a2c53a5a1d4ff4b296b5c0c5be314230a229402849cc320d1feb2a0666ffe
+    .agents/skills/context7/references/library-registry.md: sha256:7a939b667e6ff5a63f3dd8067305c12bf3ade72d63c9ded312f9e5e22b2f4370
+    .opencode/agents/context-indexer.md: sha256:02f97627de4e066225260f3ffa951c230af55ce6941c750974f98f95c1aa756c
+    .opencode/agents/context-manager.md: sha256:98b88c529bcc050980f249d63a0c3efa40dcb0297a2aa805b13e2488438d9b66
+    .opencode/agents/context-organizer.md: sha256:d519d90a9a11fc1e38d02fa1dd03cfbefb207c1eca4f85d90a619a073248f241
+    .opencode/agents/context-retriever.md: sha256:f0cdd8e23a081620266f5272c849c6c101feea553ceb25ce7b6f504a22b268b5
+    .opencode/agents/external-lookup.md: sha256:0d8cc1f5000b4eef3a4ffa1229ab8db29a3b26e8e4327336c6e7c65125e09f9b
+    .opencode/commands/add-context.md: sha256:183c2e8a2a02f408bdc1d188fa4165a4641c043179b0a4eebfad81db1dd3667d
+    .opencode/commands/context.md: sha256:0d7de3513a2508c4a163e2cb17fa8ff98dfd3fd8852b1020843fbff28743baa1
+  content_hash: sha256:961335d507c9b6d2e97eee2540e24018ba7f272e473b2a0cd1b47bfccd55da8e
+deployments:
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: null
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:06693b336998c930b18094ae6ff8449730fa8ba52cb505b6c660d02adb07c74c
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/assets/customer-intelligence/configuration-domain.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:feab857b177e0d45f264f9dd376820f6f34e50c0e71c4bae95c5e8bbd4d9fef9
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/assets/customer-intelligence/customer-profile.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:8cd78fceb84d3055ef13fe0349a55f3b237e11e01cd5c9a3ed29750593a34a27
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/assets/customer-intelligence/customization-log.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:fc27b2040ac41c5d7e82de909dff0404f4be0c619429ee1fdb460e9d98dd9ee2
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/assets/customer-intelligence/living-notes.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:6fde3ed0c1e554cf344c37678f51c636a54a3bb95ea09e5a7596851506059e62
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/assets/customer-intelligence/navigation.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:34a27102fb66017c60ea3542a613e5512a8ea8a93a16142aadc35186947e3c87
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/assets/customer-intelligence/process-map.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:f2852f3ac0fcd7b8504c00665f5709f741ab2f2739006480be0f0084ff976389
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/assets/navigation.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:e0b7b38ec24cff3d272daeb9d2076e9f067430234403b8b8b2540476ab445d3f
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/assets/project-intelligence/business-domain.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:b8e18393d8edcc9be854e16ac7d5bbe5dbe5f3b699d6c6aeb8c20173ffb0447a
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/assets/project-intelligence/business-tech-bridge.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:9f80b2fb86719dec1892dffa7675fcdbbf60dd7d0bd997bddbc0b9b2b39eab5e
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/assets/project-intelligence/decisions-log.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:3fd1e5de2403f64e5f505c12a7ed74dc083cae3737c4a0e67633a6e09900eed8
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/assets/project-intelligence/living-notes.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:040d63052bbc2310588e964c77185a34ee8a33d3b25e3db788484946fb2ac127
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/assets/project-intelligence/navigation.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:ef7254c89424150777ae54e3d00524e7f685a633d94bcf001fafbe772da2af84
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/assets/project-intelligence/technical-domain.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:ba4e2a0a93b235862b133edd34a481849eb65c208e13cefdf971b177c66e1d6a
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/references/context-root-discovery.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:317a56e0640ed81b7936fa1e56d71684b348c210ec4583b748a51e12b5c4c9f2
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/references/domains/labbit-configuration/customer-intelligence-management.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:1b276bf72e558c6c6cb7e5e2d6039d7c4d685c74471358a889589a24b0fcc72d
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/references/domains/labbit-configuration/customer-intelligence.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:c7890c35d1f96ef35bddf2cd2a43ba3ab944655c605a2549b72ee33bc3af19ee
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/references/domains/labbit-configuration/navigation.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:ea50f152f28993d9c6a6536a0bee205dacd5fa28fe88658b9be289d3ac01469d
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/references/domains/labbit-configuration/standards/bpmn-modeling-patterns.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:380594b6fa9d80ee077d70a9484a6b8f77578d2175a5757ba0feda6b3a1248ac
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/references/domains/labbit-configuration/standards/customer-config-governance.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:fba3244550f88299f034ba8cab216c257f0b1309728ce0e7cbd65baddff9b1dc
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/references/domains/labbit-configuration/standards/jsonc-config-patterns.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:80eff19163b7371f79fd3649e08160f691e4c498c675ff58b59785a3de64607c
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/references/domains/software-development/navigation.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:81125e412bed8d9a6aa47a456b1d4e3e491a04bf9cc23f821e9126740a134e85
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/references/domains/software-development/project-intelligence-management.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:6cb4cd662395708f50a1bdba041e361970d58d80135ceabf07fc722dbfa8d09d
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/references/domains/software-development/project-intelligence.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:6d16d7d434c5c494167bb787d03d355de9b463437d9b9750cdb8f3014b28b515
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/references/domains/software-development/standards/api-design.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:b8a88b4bf7f451330dc38011b8a0be9a47b69d64f3c11fa172bbe5a222616495
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/references/domains/software-development/standards/clean-code.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:426aefbbe30feaba8bdbdc00033bf1361ba596001542d525a9678a6d0e3a8df7
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/references/domains/software-development/standards/code-analysis.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:a3afc7b7a857b878634b6bc9ef35dad149570a37088dac2b4137226bbd63c23f
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/references/domains/software-development/standards/code-quality.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:b6785c7ec86c833f5b5efdf72daae4de28d5787cb4ea68ad23c0d69cf356efc0
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/references/domains/software-development/standards/documentation.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:b6d8df0d317be1dede17478b49ba1f37079a4a02b9ced0063781f5ca9b90e121
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/references/domains/software-development/standards/navigation.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:d52fe8515e26ed35c0fa502fea8ce9e585569d39bc6396a36a1a332d50ee27d8
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/references/domains/software-development/standards/security-patterns.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:d437cd44ab8cb1526f5ecc5238e816d2a6391245c70d67c7f4525530522f0317
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/references/domains/software-development/standards/test-coverage.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:2000448964a5393cf7f49e553610d30973f995275722367f9952a22093743393
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/references/engine/examples/navigation-examples.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:0c4bcd8c7d12d5199670794e1e70d134fc34575c082538415b8f308f15c925bc
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/references/engine/examples/navigation.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:62318d316683af66b8a27a18c72d0d6da00d7257768544bb5188207ba252c418
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/references/engine/guides/compact.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:2be296e78c2a64304bca481f1c9151528f46542ed2c9ad5f9af8d6dcdca3defd
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/references/engine/guides/creation.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:b2096128fee8005fd8df06661105edcc8cfddb58dabed195d0f3dd0f9f43ba4c
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/references/engine/guides/navigation-design-basics.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:355c17e0d4e8aae09b22a43a8bf03a51f9bdc830e664da6df7ddb25407c4be6a
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/references/engine/guides/navigation-templates.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:866a7fee04c9fa8c3f464a88a446a9c4db25effb229f4d92ab9b9d52ae4caa7e
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/references/engine/guides/navigation.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:184269cbd2f40ac8297dd1a667ffbb827a2f427c80bc80e553a4d2826f3a375e
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/references/engine/guides/organizing-context.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:69d4ac79ff5023b0fb2831f3f9941e5b270a804a3102d947f36868ecba7d5f18
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/references/engine/guides/workflows.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:ff51dcaa1f903e9f81a43dc662f50c4e467f944fba6d9efb36c364c3d606b6d9
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/references/engine/navigation.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:a00e47696461d4e58cf3d27316629422801f8beb03df8943587c8440cc41dfdc
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/references/engine/operations/error.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:a49b998e8ccde811cac183400a0ea8724c1755ed2b9902f974fccf4d3de89ee5
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/references/engine/operations/extract.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:3e345b1cdb5757c876fa1a55e3151c7e684f35e7fc68d93ab1b6d69895694a33
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/references/engine/operations/harvest.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:ce6db3e5219d6101d3f9f3ec806e3adbfe4e96e4d7073999cb76ba519f7a6c1c
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/references/engine/operations/migrate.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:f62d70f04831b5be1589b39b6151a6665733753612aa1c84416274befc675cb6
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/references/engine/operations/navigation.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:72837622a53564e635ee8b936941fc956edefbbf602751e9528430e66126e3aa
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/references/engine/operations/organize.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:6fe90fe548a5b6a615292008a964cc243094ca72907139d4fe64530e7c2c230c
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/references/engine/operations/update.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:1beb1a990b69746f680b329bb954f96025718cedad6aea6e65afd2b919f31f74
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/references/engine/overview.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:bc90bb91044499f00d99270830b26c1692affede619da33453e77ab7512c93db
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/references/engine/standards/codebase-references.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:8f707ea15d8fb77e06cf7e508645bc77a719aa5fd4418d397f3bf6cde2ac7983
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/references/engine/standards/frontmatter.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:af172579811a545d399983115677406b496b827ba0f4ef8bdd5576328db59bb6
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/references/engine/standards/mvi.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:d5ba2405bf4500b240332a01e844f466148e9b8554400a4bfd9f43d7ac6b14df
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/references/engine/standards/navigation.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:d30606a1fbaa6eadcb9419aa90d7d13179a4d1fa2b63d6719be46be378ee8b97
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/references/engine/standards/structure.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:bff7998b8447ced07e6af6fa5129b095d79139a865eb8b29d0b32a5facfbbd5d
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context-manager/references/engine/standards/templates.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:99181e2edccbf1a1a9ce0ebddfa190e274b142b0cf084cba0275e180323a85e6
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context7
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: null
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context7/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:798a2c53a5a1d4ff4b296b5c0c5be314230a229402849cc320d1feb2a0666ffe
+- kind: project-relative
+  target: opencode
+  value: .agents/skills/context7/references/library-registry.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:7a939b667e6ff5a63f3dd8067305c12bf3ade72d63c9ded312f9e5e22b2f4370
+- kind: project-relative
+  target: opencode
+  value: .opencode/agents/context-indexer.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:02f97627de4e066225260f3ffa951c230af55ce6941c750974f98f95c1aa756c
+- kind: project-relative
+  target: opencode
+  value: .opencode/agents/context-manager.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:98b88c529bcc050980f249d63a0c3efa40dcb0297a2aa805b13e2488438d9b66
+- kind: project-relative
+  target: opencode
+  value: .opencode/agents/context-organizer.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:d519d90a9a11fc1e38d02fa1dd03cfbefb207c1eca4f85d90a619a073248f241
+- kind: project-relative
+  target: opencode
+  value: .opencode/agents/context-retriever.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:f0cdd8e23a081620266f5272c849c6c101feea553ceb25ce7b6f504a22b268b5
+- kind: project-relative
+  target: opencode
+  value: .opencode/agents/external-lookup.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:0d8cc1f5000b4eef3a4ffa1229ab8db29a3b26e8e4327336c6e7c65125e09f9b
+- kind: project-relative
+  target: opencode
+  value: .opencode/commands/add-context.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:183c2e8a2a02f408bdc1d188fa4165a4641c043179b0a4eebfad81db1dd3667d
+- kind: project-relative
+  target: opencode
+  value: .opencode/commands/context.md
+  runtime: null
+  scope: project
+  owners:
+  - dave-bell/cerebro
+  active_owner: dave-bell/cerebro
+  content_hash: sha256:0d7de3513a2508c4a163e2cb17fa8ff98dfd3fd8852b1020843fbff28743baa1

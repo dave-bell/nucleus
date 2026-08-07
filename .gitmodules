@@ -1,0 +1,3 @@
+[submodule "docs/requirements"]
+	path = docs/requirements
+	url = https://github.com/dave-bell/nucleus.wiki.git
