@@ -1,4 +1,4 @@
-<!-- Context: core/navigation | Priority: critical | Version: 1.0 | Updated: 2026-08-07 -->
+<!-- Context: core/navigation | Priority: critical | Version: 1.1 | Updated: 2026-08-07 -->
 
 # Context Root Navigation
 
@@ -9,6 +9,7 @@
 ```
 .opencode/context/
 ├── navigation.md              # This file - start here
+├── workflows/                 # Process workflows (tickets, decisions)
 └── project-intelligence/      # Business + technical context for building Nucleus
 ```
 
@@ -16,11 +17,15 @@
 
 | Task | Path |
 |------|------|
+| **Answering a question or decision on a ticket / issue** (`EN-n`, `SEC-Sn`, `needs-decision`) | `workflows/navigation.md` |
+| **Working a ticket: GitHub Issues, labels, comments, `gh`** | `workflows/navigation.md` |
 | **Building/extending the product (software dev)** | `project-intelligence/navigation.md` |
 
 *(No `customer-intelligence/` domain exists in this project yet. Run `/add-context` with `mode=config` to add one.)*
 
 ## By Domain
+
+**workflows** → process conventions for tickets, decisions, and issue hygiene.
 
 **project-intelligence** → business/technical context for building the product itself.
 
@@ -51,5 +56,6 @@ Refresh with `git submodule update --remote docs/requirements` when the wiki cha
 
 ## Related Files
 
+- **workflows** → `workflows/navigation.md`
 - **project-intelligence** → `project-intelligence/navigation.md`
 - **Code standards** → `AGENTS.md` at the project root (authoritative for Elixir/Phoenix/LiveView)

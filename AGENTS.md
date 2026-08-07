@@ -4,6 +4,7 @@ This is a web application written using the Phoenix web framework.
 
 - Use `mix precommit` alias when you are done with all changes and fix any pending issues
 - Use the already included and available `:req` (`Req`) library for HTTP requests, **avoid** `:httpoison`, `:tesla`, and `:httpc`. Req is included by default and is the preferred HTTP client for Phoenix apps
+- **Always** run the `context-indexer` agent before design, code, or investigating a ticket/issue — it returns the standards and workflows to follow. Never start implementation from assumption.
 
 ### Phoenix v1.8 guidelines
 
