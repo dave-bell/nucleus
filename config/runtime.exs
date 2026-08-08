@@ -23,6 +23,23 @@ end
 config :nucleus, NucleusWeb.Endpoint,
   http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
+# Per-boundary backend override: SECRETS_BACKEND / TENANT_API_BACKEND, each
+# "real" or "local". Unset boundaries keep whatever the compile-time config
+# chose — "real" in prod, "local" in dev and test.
+#
+# Selection is per boundary, not one global switch: Parameter Store needs a
+# Terraform-provisioned cross-account IAM role, and a developer working only on
+# environment listing should not need one. There is deliberately no
+# AUTH_BACKEND — authentication is never swappable.
+#
+# Nucleus.Backend is the single source of truth for which module means "real"
+# and which means "local"; runtime.exs runs after compilation, so it can ask.
+for boundary <- Nucleus.Backend.boundaries(),
+    mode = System.get_env(Nucleus.Backend.env_var(boundary)),
+    mode not in [nil, ""] do
+  config :nucleus, :backends, [{boundary, Nucleus.Backend.impl_for_mode!(boundary, mode)}]
+end
+
 if config_env() == :dev do
   # Reload browser tabs when matching files change.
   config :nucleus, NucleusWeb.Endpoint,

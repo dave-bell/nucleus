@@ -15,6 +15,7 @@
 | # | Decision | Date | Status | ADR |
 |---|----------|------|--------|-----|
 | 1 | No local datastore — drop `ecto_sql`/`postgrex`, keep `ecto` for changesets | 2026-08-07 | Decided | `docs/adr/0001-no-local-datastore.md` |
+| 2 | Backend adapter boundaries — behaviours, tagged-tuple errors, per-boundary real/local selection | 2026-08-07 | Decided | `docs/adr/0002-backend-adapter-boundaries.md` |
 
 Two things this file deliberately does **not** contain:
 
@@ -121,6 +122,79 @@ adapter or migration.
 
 ---
 
+## Decision: Backend Adapter Boundaries
+
+**Date**: 2026-08-07
+**Status**: Decided
+**Owner**: @dave-bell (decided on issue #2, EN-2)
+
+### Context
+Secrets reads from two external systems: the tenant's AWS SSM Parameter Store (the secrets) and
+the tenant's backing API (the authoritative environment list used to validate environment names
+before any parameter path is built). Parameter Store access needs a Terraform-provisioned
+cross-account IAM role, so calling it directly means a fresh clone cannot run and CI cannot
+test — even for a developer touching only environment listing. The earlier prototype also
+leaked backend-specific failures into route code (an SSM `CredentialsExpiredError` caught in a
+route, `KeyError` reused for two meanings), which makes the "pluggable backends" constraint in
+`technical-domain.md` documentation rather than fact.
+
+### Decision
+Every external system sits behind an Elixir **behaviour** with two implementations, `real` and
+`local`, selected **per boundary** via `config :nucleus, :backends` — real in `config.exs`,
+local in `dev.exs`/`test.exs`, overridable at runtime with `SECRETS_BACKEND` and
+`TENANT_API_BACKEND` (`"real"` | `"local"`). Callbacks return
+`{:error, %Nucleus.Backend.Error{}}` — **returned, never raised** — carrying one of six neutral
+`kind`s (`:invalid`, `:not_found`, `:already_exists`, `:auth_expired`, `:unavailable`,
+`:not_configured`). Every behaviour declares `health_check/0`. There is no `:auth` boundary and
+no `AUTH_BACKEND`; auth is never swappable. Local implementations ship in the release, with a
+prominent boot warning naming any boundary serving in-memory data.
+`Nucleus.Backend.Faults.maybe_fault/1` (`LOCAL_LATENCY_MS`, `LOCAL_FORCE_ERROR`) is required,
+not optional.
+
+### Rationale
+Behaviours are the Elixir idiom for a swappable interface, and `@behaviour` plus
+`compile --warnings-as-errors` catches signature drift at build time — no separate conformance
+checker needed. Tagged tuples keep the failure path visible and exhaustively matchable; `rescue`
+in a `handle_event/3` cannot be either. Six kinds instead of the prototype's five splits
+`:invalid` (input rejected before any backend call) out from backend failure, which is precisely
+the conflation that made `KeyError` mean two things. Per-boundary selection matches the shape of
+the cost being avoided. Fault injection is what makes `SEC-S1` (fail closed) and `SEC-S7`
+(credential expiry) testable at all.
+
+### Alternatives Considered
+| Alternative | Pros | Cons | Why Rejected? |
+|-------------|------|------|---------------|
+| Direct `ExAws`/`Req` calls, no boundary | Least code | No way to run without live infra; backend exception types reach LiveViews | The exact state the prototype was leaving |
+| Single global `BACKEND_MODE` | One switch to explain | All-or-nothing when only Parameter Store is expensive to access | The cost is per boundary, so the switch should be |
+| Raise `Nucleus.Backend.Error` instead of returning it | Terser call sites | `rescue` in `handle_event/3` is unverifiable and needed everywhere | Failure handling must be exhaustively matchable |
+| Exclude local implementations from the release build | Local mode physically impossible in prod | Build stage and package list must stay in sync; a mistake breaks dev silently | Auth is never swappable, so the risk is wrong data, not bypass — a boot warning is proportionate |
+| `Mox`/`Hammox` instead of local implementations | No second implementation to maintain | Mocks exist only for tests and drift from what a developer can run | One local implementation serves both dev and test |
+| Detect "local" from the module name suffix | No registry to maintain | Stringly-typed; defeated by a rename | Explicit registry costs two lines per boundary |
+
+### Impact
+- **Positive**: A fresh clone runs and the whole suite passes with zero credentials and no
+  external services. CI needs no dummy env vars. LiveViews match on `Error.kind`, so a backend
+  is replaceable without touching business logic. `health_check/0` closes the readiness
+  boundary violation before it can happen. `Error.kinds/0` is asserted against the `@type kind`
+  union, so a seventh kind cannot be added silently.
+- **Negative**: Two implementations per boundary to keep in agreement — EN-8 owns the shared
+  contract suite, which still cannot catch every nuance (real SSM's eventual consistency).
+  `impl_for/1` raises for both boundaries until EN-3/EN-4 land, by design and by name. Every
+  `mix test` run logs the local-backends warning once.
+- **Risk**: Token passthrough over a long-lived LiveView socket is still unresolved and shapes
+  the callback *arguments* EN-3/EN-4 define. This decision fixes only the return shape.
+
+### Related
+- Issue #2 (EN-2) — the deciding issue and full implementation plan
+- `docs/adr/0002-backend-adapter-boundaries.md` — the formal ADR
+- Issues #3 (EN-3), #4 (EN-4) — the concrete boundaries built on this scaffolding
+- Issue #6 (EN-6) — auth, deliberately outside the boundary set
+- Issue #8 (EN-8) — the contract test harness
+- `docs/adr/0001-no-local-datastore.md` — local implementations are in-memory per process, never
+  persisted
+
+---
+
 ## Deprecated Decisions
 
 Decisions that were later overturned (for historical context):
@@ -131,7 +205,8 @@ Decisions that were later overturned (for historical context):
 
 ## Onboarding Checklist
 
-- [ ] Read the Decision Index above; `adr/0001` (no local datastore) is binding
+- [ ] Read the Decision Index above; `adr/0001` (no local datastore) and
+      `adr/0002` (backend adapter boundaries) are binding
 - [ ] Know that the wiki's ADR-0001–0007 are reference only, not adopted
 - [ ] Know that new formal ADRs belong in `docs/adr/`
 - [ ] Know which decisions are pending (see `living-notes.md`)

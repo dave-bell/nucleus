@@ -18,6 +18,20 @@ config :nucleus, NucleusWeb.Endpoint,
   pubsub_server: Nucleus.PubSub,
   live_view: [signing_salt: "hJS7FKBE"]
 
+# Swappable backend boundaries. One implementation per boundary, selected
+# independently — see lib/nucleus/backend.ex and
+# docs/adr/0002-backend-adapter-boundaries.md.
+#
+# These are the `real` implementations, delivered by EN-3 and EN-4. dev and test
+# override both to the `.Local` implementations so a fresh clone needs no
+# credentials; runtime.exs allows a per-boundary override via SECRETS_BACKEND
+# and TENANT_API_BACKEND.
+#
+# There is deliberately no `auth` boundary. Authentication is never swappable.
+config :nucleus, :backends,
+  secrets: Nucleus.Secrets.Store.Aws,
+  tenant_api: Nucleus.TenantApi.Http
+
 # Configure LiveView
 config :phoenix_live_view,
   # the attribute set on all root tags. Used for Phoenix.LiveView.ColocatedCSS.

@@ -7,6 +7,8 @@ defmodule Nucleus.Application do
 
   @impl true
   def start(_type, _args) do
+    Nucleus.Backend.warn_on_local_backends()
+
     children = [
       NucleusWeb.Telemetry,
       {DNSCluster, query: Application.get_env(:nucleus, :dns_cluster_query) || :ignore},
