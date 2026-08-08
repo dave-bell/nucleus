@@ -38,3 +38,7 @@ npm-debug.log
 
 # APM dependencies
 apm_modules/
+
+# Per-ticket git worktrees created by bin/wt. Ignored so the parent checkout
+# stays clean and so ripgrep-backed agent search skips them.
+/.worktrees/

@@ -1,0 +1,295 @@
+#!/usr/bin/env bash
+#
+# wt — create an isolated git worktree for a ticket.
+#
+#   bin/wt EN-3                     create .worktrees/en-3, branch from title
+#   bin/wt EN-3 tenant-api-adapter  same, but name the branch en-3-tenant-api-adapter
+#   bin/wt EN-3 --base origin/main  branch from an explicit ref
+#   bin/wt EN-3 --dry-run           show what would happen, change nothing
+#   bin/wt --list                   list existing ticket worktrees
+#   bin/wt --remove EN-3            tear down .worktrees/en-3
+#
+# Branches always start from the remote default branch, never from the current
+# HEAD — branching off a feature branch inherits its unmerged work. Override
+# with --base only when a ticket deliberately stacks on another.
+#
+# Prefer passing an explicit slug: branch names here describe the work, not the
+# ticket title (en-1-no-local-datastore, for a ticket titled "Resolve
+# Postgres-vs-stateless"). The derived default is a fallback.
+#
+# Ticket IDs (EN-n, SEC-Sn) live in the GitHub issue *title*, not the issue
+# number. This script resolves by title prefix and never assumes ID == number.
+#
+set -euo pipefail
+
+REPO_SLUG="dave-bell/nucleus"
+WORKTREE_DIR=".worktrees"
+
+die() { printf 'wt: %s\n' "$1" >&2; exit 1; }
+note() { printf '  %s\n' "$1"; }
+step() { printf '\n==> %s\n' "$1"; }
+
+# --- guards ------------------------------------------------------------------
+
+require_main_worktree() {
+  local git_dir git_common
+  git_dir=$(cd "$(git rev-parse --git-dir)" && pwd -P)
+  git_common=$(cd "$(git rev-parse --git-common-dir)" && pwd -P)
+
+  # A path under a submodule also reports git_dir != git_common, so rule that
+  # out before concluding we are in a linked worktree.
+  if [ -n "$(git rev-parse --show-superproject-working-tree 2>/dev/null)" ]; then
+    die "you are inside a submodule. Run this from the main checkout."
+  fi
+
+  if [ "$git_dir" != "$git_common" ]; then
+    die "already inside a linked worktree ($(git rev-parse --show-toplevel)).
+    Ticket worktrees are created from the main checkout only. Run:
+      cd $(git -C "$git_common/.." rev-parse --show-toplevel 2>/dev/null || echo '<main checkout>') && bin/wt $*"
+  fi
+}
+
+require_cmd() {
+  command -v "$1" >/dev/null 2>&1 || die "'$1' is required but not on PATH."
+}
+
+# The remote default branch, e.g. origin/main. Ticket branches must start from
+# here, never from the current HEAD: branching off a feature branch silently
+# inherits its unmerged work and turns a clean merge into a wrong one.
+default_base() {
+  local ref
+  ref=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null || true)
+  if [ -z "$ref" ]; then
+    git remote set-head origin --auto >/dev/null 2>&1 || true
+    ref=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null || true)
+  fi
+  if [ -z "$ref" ] && command -v gh >/dev/null 2>&1; then
+    local name
+    name=$(gh repo view "$REPO_SLUG" --json defaultBranchRef --jq .defaultBranchRef.name 2>/dev/null || true)
+    [ -n "$name" ] && ref="origin/${name}"
+  fi
+  [ -n "$ref" ] || die "cannot determine the default branch. Pass --base <ref> explicitly."
+  printf '%s' "$ref"
+}
+
+# --- ticket resolution -------------------------------------------------------
+
+# Resolve a ticket ID to "number<TAB>title" via exact title-prefix match.
+resolve_ticket() {
+  local id="$1" matches count
+  matches=$(gh issue list --repo "$REPO_SLUG" --state all --limit 200 \
+              --json number,title \
+              --jq ".[] | select(.title | startswith(\"${id}:\")) | \"\(.number)\t\(.title)\"")
+
+  [ -n "$matches" ] || die "no issue whose title starts with '${id}:' in ${REPO_SLUG}."
+
+  count=$(printf '%s\n' "$matches" | wc -l | tr -d ' ')
+  [ "$count" -eq 1 ] || die "'${id}:' matched ${count} issues; titles must be unique:
+$matches"
+
+  printf '%s' "$matches"
+}
+
+# Normalise arbitrary text into a kebab slug, trimmed at a word boundary.
+kebab() {
+  printf '%s' "$1" \
+    | tr '[:upper:]' '[:lower:]' \
+    | sed -e 's/[^a-z0-9]\{1,\}/-/g' -e 's/^-*//' -e 's/-*$//' \
+    | awk -v max=36 '{
+        n = split($0, w, "-"); out = ""
+        for (i = 1; i <= n; i++) {
+          cand = (out == "" ? w[i] : out "-" w[i])
+          if (length(cand) > max && out != "") break
+          out = cand
+        }
+        print out
+      }'
+}
+
+# Default slug from the title. These titles put the short name first and append
+# detail after an em-dash or parenthesis, so cut there before slugifying:
+#   "EN-2: Backend boundary foundation — behaviours, ..." -> backend-boundary-foundation
+# This is only a fallback. Branch names here are chosen for meaning, not derived
+# (e.g. en-1-no-local-datastore, whose title says "Resolve Postgres-vs-stateless"),
+# so pass an explicit slug whenever the title is a poor description of the work.
+derive_slug() {
+  local id="$1" title="$2"
+  kebab "$(printf '%s' "$title" | sed -e "s/^${id}: *//" -e 's/ *[—(].*$//')"
+}
+
+# --- subcommands -------------------------------------------------------------
+
+cmd_list() {
+  git worktree list --porcelain \
+    | awk '/^worktree /{p=$2} /^branch /{sub("refs/heads/","",$2); print p"\t"$2}' \
+    | grep "/${WORKTREE_DIR}/" || note "no ticket worktrees."
+}
+
+cmd_remove() {
+  local id path
+  id="$1"
+  path="${WORKTREE_DIR}/$(kebab "$id")"
+  [ -d "$path" ] || die "no worktree at ${path}."
+
+  # `git worktree remove` refuses outright on worktrees containing submodules,
+  # so --force is mandatory here. --force also discards uncommitted work, which
+  # makes this check the only thing standing between you and losing it.
+  local dirty untracked unpushed
+  dirty=$(git -C "$path" status --porcelain --untracked-files=no --ignore-submodules=all)
+  [ -z "$dirty" ] || die "${path} has uncommitted changes:
+$dirty
+    Commit or discard them first."
+
+  untracked=$(git -C "$path" ls-files --others --exclude-standard)
+  [ -z "$untracked" ] || die "${path} has untracked files:
+$untracked
+    Commit, remove, or gitignore them first."
+
+  local branch
+  branch=$(git -C "$path" branch --show-current)
+  if [ -n "$branch" ]; then
+    unpushed=$(git -C "$path" log --oneline "@{upstream}..HEAD" 2>/dev/null || printf 'no-upstream')
+    if [ "$unpushed" = "no-upstream" ]; then
+      note "note: ${branch} has no upstream — nothing has been pushed."
+    elif [ -n "$unpushed" ]; then
+      die "${branch} has unpushed commits:
+$unpushed
+    Push them first, or delete the branch deliberately."
+    fi
+  fi
+
+  step "Removing ${path}"
+  git -C "$path" submodule deinit -f --all >/dev/null 2>&1 || true
+  git worktree remove --force "$path"
+  note "removed."
+  [ -n "$branch" ] && note "branch ${branch} kept — delete with: git branch -d ${branch}"
+}
+
+cmd_create() {
+  local id="$1" slug="$2" base="$3" dry_run="$4"
+  local resolved number title branch path
+
+  resolved=$(resolve_ticket "$id")
+  number=$(printf '%s' "$resolved" | cut -f1)
+  title=$(printf '%s' "$resolved" | cut -f2)
+  path="${WORKTREE_DIR}/$(kebab "$id")"
+
+  if [ -n "$slug" ]; then
+    branch="$(kebab "$id")-$(kebab "$slug")"
+  else
+    branch="$(kebab "$id")-$(derive_slug "$id" "$title")"
+  fi
+
+  step "Fetching ${REPO_SLUG}"
+  git fetch --quiet origin
+  [ -n "$base" ] || base=$(default_base)
+  git rev-parse --verify --quiet "$base" >/dev/null || die "base ref '${base}' does not exist."
+
+  step "Ticket ${id}"
+  note "issue:  #${number} — ${title}"
+  note "branch: ${branch}$([ -z "$slug" ] && printf '%s' "   (derived — override with: bin/wt ${id} <slug>)")"
+  note "base:   ${base} ($(git rev-parse --short "$base"))"
+  note "path:   ${path}"
+
+  local state
+  state=$(gh issue view "$number" --repo "$REPO_SLUG" --json state --jq .state)
+  [ "$state" = "OPEN" ] || printf '\n  WARNING: issue #%s is %s — is this ticket already done?\n' "$number" "$state"
+
+  local labels labels_csv
+  labels=$(gh issue view "$number" --repo "$REPO_SLUG" --json labels --jq '[.labels[].name]|join(", ")')
+  labels_csv=",$(printf '%s' "$labels" | tr -d ' '),"
+  [ -n "$labels" ] && note "labels: ${labels}"
+
+  case "$labels_csv" in
+    *,blocked,*)
+      printf '\n  WARNING: labelled `blocked` — resolve its blockers before starting.\n' ;;
+  esac
+  case "$labels_csv" in
+    *,needs-decision,*)
+      printf '\n  WARNING: labelled `needs-decision` — answer it first via the\n           comment-then-unlabel loop in workflows/guides/ticket-decisions.md.\n' ;;
+  esac
+
+  if [ "$dry_run" = "1" ]; then
+    printf '\n(dry run — nothing changed)\n'
+    return 0
+  fi
+
+  if [ -d "$path" ]; then
+    note "worktree already exists — skipping creation."
+  else
+    step "Creating worktree"
+    if git show-ref --verify --quiet "refs/heads/${branch}"; then
+      note "branch ${branch} already exists — checking it out as-is (base ignored)"
+      git worktree add "$path" "$branch"
+    else
+      git worktree add "$path" -b "$branch" "$base"
+    fi
+  fi
+
+  # `git worktree add` does NOT populate submodules. Without this,
+  # docs/requirements is empty and the ticket loses its requirements.
+  step "Initialising submodules"
+  git -C "$path" submodule update --init --recursive
+
+  # Each worktree needs its own deps/ and _build/: mix.lock diverges between
+  # branches (EN-1 dropped ecto_sql/postgrex), so sharing them is unsafe.
+  step "Fetching dependencies"
+  (cd "$path" && mix deps.get)
+
+  step "Ready"
+  cat <<EOF
+
+  cd ${path} && opencode
+
+  Then, in that session:
+    /start ${id}
+
+EOF
+}
+
+# --- main --------------------------------------------------------------------
+
+main() {
+  require_cmd git
+
+  case "${1:-}" in
+    ""|-h|--help)
+      sed -n '3,21p' "$0" | sed 's/^# \{0,1\}//'
+      exit 0
+      ;;
+    --list|-l)
+      require_main_worktree "$@"
+      cmd_list
+      ;;
+    --remove|-r)
+      [ -n "${2:-}" ] || die "--remove needs a ticket ID, e.g. --remove EN-3"
+      require_main_worktree "$@"
+      cmd_remove "$2"
+      ;;
+    -*)
+      die "unknown option '$1'. Try --help."
+      ;;
+    *)
+      require_cmd gh
+      require_cmd mix
+      require_main_worktree "$@"
+      local id="$1" slug="" base="" dry_run=0
+      shift
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --dry-run|-n) dry_run=1 ;;
+          --base|-b)    shift; [ -n "${1:-}" ] || die "--base needs a ref."
+                        base="$1" ;;
+          --base=*)     base="${1#--base=}" ;;
+          -*)           die "unknown option '$1'. Try --help." ;;
+          *)            [ -z "$slug" ] || die "unexpected extra argument '$1'."
+                        slug="$1" ;;
+        esac
+        shift
+      done
+      cmd_create "$id" "$slug" "$base" "$dry_run"
+      ;;
+  esac
+}
+
+main "$@"
