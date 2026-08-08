@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/technical | Priority: high | Version: 1.0 | Updated: 2026-08-07 -->
+<!-- Context: project-intelligence/technical | Priority: high | Version: 1.1 | Updated: 2026-08-07 -->
 
 # Technical Domain
 
@@ -25,7 +25,7 @@ constraints specific to Nucleus.
 | Framework | Phoenix | `~> 1.8.9` | [Rationale not yet recorded] |
 | UI | Phoenix LiveView | `~> 1.2.0` | Server-rendered interactive UI without a separate frontend app |
 | Web server | Bandit | `~> 1.5` | Phoenix 1.8 default |
-| Database | PostgreSQL via `ecto_sql`/`postgrex` | `~> 3.13` | **Generator scaffolding — conflicts with the stateless constraint. See `living-notes.md`.** |
+| Database | **None — no local datastore.** `ecto` (`~> 3.13`) + `phoenix_ecto` (`~> 4.5`) are retained for `embedded_schema`/`Ecto.Changeset` form validation only | `~> 3.13` | Enforces the stateless constraint. `ecto_sql`/`postgrex` removed by EN-1 — see `docs/adr/0001-no-local-datastore.md`. **Do not add a repo.** |
 | HTTP client | Req | `~> 0.5` | Required by `AGENTS.md`; never use `httpoison`/`tesla`/`httpc` |
 | Styling | Tailwind CSS | `4.3.0` (`config/config.exs:51`) | v4, no `tailwind.config.js` |
 | Icons/components | heroicons `v2.2.0`, daisyui `v5.5.20` | pinned git deps | Vendored via `mix.exs` |
@@ -55,8 +55,7 @@ This project is a fresh start. Requirements bind; that architecture does not.
 ```
 2026-08-07-nucleus2/
 ├── lib/nucleus/            # Core application + OTP supervision
-│   ├── application.ex      # Supervision tree
-│   ├── repo.ex             # Ecto repo (scaffolding, see living-notes.md)
+│   ├── application.ex      # Supervision tree (no repo — see adr/0001)
 │   └── mailer.ex
 ├── lib/nucleus_web/        # Web layer
 │   ├── router.ex           # Currently only `get "/"` + dev routes
@@ -65,10 +64,9 @@ This project is a fresh start. Requirements bind; that architecture does not.
 │   └── controllers/        # page_controller.ex, error views
 ├── test/                   # Mirrors lib/ structure
 ├── docs/requirements/      # Wiki submodule — BINDING requirements source
-├── docs/adr/               # This project's own ADRs (currently empty)
+├── docs/adr/               # This project's own ADRs (0001: no local datastore)
 ├── assets/                 # app.js, app.css
-├── config/                 # config.exs, dev/test/prod/runtime
-└── priv/repo/              # Migrations + seeds
+└── config/                 # config.exs, dev/test/prod/runtime
 ```
 
 **Key Directories**:
@@ -102,7 +100,7 @@ All three are external, tenant-owned, and read live — there is no local mirror
 
 | Constraint | Origin | Impact |
 |------------|--------|--------|
-| **Stateless — no own datastore** | Adopted from wiki Core model | Every value is fetched live per request. No cache of secrets or config survives a restart. Directly conflicts with the `Nucleus.Repo` currently in the supervision tree (`lib/nucleus/application.ex:12`). |
+| **Stateless — no own datastore** | Adopted from wiki Core model | Every value is fetched live per request. No cache of secrets or config survives a restart. **Structurally enforced since EN-1**: there is no repo, no `ecto_sql`, no database config. Adding one reopens `docs/adr/0001-no-local-datastore.md`. Audit records go to an external log pipeline (EN-5), never a local table. |
 | **Pluggable backends** | Adopted from wiki Core model | Nomad, Parameter Store, and Cognito must sit behind swappable interfaces (idiomatically, Elixir behaviours) so a backing system can be replaced without changing behaviour. Enables local/test implementations. |
 | **Token passthrough** | Adopted from wiki Core model | Nucleus holds no authorisation model of its own for backing APIs; it forwards the signed-in user's access token. **Non-trivial in LiveView** — the token must be held against a long-lived stateful socket and mid-session expiry handled. See `living-notes.md` and requirement `SEC-A18`. |
 | **Fail closed on validation** | Requirements (`SEC-A15`–`SEC-A17`) | Environment names are validated against the tenant's backing API before any path is constructed. If validation is unavailable, requests are rejected, never passed through unvalidated. |
@@ -112,11 +110,12 @@ All three are external, tenant-owned, and read live — there is no local mirror
 ## Development Environment
 
 ```
-Setup: mix setup      # deps.get, ecto.setup, assets.setup, assets.build
-Requirements: Elixir 1.20.3 / OTP 29 (see .tool-versions, via asdf or mise), PostgreSQL
+Setup: mix setup      # deps.get, assets.setup, assets.build
+Requirements: Elixir 1.20.3 / OTP 29 (see .tool-versions, via asdf or mise)
+              No database required — Nucleus has no local datastore.
               Clone submodules: git submodule update --init --recursive
 Local Dev: mix phx.server   (or: iex -S mix phx.server) → http://localhost:4000
-Testing: mix test           # aliased to create + migrate the test DB first
+Testing: mix test           # no database setup; no external services needed
 Pre-flight: mix precommit   # compile --warnings-as-errors, deps.unlock --unused, format, test
 ```
 
@@ -135,7 +134,7 @@ Monitoring: LiveDashboard at /dev/dashboard (dev only, unauthenticated — must 
 ## Onboarding Checklist
 
 - [ ] Read `AGENTS.md` in full — it governs all code style
-- [ ] Know the primary tech stack and that Postgres is unresolved scaffolding
+- [ ] Know the primary tech stack and that there is **no database** (`adr/0001`)
 - [ ] Understand the five constraints and which are architectural
 - [ ] Know the three backing systems and that all reads are live
 - [ ] Initialise the `docs/requirements/` submodule
@@ -147,5 +146,5 @@ Monitoring: LiveDashboard at /dev/dashboard (dev only, unauthenticated — must 
 - `AGENTS.md` (project root) - **authoritative** code standards
 - `business-domain.md` - Why this technical foundation exists
 - `business-tech-bridge.md` - Requirement ID → module → test mapping
-- `decisions-log.md` - Decision history (currently empty)
-- `living-notes.md` - Postgres scaffolding, token passthrough risk
+- `decisions-log.md` - Decision history
+- `living-notes.md` - Token passthrough risk, open questions

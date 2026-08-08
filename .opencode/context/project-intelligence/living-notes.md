@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/notes | Priority: high | Version: 1.0 | Updated: 2026-08-07 -->
+<!-- Context: project-intelligence/notes | Priority: high | Version: 1.1 | Updated: 2026-08-07 -->
 
 # Living Notes
 
@@ -14,33 +14,18 @@
 
 | Item | Impact | Priority | Mitigation |
 |------|--------|----------|------------|
-| `Nucleus.Repo` (Postgres) wired in but unused | Directly contradicts the stateless constraint | High | Decide: remove, or narrow the constraint |
-| `docs/adr/` empty while 7 prototype ADRs sit in the wiki | ADR-shaped questions get answered in chat and lost | Medium | Write this project's own ADRs as decisions land |
+| `docs/adr/` had no ADRs while 7 prototype ADRs sit in the wiki | ADR-shaped questions get answered in chat and lost | Medium | Write this project's own ADRs as decisions land — `0001` now exists |
 | LiveDashboard at `/dev/dashboard` unauthenticated | Fine in dev; a leak if ever exposed in prod | Medium | Gate behind auth before any production deploy |
 
 ### Technical Debt Details
 
-**`Nucleus.Repo` / Postgres is generator scaffolding**
-*Priority*: High
-*Impact*: The stateless constraint says every value is read live from a backing system and
-nothing survives a restart. A running Ecto repo invites a future contributor to "just cache
-it" or "just store the audit log locally", quietly breaking the constraint. It also forces a
-Postgres dependency on local setup and CI for no current benefit.
-*Root Cause*: `mix phx.new` includes Ecto by default; nothing has removed it.
-*Proposed Solution*: Remove `Nucleus.Repo` from the supervision tree
-(`lib/nucleus/application.ex:12`), drop `ecto_sql`/`postgrex`/`phoenix_ecto` from `mix.exs`,
-drop the `ecto.*` steps from the `mix.exs` aliases, and delete `priv/repo/`. **Or** decide
-deliberately that a datastore is warranted and narrow the constraint in
-`technical-domain.md`. Either way it needs a `decisions-log.md` entry.
-*Effort*: Small
-*Status*: Acknowledged
+*(no open debt details — the `Nucleus.Repo` item was resolved by EN-1; see Archive)*
 
 ## Open Questions
 
 | Question | Stakeholders | Status | Next Action |
 |----------|--------------|--------|-------------|
 | How does token passthrough work over a LiveView socket? | Tech lead, security | Open | Design spike against `AUTH-*` and `SEC-A18` |
-| Keep Ecto/Postgres, or honour stateless strictly? | Tech lead | Open | Decide and record in `decisions-log.md` |
 | Do the wiki's `AUTH-A01`–`A11` still describe the intended flow? | Product, tech lead | Open | Review the 11 actions against a LiveView design |
 | Where does Nucleus deploy, and via what CI? | Ops | Open | Confirm target; no CI exists in this repo |
 | Should `mix nucleus.trace` gate `precommit`? | Tech lead | Open | Build the task, then decide if it blocks |
@@ -124,13 +109,26 @@ deploys it.
 | Project | Goal | Owner | Timeline |
 |---------|------|-------|----------|
 | Build `mix nucleus.trace` | Diff wiki action IDs against `@tag action:` in `test/` and report uncovered requirements | [Unassigned] | Before first feature merge |
-| Resolve Postgres vs stateless | Remove Ecto or narrow the constraint | [Unassigned] | Early — affects setup and CI |
 
 ## Archive (Resolved Items)
 
 Moved here for historical reference.
 
-*(nothing resolved yet)*
+**`Nucleus.Repo` / Postgres was generator scaffolding** — *was: Technical Debt, High*
+*Resolved*: 2026-08-07 by EN-1 (issue #1).
+*Outcome*: Removed `ecto_sql`, `postgrex` and `Nucleus.Repo` entirely — supervision tree,
+`priv/repo/`, all four config files, the `CheckRepoStatus` plug, the dead
+`nucleus.repo.query.*` telemetry metrics, and the test sandbox plumbing. **`ecto` and
+`phoenix_ecto` were deliberately retained** for `embedded_schema` + `Ecto.Changeset` form
+validation, which needs no database. Note this differs from the original proposed solution
+above, which suggested dropping `phoenix_ecto` too.
+*See*: `docs/adr/0001-no-local-datastore.md`
+
+**Keep Ecto/Postgres, or honour stateless strictly?** — *was: Open Question*
+*Resolved*: 2026-08-07 by EN-1 (issue #1).
+*Outcome*: Honour stateless strictly. The constraint is now structurally enforced — adding a
+datastore requires adding a dependency and configuration, a visible and reviewable act.
+*See*: `docs/adr/0001-no-local-datastore.md`
 
 ## Onboarding Checklist
 
