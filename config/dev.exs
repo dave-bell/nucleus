@@ -45,6 +45,13 @@ config :nucleus, NucleusWeb.Endpoint,
 # Enable dev routes for dashboard and mailbox
 config :nucleus, dev_routes: true
 
+# Run every boundary against its local implementation, so a fresh clone starts
+# with no AWS role and no tenant API reachable. Override per boundary with
+# SECRETS_BACKEND=real / TENANT_API_BACKEND=real (see config/runtime.exs).
+config :nucleus, :backends,
+  secrets: Nucleus.Secrets.Store.Local,
+  tenant_api: Nucleus.TenantApi.Local
+
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"
 

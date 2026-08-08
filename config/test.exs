@@ -10,6 +10,12 @@ config :nucleus, NucleusWeb.Endpoint,
 # In test we don't send emails
 config :nucleus, Nucleus.Mailer, adapter: Swoosh.Adapters.Test
 
+# The suite runs with no credentials and no external services. Tests that need a
+# different implementation set it themselves with Application.put_env/3.
+config :nucleus, :backends,
+  secrets: Nucleus.Secrets.Store.Local,
+  tenant_api: Nucleus.TenantApi.Local
+
 # Disable swoosh api client as it is only required for production adapters
 config :swoosh, :api_client, false
 

@@ -56,6 +56,8 @@ This project is a fresh start. Requirements bind; that architecture does not.
 2026-08-07-nucleus2/
 ├── lib/nucleus/            # Core application + OTP supervision
 │   ├── application.ex      # Supervision tree (no repo — see adr/0001)
+│   ├── backend.ex          # Boundary registry + real/local selection (adr/0002)
+│   ├── backend/            # error.ex (neutral error kinds), faults.ex (injection)
 │   └── mailer.ex
 ├── lib/nucleus_web/        # Web layer
 │   ├── router.ex           # Currently only `get "/"` + dev routes
@@ -64,7 +66,8 @@ This project is a fresh start. Requirements bind; that architecture does not.
 │   └── controllers/        # page_controller.ex, error views
 ├── test/                   # Mirrors lib/ structure
 ├── docs/requirements/      # Wiki submodule — BINDING requirements source
-├── docs/adr/               # This project's own ADRs (0001: no local datastore)
+├── docs/adr/               # This project's own ADRs (0001: no local datastore,
+│                          #   0002: backend adapter boundaries)
 ├── assets/                 # app.js, app.css
 └── config/                 # config.exs, dev/test/prod/runtime
 ```
@@ -80,9 +83,10 @@ This project is a fresh start. Requirements bind; that architecture does not.
 
 | Decision | Rationale | Impact |
 |----------|-----------|--------|
-| *(none recorded)* | — | — |
+| No local datastore (`adr/0001`) | Nothing used the scaffolded repo, and a live repo invites "just cache the secret" | No `ecto_sql`/`postgrex`/`Nucleus.Repo`; `ecto` retained for changesets only. No PostgreSQL for dev or CI |
+| Backend adapter boundaries (`adr/0002`) | A fresh clone must run without the cross-account IAM role Parameter Store needs, and LiveViews must never catch a backend-specific exception | Elixir behaviours per boundary, `real`/`local` selected per boundary via `SECRETS_BACKEND`/`TENANT_API_BACKEND`; callbacks return `{:error, %Nucleus.Backend.Error{}}` with one of six neutral kinds; `health_check/0` on every behaviour; no `AUTH_BACKEND` |
 
-No architectural decisions have been made and recorded yet. See `decisions-log.md`.
+See `decisions-log.md` for the full context behind each.
 
 ## Integration Points
 
@@ -101,7 +105,7 @@ All three are external, tenant-owned, and read live — there is no local mirror
 | Constraint | Origin | Impact |
 |------------|--------|--------|
 | **Stateless — no own datastore** | Adopted from wiki Core model | Every value is fetched live per request. No cache of secrets or config survives a restart. **Structurally enforced since EN-1**: there is no repo, no `ecto_sql`, no database config. Adding one reopens `docs/adr/0001-no-local-datastore.md`. Audit records go to an external log pipeline (EN-5), never a local table. |
-| **Pluggable backends** | Adopted from wiki Core model | Nomad, Parameter Store, and Cognito must sit behind swappable interfaces (idiomatically, Elixir behaviours) so a backing system can be replaced without changing behaviour. Enables local/test implementations. |
+| **Pluggable backends** | Adopted from wiki Core model | Nomad, Parameter Store, the tenant API, and Cognito must sit behind swappable interfaces so a backing system can be replaced without changing behaviour. **Scaffolding landed in EN-2**: `Nucleus.Backend` (registry + per-boundary `real`/`local` selection), `Nucleus.Backend.Error` (six neutral kinds, returned never raised), `Nucleus.Backend.Faults` (latency/error injection). Every behaviour declares `health_check/0`. Auth is deliberately *not* swappable. See `docs/adr/0002-backend-adapter-boundaries.md`. |
 | **Token passthrough** | Adopted from wiki Core model | Nucleus holds no authorisation model of its own for backing APIs; it forwards the signed-in user's access token. **Non-trivial in LiveView** — the token must be held against a long-lived stateful socket and mid-session expiry handled. See `living-notes.md` and requirement `SEC-A18`. |
 | **Fail closed on validation** | Requirements (`SEC-A15`–`SEC-A17`) | Environment names are validated against the tenant's backing API before any path is constructed. If validation is unavailable, requests are rejected, never passed through unvalidated. |
 | **Single tenant per deployment** | Business constraint | Namespace is deployment configuration, not runtime state. |
