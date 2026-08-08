@@ -9,7 +9,6 @@ defmodule Nucleus.Application do
   def start(_type, _args) do
     children = [
       NucleusWeb.Telemetry,
-      Nucleus.Repo,
       {DNSCluster, query: Application.get_env(:nucleus, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Nucleus.PubSub},
       # Start a worker by calling: Nucleus.Worker.start_link(arg)

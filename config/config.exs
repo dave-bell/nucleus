@@ -7,10 +7,6 @@
 # General application configuration
 import Config
 
-config :nucleus,
-  ecto_repos: [Nucleus.Repo],
-  generators: [timestamp_type: :utc_datetime]
-
 # Configure the endpoint
 config :nucleus, NucleusWeb.Endpoint,
   url: [host: "localhost"],

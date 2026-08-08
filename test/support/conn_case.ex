@@ -5,14 +5,11 @@ defmodule NucleusWeb.ConnCase do
 
   Such tests rely on `Phoenix.ConnTest` and also
   import other functionality to make it easier
-  to build common data structures and query the data layer.
+  to build common data structures.
 
-  Finally, if the test case interacts with the database,
-  we enable the SQL sandbox, so changes done to the database
-  are reverted at the end of every test. If you are using
-  PostgreSQL, you can even run database tests asynchronously
-  by setting `use NucleusWeb.ConnCase, async: true`, although
-  this option is not recommended for other databases.
+  Nucleus holds no local datastore, so there is no SQL sandbox to set up —
+  see `docs/adr/0001-no-local-datastore.md`. Cases may safely run with
+  `use NucleusWeb.ConnCase, async: true`.
   """
 
   use ExUnit.CaseTemplate
@@ -31,8 +28,7 @@ defmodule NucleusWeb.ConnCase do
     end
   end
 
-  setup tags do
-    Nucleus.DataCase.setup_sandbox(tags)
+  setup do
     {:ok, conn: Phoenix.ConnTest.build_conn()}
   end
 end

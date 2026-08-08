@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.0 | Updated: 2026-08-07 -->
+<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.1 | Updated: 2026-08-07 -->
 
 # Decisions Log
 
@@ -10,11 +10,11 @@
 - **Format**: Each decision as a separate entry
 - **Status**: Decided | Pending | Under Review | Deprecated
 
-## Current State: No Decisions Recorded
+## Decision Index
 
-**This project has made no architectural decisions yet.** The codebase is an unmodified
-`mix phx.new` skeleton with no commits, so nothing has been chosen deliberately enough to
-record. The template entries below are placeholders — replace them, don't add around them.
+| # | Decision | Date | Status | ADR |
+|---|----------|------|--------|-----|
+| 1 | No local datastore — drop `ecto_sql`/`postgrex`, keep `ecto` for changesets | 2026-08-07 | Decided | `docs/adr/0001-no-local-datastore.md` |
 
 Two things this file deliberately does **not** contain:
 
@@ -26,13 +26,12 @@ Two things this file deliberately does **not** contain:
    project. If one of them turns out to be right for this codebase, make that decision here
    or in `docs/adr/` on its own merits — do not import it by citation.
 
-**Where new ADRs go**: `docs/adr/` (currently empty) is the home for this project's own
-architecture decision records. Keep this file as the index and the narrative context; put
-formal ADR documents in `docs/adr/`.
+**Where new ADRs go**: `docs/adr/` is the home for this project's own architecture decision
+records. Keep this file as the index and the narrative context; put formal ADR documents in
+`docs/adr/`.
 
-**First decisions likely needed** (tracked as open questions in `living-notes.md`):
-whether to keep Ecto/Postgres against the stateless constraint, and how token passthrough
-works across a long-lived LiveView socket.
+**Next decision likely needed** (tracked as an open question in `living-notes.md`): how token
+passthrough works across a long-lived LiveView socket.
 
 ## Decision Template
 
@@ -69,65 +68,56 @@ works across a long-lived LiveView socket.
 
 ---
 
-## Decision: [Title]
+## Decision: No Local Datastore
 
-**Date**: YYYY-MM-DD
-**Status**: [Status]
-**Owner**: [Owner]
+**Date**: 2026-08-07
+**Status**: Decided
+**Owner**: @dave-bell (decided on issue #1, EN-1)
 
 ### Context
-[What was happening? Why did we need to decide?]
+`mix phx.new` scaffolded a `Nucleus.Repo`, `ecto_sql`, `postgrex`, `priv/repo/`, per-environment
+database config and SQL sandbox test plumbing. Nothing used any of it — no schema, no
+migration, no query. This contradicted the stateless constraint adopted from the wiki Core
+model ("Nucleus holds no database of its own"). A live repo in the supervision tree is an
+invitation to "just cache the secret" or "just store the audit log locally". It also forced a
+PostgreSQL dependency on local setup and CI for zero benefit. The decision was forced by
+sequencing: SEC-S6 (#14) builds a validated form and needed to know whether `Ecto.Changeset`
+would be available.
 
 ### Decision
-[What we decided]
+Drop the database, keep the changeset library. Removed `ecto_sql`, `postgrex`, `Nucleus.Repo`,
+`priv/repo/`, all database configuration, the `Phoenix.Ecto.CheckRepoStatus` plug, the dead
+`nucleus.repo.query.*` telemetry metrics, and the test sandbox plumbing. Retained `ecto`
+(now an explicit dependency) and `phoenix_ecto`.
 
 ### Rationale
-[Why this was the right choice]
+`Ecto.Changeset` and `embedded_schema` are the idiomatic way to build a validated Phoenix
+form, and `AGENTS.md` mandates driving forms through `to_form/2`, for which `phoenix_ecto`
+supplies the `Phoenix.HTML.FormData` implementation. None of that needs a database, repo,
+adapter or migration.
 
 ### Alternatives Considered
 | Alternative | Pros | Cons | Why Rejected? |
 |-------------|------|------|---------------|
-| [Option A] | [Good things] | [Bad things] | [Reason] |
-| [Option B] | [Good things] | [Bad things] | [Reason] |
+| Keep Postgres, narrow the stateless constraint | Persistence available if later needed | Contradicts binding requirements; nothing in scope needs it | The constraint comes from requirements, not preference |
+| Drop `ecto` entirely too | One less dependency | Forces hand-rolled `to_form(params, errors: ...)` in every validating form | Costs real plumbing in SEC-S6 for no gain — `ecto` alone pulls in no DB machinery |
+| Leave the repo in place but unstarted | Smallest diff | Keeps dependency, config and setup burden while being non-functional and misleading | Worst of both options |
 
 ### Impact
-- **Positive**: [What we gain]
-- **Negative**: [What we trade off]
-- **Risk**: [What to watch for]
+- **Positive**: The stateless constraint is structurally enforced, not merely documented. No
+  PostgreSQL for dev or CI. `ConnCase` needs no setup and can run `async: true`. EN-8 has no
+  sandbox plumbing to wrap. SEC-S6 proceeds with `embedded_schema` + `Ecto.Changeset`.
+- **Negative**: Audit records must go to an external log pipeline (EN-5); there is no local
+  option. `Phoenix.LiveDashboard`'s Ecto stats page is inert and emits a dependency-level
+  compile warning about `Postgrex.Interval`.
+- **Risk**: A future contributor re-adding `ecto_sql` to get a repo back is reopening this
+  decision and should say so explicitly.
 
 ### Related
-- [Link to PR #000]
-- [Link to issue #000]
-- [Link to documentation]
-
----
-
-## Decision: [Title]
-
-**Date**: YYYY-MM-DD
-**Status**: [Status]
-**Owner**: [Owner]
-
-### Context
-[What was happening?]
-
-### Decision
-[What we decided]
-
-### Rationale
-[Why this was right]
-
-### Alternatives Considered
-| Alternative | Pros | Cons | Why Rejected? |
-|-------------|------|------|---------------|
-| [Option A] | [Good things] | [Bad things] | [Reason] |
-
-### Impact
-- **Positive**: [What we gain]
-- **Negative**: [What we trade off]
-
-### Related
-- [Link]
+- Issue #1 (EN-1) — the deciding issue and full removal plan
+- `docs/adr/0001-no-local-datastore.md` — the formal ADR
+- Issue #14 (SEC-S6) — consumer of the retained changeset support
+- Issue #5 (EN-5) — owns where audit records actually go
 
 ---
 
@@ -137,11 +127,11 @@ Decisions that were later overturned (for historical context):
 
 | Decision | Date | Replaced By | Why |
 |----------|------|-------------|-----|
-| *(none — no decisions have been made yet)* | — | — | — |
+| *(none — no decision has been overturned yet)* | — | — | — |
 
 ## Onboarding Checklist
 
-- [ ] Understand that no decisions are recorded yet, and why that is accurate
+- [ ] Read the Decision Index above; `adr/0001` (no local datastore) is binding
 - [ ] Know that the wiki's ADR-0001–0007 are reference only, not adopted
 - [ ] Know that new formal ADRs belong in `docs/adr/`
 - [ ] Know which decisions are pending (see `living-notes.md`)
