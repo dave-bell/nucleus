@@ -45,7 +45,10 @@ expires mid-session. The requirements already anticipate the expiry case in `SEC
 (b) short-lived token in socket state with an explicit refresh path; (c) a per-user
 server-side credential holder process — note (c) is in tension with the stateless constraint.
 *Timeline*: Blocks all three backend integrations; needed before the first feature LiveView.
-*Status*: Open
+*Status*: Open — narrowed by EN-3. `Nucleus.TenantApi.list_environments/1` now takes
+`token :: String.t() | nil` and its `Http` implementation tolerates `nil` (no `Authorization`
+header), so the *boundary-facing* signature is fixed. How that token actually reaches the call
+from a LiveView socket — options (a)/(b)/(c) above — is still open and deferred to EN-6.
 
 **Do the wiki's `AUTH-*` actions still describe the intended flow?**
 *Context*: `Authentication-and-Access.md` defines `AUTH-A01`–`A11`. These were written against
