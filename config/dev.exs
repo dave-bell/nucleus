@@ -52,6 +52,11 @@ config :nucleus, :backends,
   secrets: Nucleus.Secrets.Store.Local,
   tenant_api: Nucleus.TenantApi.Local
 
+# Human-readable audit records for local development. AUD-A05 requires the
+# set of recorded events to be unchanged by the format — only the encoding
+# differs here, not which events are audited.
+config :nucleus, Nucleus.Audit, format: :text
+
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"
 

@@ -69,6 +69,31 @@ if tenant_api_config != [] do
   config :nucleus, Nucleus.TenantApi.Http, tenant_api_config
 end
 
+# Audit sink overrides. AUDIT_FORMAT is "json" or "text" (see
+# Nucleus.Audit.Format); anything else raises at boot rather than silently
+# falling back — a typo here should not silently change what a compliance
+# pipeline receives. AUDIT_DEVICE is "stdout", "stderr", or a file path
+# opened once at boot in append mode.
+if audit_format = System.get_env("AUDIT_FORMAT") do
+  format =
+    case Nucleus.Audit.Format.cast(audit_format) do
+      {:ok, format} -> format
+      :error -> raise "AUDIT_FORMAT must be \"json\" or \"text\", got: #{inspect(audit_format)}"
+    end
+
+  config :nucleus, Nucleus.Audit, format: format
+end
+
+if audit_device = System.get_env("AUDIT_DEVICE") do
+  device =
+    case Nucleus.Audit.Sink.Device.cast_device_name(audit_device) do
+      {:ok, device} -> device
+      :error -> File.open!(audit_device, [:append, :utf8])
+    end
+
+  config :nucleus, Nucleus.Audit, device: device
+end
+
 if config_env() == :dev do
   # Reload browser tabs when matching files change.
   config :nucleus, NucleusWeb.Endpoint,

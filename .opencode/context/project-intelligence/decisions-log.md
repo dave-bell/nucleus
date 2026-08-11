@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.2 | Updated: 2026-08-11 -->
+<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.3 | Updated: 2026-08-11 -->
 
 # Decisions Log
 
@@ -19,6 +19,7 @@
 | 1 | No local datastore — drop `ecto_sql`/`postgrex`, keep `ecto` for changesets | 2026-08-07 | Decided | `docs/adr/0001-no-local-datastore.md` |
 | 2 | Backend adapter boundaries — behaviours, tagged-tuple errors, per-boundary real/local selection | 2026-08-07 | Decided | `docs/adr/0002-backend-adapter-boundaries.md` |
 | 3 | Shared local backend seed — one supervised `Agent`, boundary-neutral, started everywhere | 2026-08-11 | Decided | `docs/adr/0003-shared-local-backend-seed.md` |
+| 4 | Audit emission — bypasses `Logger`, synchronous `Sink` behaviour, per-event field allowlist | 2026-08-11 | Decided | `docs/adr/0004-audit-emission.md` |
 
 Two things this file deliberately does **not** contain:
 
@@ -91,6 +92,24 @@ file) · `docs/adr/0002-backend-adapter-boundaries.md` (the real/local split thi
 
 ---
 
+## Decision: Audit Emission
+
+**Date**: 2026-08-11 | **Status**: Decided | **ADR**: `docs/adr/0004-audit-emission.md`
+
+`Nucleus.Audit.emit/2` bypasses `Logger` entirely and writes through a `Nucleus.Audit.Sink`
+behaviour, synchronously, in the caller's process, never rescuing a sink failure — `Logger` is
+only synchronous under overload, and a rescued failure would look identical to a successful
+record. Every field a caller can pass is allowlisted per event (`details` included), so there is
+no key named `value` for a call site to pass a secret through by accident. The default sink
+writes to `:stderr`, distinct from `Logger`'s standard-output default, for free.
+
+**Related**: Issue #5 (EN-5, the deciding issue) · Issue #8 (EN-8, `AuditCase` depends on
+`Nucleus.Audit.Sink.Test`) · Issues #12/#13/#14 (SEC-S4/S5/S6, wire the three Secrets events) ·
+`docs/adr/0001-no-local-datastore.md` (audit records go to an external log pipeline; there is no
+local option)
+
+---
+
 ## Deprecated Decisions
 
 Decisions that were later overturned (for historical context):
@@ -101,7 +120,7 @@ Decisions that were later overturned (for historical context):
 
 ## Onboarding Checklist
 
-- [ ] Read the Decision Index above; `adr/0001`–`0003` are binding
+- [ ] Read the Decision Index above; `adr/0001`–`0004` are binding
 - [ ] Know that the wiki's ADR-0001–0007 are reference only, not adopted
 - [ ] Know that new formal ADRs belong in `docs/adr/`, with only a short summary mirrored here
 - [ ] Know which decisions are pending (see `living-notes.md`)
