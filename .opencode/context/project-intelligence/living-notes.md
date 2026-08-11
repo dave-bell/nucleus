@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/notes | Priority: high | Version: 1.1 | Updated: 2026-08-07 -->
+<!-- Context: project-intelligence/notes | Priority: high | Version: 1.2 | Updated: 2026-08-11 -->
 
 # Living Notes
 
@@ -45,10 +45,12 @@ expires mid-session. The requirements already anticipate the expiry case in `SEC
 (b) short-lived token in socket state with an explicit refresh path; (c) a per-user
 server-side credential holder process — note (c) is in tension with the stateless constraint.
 *Timeline*: Blocks all three backend integrations; needed before the first feature LiveView.
-*Status*: Open — narrowed by EN-3. `Nucleus.TenantApi.list_environments/1` now takes
-`token :: String.t() | nil` and its `Http` implementation tolerates `nil` (no `Authorization`
-header), so the *boundary-facing* signature is fixed. How that token actually reaches the call
-from a LiveView socket — options (a)/(b)/(c) above — is still open and deferred to EN-6.
+*Status*: Open — narrowed again by EN-6. `Nucleus.Scope` (`lib/nucleus/scope.ex`) now carries
+a `token` field, always `nil` while auth is disabled, and `NucleusWeb.Plugs.AssignScope`
+defensively forces `token` to `nil` before writing the scope into the session regardless of
+what a provider returns — a floor, not an answer. Which of options (a)/(b)/(c) above actually
+holds the token once one is real, and how it survives a socket reconnect, is still open and
+deferred to the real auth ticket. See `docs/adr/0005-deferred-authentication.md`.
 
 **Do the wiki's `AUTH-*` actions still describe the intended flow?**
 *Context*: `Authentication-and-Access.md` defines `AUTH-A01`–`A11`. These were written against
@@ -60,7 +62,10 @@ over a LiveView socket may not match action-for-action. Unlike other pages, wher
 *Options*: Re-verify each of the 11 actions; amend the wiki where LiveView genuinely differs.
 Amend the wiki — do not silently reinterpret, since the wiki is the binding source.
 *Timeline*: Before implementing authentication.
-*Status*: Open
+*Status*: Open — EN-6 built the `Nucleus.Scope`/`Nucleus.Scope.Provider` seam against the
+current eleven actions without re-verifying them, and deliberately implements none of
+`AUTH-A01`–`A11` (no `@tag action:` in its tests) so `mix nucleus.trace` cannot report false
+coverage. Re-verification is still needed before the real auth ticket, not before this one.
 
 ## Known Issues
 

@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.3 | Updated: 2026-08-11 -->
+<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.4 | Updated: 2026-08-11 -->
 
 # Decisions Log
 
@@ -20,6 +20,7 @@
 | 2 | Backend adapter boundaries — behaviours, tagged-tuple errors, per-boundary real/local selection | 2026-08-07 | Decided | `docs/adr/0002-backend-adapter-boundaries.md` |
 | 3 | Shared local backend seed — one supervised `Agent`, boundary-neutral, started everywhere | 2026-08-11 | Decided | `docs/adr/0003-shared-local-backend-seed.md` |
 | 4 | Audit emission — bypasses `Logger`, synchronous `Sink` behaviour, per-event field allowlist | 2026-08-11 | Decided | `docs/adr/0004-audit-emission.md` |
+| 5 | Deferred authentication — `Nucleus.Scope` seam, disabled-by-default provider, fail-loud `AUTH_ENABLED` | 2026-08-11 | Decided | `docs/adr/0005-deferred-authentication.md` |
 
 Two things this file deliberately does **not** contain:
 
@@ -29,8 +30,9 @@ Two things this file deliberately does **not** contain:
    **reference material only** and carry no status here. Adopting one is a decision made on
    its own merits in `docs/adr/`, not by citation.
 
-**Next decision likely needed** (tracked in `living-notes.md`): how token passthrough works
-across a long-lived LiveView socket.
+**Next decision likely needed** (tracked in `living-notes.md`): how a real token gets held and
+refreshed across a long-lived LiveView socket — narrowed by EN-6 to a fixed `token` field on
+`Nucleus.Scope`, still open on *how* it is held.
 
 ## Decision Template
 
@@ -110,6 +112,28 @@ local option)
 
 ---
 
+## Decision: Deferred Authentication
+
+**Date**: 2026-08-11 | **Status**: Decided | **ADR**: `docs/adr/0005-deferred-authentication.md`
+
+`Nucleus.Scope` (`user`, `tenant`, `token`, `scopes`, `source_ip`) is the one shape every
+LiveView, plug, and future audit call site reads identity from, whether auth is real or not.
+`Nucleus.Scope.Provider.Disabled` (default, `AUTH_ENABLED=false`) never fails and returns a
+single configured dev identity; `Nucleus.Scope.Provider.Cognito` is a stub that raises
+unconditionally. `Nucleus.Scope.verify_provider_at_boot!/0` calls whichever is configured on
+every boot, so `AUTH_ENABLED=true` fails the boot loudly instead of silently keeping the
+disabled provider on the first request. `token` is always `nil` for now — the field exists so
+retrofitting real token passthrough later is a substitution, not a refactor of every call site
+that reads it.
+
+**Related**: Issue #6 (EN-6, the deciding issue) · Issue #7 (EN-7, wires the plug/hook into the
+router) · Issue #15 (SEC-S7, the future consumer of the credential-expiry state this seam's
+`token` field exists for) · `docs/adr/0002-backend-adapter-boundaries.md` (the boot-warning
+pattern this builds on) · `docs/adr/0004-audit-emission.md` (`Nucleus.Audit.Source.from_conn/1`,
+reused here for the plug's `source_ip` capture)
+
+---
+
 ## Deprecated Decisions
 
 Decisions that were later overturned (for historical context):
@@ -120,7 +144,7 @@ Decisions that were later overturned (for historical context):
 
 ## Onboarding Checklist
 
-- [ ] Read the Decision Index above; `adr/0001`–`0004` are binding
+- [ ] Read the Decision Index above; `adr/0001`–`0005` are binding
 - [ ] Know that the wiki's ADR-0001–0007 are reference only, not adopted
 - [ ] Know that new formal ADRs belong in `docs/adr/`, with only a short summary mirrored here
 - [ ] Know which decisions are pending (see `living-notes.md`)
