@@ -44,6 +44,17 @@ config :nucleus, Nucleus.TenantApi.Http,
   connect_timeout_ms: 5_000,
   receive_timeout_ms: 10_000
 
+# Compliance audit trail (SOC2 CC7.2 / HIPAA 164.312(b)) — bypasses Logger and
+# writes synchronously to a dedicated sink, distinct from application logs
+# (AUD-A06/A07). See lib/nucleus/audit.ex and
+# docs/adr/0004-audit-emission.md. dev overrides format to :text; test
+# overrides sink to Nucleus.Audit.Sink.Test; runtime.exs reads AUDIT_FORMAT
+# and AUDIT_DEVICE.
+config :nucleus, Nucleus.Audit,
+  sink: Nucleus.Audit.Sink.Device,
+  format: :json,
+  device: :stderr
+
 # Configure LiveView
 config :phoenix_live_view,
   # the attribute set on all root tags. Used for Phoenix.LiveView.ColocatedCSS.

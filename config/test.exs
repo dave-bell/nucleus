@@ -16,6 +16,10 @@ config :nucleus, :backends,
   secrets: Nucleus.Secrets.Store.Local,
   tenant_api: Nucleus.TenantApi.Local
 
+# Tests assert on emitted audit records via Nucleus.Audit.Sink.Test's
+# registered process, rather than parsing :stderr.
+config :nucleus, Nucleus.Audit, sink: Nucleus.Audit.Sink.Test
+
 # Disable swoosh api client as it is only required for production adapters
 config :swoosh, :api_client, false
 
