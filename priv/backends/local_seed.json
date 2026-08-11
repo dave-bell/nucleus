@@ -1,0 +1,50 @@
+{
+  "tenant_api": {
+    "environments": [
+      {
+        "shortName": "prod",
+        "label": "Production",
+        "iri": "https://tenant.example.com/environment/prod",
+        "accentColor": "#b91c1c",
+        "categories": ["Customer Facing", "Regulated"],
+        "isArchived": false,
+        "description": "Live customer traffic. Changes take effect immediately and are visible to end users."
+      },
+      {
+        "shortName": "staging",
+        "label": "Staging",
+        "iri": "https://tenant.example.com/environment/staging",
+        "accentColor": "#a16207",
+        "categories": ["Pre-Production"],
+        "isArchived": false,
+        "description": "Release candidate verification. Mirrors production configuration."
+      },
+      {
+        "shortName": "dev",
+        "label": "Development",
+        "iri": "https://tenant.example.com/environment/dev",
+        "accentColor": "#1d4ed8",
+        "categories": [],
+        "isArchived": false,
+        "description": "Shared integration environment for work in progress."
+      },
+      {
+        "shortName": "sandbox",
+        "label": "Sandbox",
+        "iri": "https://tenant.example.com/environment/sandbox",
+        "accentColor": "#7e22ce",
+        "categories": ["Experimental"],
+        "isArchived": false
+      },
+      {
+        "shortName": "legacy-qa",
+        "label": "Legacy QA",
+        "iri": "https://tenant.example.com/environment/legacy-qa",
+        "accentColor": "#4b5563",
+        "categories": ["Deprecated"],
+        "isArchived": true,
+        "description": "Retired QA stage. Retained because long-lived secrets still resolve against it."
+      }
+    ]
+  }
+}

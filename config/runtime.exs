@@ -40,6 +40,35 @@ for boundary <- Nucleus.Backend.boundaries(),
   config :nucleus, :backends, [{boundary, Nucleus.Backend.impl_for_mode!(boundary, mode)}]
 end
 
+# The tenant's backing API. Needed only when the :tenant_api boundary is running
+# its real implementation — a developer running fully local must not have to
+# invent a URL to boot the app.
+#
+# There is deliberately **no boot-time check** that the base URL is present. A
+# missing one surfaces as `%Nucleus.Backend.Error{kind: :not_configured}` on the
+# call, because the adapter must never crash and must never fall back to a
+# default host. A boot check could not be written usefully anyway: prod defaults
+# to the real implementation with TENANT_API_BACKEND *unset*, so it would have to
+# fire on a variable's absence rather than on its value.
+#
+# The timeouts are different — a value that is present but not a number is a
+# typo, and `String.to_integer/1` raising at boot is the right response to it.
+tenant_api_config =
+  [
+    base_url: System.get_env("TENANT_API_BASE_URL"),
+    connect_timeout_ms: System.get_env("TENANT_API_CONNECT_TIMEOUT_MS"),
+    receive_timeout_ms: System.get_env("TENANT_API_RECEIVE_TIMEOUT_MS")
+  ]
+  |> Enum.reject(fn {_key, value} -> value in [nil, ""] end)
+  |> Enum.map(fn
+    {:base_url, value} -> {:base_url, value}
+    {key, value} -> {key, String.to_integer(value)}
+  end)
+
+if tenant_api_config != [] do
+  config :nucleus, Nucleus.TenantApi.Http, tenant_api_config
+end
+
 if config_env() == :dev do
   # Reload browser tabs when matching files change.
   config :nucleus, NucleusWeb.Endpoint,
