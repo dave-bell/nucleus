@@ -44,6 +44,21 @@ config :nucleus, Nucleus.TenantApi.Http,
   connect_timeout_ms: 5_000,
   receive_timeout_ms: 10_000
 
+# Identity/scope seam (EN-6) — auth is deliberately deferred; see
+# lib/nucleus/scope.ex and docs/adr/0005-deferred-authentication.md.
+#
+# Nucleus.Scope.Provider.Disabled is the default in every environment: it
+# never fails and returns a single configured dev identity. AUTH_ENABLED=true
+# switches `:provider` to Nucleus.Scope.Provider.Cognito in runtime.exs, which
+# raises unconditionally — there is no AUTH_ENABLED default here because
+# "false" and "unset" must behave identically, and the config default already
+# gives that.
+#
+# tenant_namespace has no default host to guess at, so "local" is a
+# deliberately obvious placeholder — runtime.exs fills it from
+# TENANT_NAMESPACE in any environment where the tenant is known.
+config :nucleus, Nucleus.Scope, tenant_namespace: "local"
+
 # Compliance audit trail (SOC2 CC7.2 / HIPAA 164.312(b)) — bypasses Logger and
 # writes synchronously to a dedicated sink, distinct from application logs
 # (AUD-A06/A07). See lib/nucleus/audit.ex and

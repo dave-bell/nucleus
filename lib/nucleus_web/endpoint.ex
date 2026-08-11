@@ -11,9 +11,13 @@ defmodule NucleusWeb.Endpoint do
     same_site: "Lax"
   ]
 
+  # :x_headers is declared here (EN-6) so NucleusWeb.ScopeHook can read
+  # X-Forwarded-For via get_connect_info/2 on a connected LiveView socket —
+  # the initial Plug.Conn no longer exists once the socket is live, and this
+  # is the only place the header is still available.
   socket "/live", Phoenix.LiveView.Socket,
-    websocket: [connect_info: [session: @session_options]],
-    longpoll: [connect_info: [session: @session_options]]
+    websocket: [connect_info: [:x_headers, session: @session_options]],
+    longpoll: [connect_info: [:x_headers, session: @session_options]]
 
   # Serve at "/" the static files from "priv/static" directory.
   #
