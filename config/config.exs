@@ -32,6 +32,18 @@ config :nucleus, :backends,
   secrets: Nucleus.Secrets.Store.Aws,
   tenant_api: Nucleus.TenantApi.Http
 
+# The tenant's backing API — the authority on environments. `base_url` has no
+# default on purpose: there is no sensible host to fall back to, and a boundary
+# that quietly talks to the wrong one is worse than one that reports
+# `:not_configured`. runtime.exs fills it from TENANT_API_BASE_URL.
+#
+# Connect and receive timeouts are separate. They fail for different reasons, and
+# an unbounded call here would hang a LiveView mount.
+config :nucleus, Nucleus.TenantApi.Http,
+  base_url: nil,
+  connect_timeout_ms: 5_000,
+  receive_timeout_ms: 10_000
+
 # Configure LiveView
 config :phoenix_live_view,
   # the attribute set on all root tags. Used for Phoenix.LiveView.ColocatedCSS.

@@ -13,6 +13,10 @@ defmodule Nucleus.Application do
       NucleusWeb.Telemetry,
       {DNSCluster, query: Application.get_env(:nucleus, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Nucleus.PubSub},
+      # State for the local backend implementations, in every environment. They
+      # ship in the release but are never selected in production, so gating this
+      # would only add a "seed owner missing" branch for readers to handle.
+      Nucleus.Backend.Seed,
       # Start a worker by calling: Nucleus.Worker.start_link(arg)
       # {Nucleus.Worker, arg},
       # Start to serve requests, typically the last entry
