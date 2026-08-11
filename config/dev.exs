@@ -57,6 +57,14 @@ config :nucleus, :backends,
 # differs here, not which events are audited.
 config :nucleus, Nucleus.Audit, format: :text
 
+# Auth is disabled by default (see config/config.exs); this is the dev
+# identity Nucleus.Scope.Provider.Disabled assigns to every session. With
+# AUTH_ENABLED=true this is unused — email and scopes come from the minted
+# JWT instead (EN-6, deferred; see docs/adr/0005-deferred-authentication.md).
+config :nucleus, Nucleus.Scope.Provider.Disabled,
+  email: "dev@example.com",
+  scopes: []
+
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"
 

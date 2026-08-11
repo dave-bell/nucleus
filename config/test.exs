@@ -20,6 +20,13 @@ config :nucleus, :backends,
 # registered process, rather than parsing :stderr.
 config :nucleus, Nucleus.Audit, sink: Nucleus.Audit.Sink.Test
 
+# A fixed, deliberately different-from-the-default dev identity, so a test
+# asserting the configured value is not accidentally passing against the
+# same literal used elsewhere.
+config :nucleus, Nucleus.Scope.Provider.Disabled,
+  email: "test-dev@example.com",
+  scopes: ["test-scope"]
+
 # Disable swoosh api client as it is only required for production adapters
 config :swoosh, :api_client, false
 

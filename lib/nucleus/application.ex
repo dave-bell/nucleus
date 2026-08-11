@@ -8,6 +8,7 @@ defmodule Nucleus.Application do
   @impl true
   def start(_type, _args) do
     Nucleus.Backend.warn_on_local_backends()
+    Nucleus.Scope.verify_provider_at_boot!()
 
     children = [
       NucleusWeb.Telemetry,

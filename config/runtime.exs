@@ -94,6 +94,37 @@ if audit_device = System.get_env("AUDIT_DEVICE") do
   config :nucleus, Nucleus.Audit, device: device
 end
 
+# Identity/scope seam (EN-6). AUTH_ENABLED selects the scope provider;
+# "false" or unset (the default) keeps Nucleus.Scope.Provider.Disabled.
+# "true" switches to Nucleus.Scope.Provider.Cognito, a stub that raises
+# unconditionally — Nucleus.Scope.verify_provider_at_boot!/0 calls it during
+# Nucleus.Application.start/2, so a misread flag fails the boot rather than
+# silently keeping the disabled provider. Anything else raises here, at boot,
+# rather than being silently treated as "false" — same reasoning as
+# AUDIT_FORMAT above. See docs/adr/0005-deferred-authentication.md.
+case System.get_env("AUTH_ENABLED") do
+  nil ->
+    :ok
+
+  "false" ->
+    :ok
+
+  "true" ->
+    config :nucleus, Nucleus.Scope, provider: Nucleus.Scope.Provider.Cognito
+
+  other ->
+    raise "AUTH_ENABLED must be \"true\" or \"false\", got: #{inspect(other)}"
+end
+
+# The tenant this deployment serves, carried on every Nucleus.Scope (EN-5's
+# audit records and EN-6's identity display both read it). No boot-time
+# presence check, same reasoning as TENANT_API_BASE_URL above — the
+# config.exs default ("local") is a deliberately obvious placeholder, not a
+# host to fail loudly on the absence of.
+if tenant_namespace = System.get_env("TENANT_NAMESPACE") do
+  config :nucleus, Nucleus.Scope, tenant_namespace: tenant_namespace
+end
+
 if config_env() == :dev do
   # Reload browser tabs when matching files change.
   config :nucleus, NucleusWeb.Endpoint,
