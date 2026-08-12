@@ -16,6 +16,12 @@ config :nucleus, :backends,
   secrets: Nucleus.Secrets.Store.Local,
   tenant_api: Nucleus.TenantApi.Local
 
+# Deploy-time cluster/deployment segments of the Parameter Store path — see
+# config/dev.exs and lib/nucleus/secrets/path.ex.
+config :nucleus, Nucleus.Secrets.Path,
+  cluster_name: "local-cluster",
+  deployment_name: "local-deployment"
+
 # Tests assert on emitted audit records via Nucleus.Audit.Sink.Test's
 # registered process, rather than parsing :stderr.
 config :nucleus, Nucleus.Audit, sink: Nucleus.Audit.Sink.Test

@@ -69,6 +69,53 @@ if tenant_api_config != [] do
   config :nucleus, Nucleus.TenantApi.Http, tenant_api_config
 end
 
+# The cluster/deployment segments of every Parameter Store path
+# (Nucleus.Secrets.Path.build/2) — required unconditionally, in every
+# environment, because both the local and the real :secrets implementation
+# call it (the local implementation synthesises plausible paths and ARNs so
+# SEC-A02's copy affordances are exercisable locally too, see
+# Nucleus.Secrets.Store.Local). config/dev.exs and config/test.exs hardcode
+# obvious placeholder defaults, matching the TENANT_NAMESPACE precedent, so a
+# fresh clone needs no env var. Production has no such placeholder — a missing
+# CLUSTER_NAME or DEPLOYMENT_NAME there is a deployment mistake, not a runtime
+# condition, so it raises at boot rather than building a path that could
+# silently address the wrong tenant's parameters.
+if config_env() == :prod do
+  cluster_name =
+    System.get_env("CLUSTER_NAME") ||
+      raise "environment variable CLUSTER_NAME is missing"
+
+  deployment_name =
+    System.get_env("DEPLOYMENT_NAME") ||
+      raise "environment variable DEPLOYMENT_NAME is missing"
+
+  config :nucleus, Nucleus.Secrets.Path,
+    cluster_name: cluster_name,
+    deployment_name: deployment_name
+end
+
+# Cross-account AWS access for the :secrets boundary's real implementation —
+# read only when that implementation is actually selected (the check runs
+# after the per-boundary override loop above, so SECRETS_BACKEND has already
+# taken effect). A developer running fully local, the dev/test default, must
+# not have to invent a role ARN to boot the app. AWS_STS_EXTERNAL_ID is
+# optional — only required if the role itself demands one.
+if Application.get_env(:nucleus, :backends, [])[:secrets] ==
+     Nucleus.Backend.impl_for_mode!(:secrets, :real) do
+  role_arn =
+    System.get_env("TENANT_ROLE_ARN") ||
+      raise "environment variable TENANT_ROLE_ARN is missing (required when the :secrets boundary runs its real implementation)"
+
+  region =
+    System.get_env("AWS_REGION") ||
+      raise "environment variable AWS_REGION is missing (required when the :secrets boundary runs its real implementation)"
+
+  config :nucleus, Nucleus.Secrets.Store.Aws,
+    role_arn: role_arn,
+    region: region,
+    external_id: System.get_env("AWS_STS_EXTERNAL_ID")
+end
+
 # Audit sink overrides. AUDIT_FORMAT is "json" or "text" (see
 # Nucleus.Audit.Format); anything else raises at boot rather than silently
 # falling back — a typo here should not silently change what a compliance

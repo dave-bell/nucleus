@@ -52,6 +52,13 @@ config :nucleus, :backends,
   secrets: Nucleus.Secrets.Store.Local,
   tenant_api: Nucleus.TenantApi.Local
 
+# Deploy-time cluster/deployment segments of the Parameter Store path (see
+# lib/nucleus/secrets/path.ex). Hardcoded here rather than sourced from an env
+# var, matching the TENANT_NAMESPACE precedent — no env var needed locally.
+config :nucleus, Nucleus.Secrets.Path,
+  cluster_name: "local-cluster",
+  deployment_name: "local-deployment"
+
 # Human-readable audit records for local development. AUD-A05 requires the
 # set of recorded events to be unchanged by the format — only the encoding
 # differs here, not which events are audited.
