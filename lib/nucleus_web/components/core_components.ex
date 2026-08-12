@@ -476,6 +476,262 @@ defmodule NucleusWeb.CoreComponents do
   end
 
   @doc """
+  Renders a status pill.
+
+  Needed by `ENV-A03` (Active/Archived) and useful for error states.
+
+  ## Examples
+
+      <.badge variant="success">Active</.badge>
+      <.badge variant="warning">Archived</.badge>
+  """
+  attr :variant, :string, default: "neutral", values: ~w(neutral info success warning error)
+  attr :class, :any, default: nil
+  attr :rest, :global
+  slot :inner_block, required: true
+
+  def badge(assigns) do
+    variants = %{
+      "neutral" => "badge-neutral",
+      "info" => "badge-info",
+      "success" => "badge-success",
+      "warning" => "badge-warning",
+      "error" => "badge-error"
+    }
+
+    assigns = assign(assigns, :variant_class, Map.fetch!(variants, assigns.variant))
+
+    ~H"""
+    <span class={["badge", @variant_class, @class]} {@rest}>{render_slot(@inner_block)}</span>
+    """
+  end
+
+  @doc """
+  Renders a panel container.
+
+  ## Examples
+
+      <.card>
+        <p>Panel content</p>
+      </.card>
+  """
+  attr :class, :any, default: nil
+  attr :rest, :global
+  slot :inner_block, required: true
+
+  def card(assigns) do
+    ~H"""
+    <div class={["card bg-base-100 border border-base-300 shadow-sm", @class]} {@rest}>
+      <div class="card-body">{render_slot(@inner_block)}</div>
+    </div>
+    """
+  end
+
+  @doc """
+  Renders an empty state — `SEC-A14`, `NAV-A07`.
+
+  The `:action` slot is load-bearing, not decorative: `SEC-A14` requires the
+  create affordance stay available even when there is nothing to show, and
+  `NAV-A07`/the wiki's error matrix require this same component for a failed
+  load, not a distinct error state — callers decide what `message` to pass,
+  this component does not distinguish "empty" from "failed to load".
+  """
+  attr :id, :string, required: true
+  attr :icon, :string, default: "hero-inbox"
+  attr :message, :string, required: true
+  attr :class, :any, default: nil
+
+  slot :action, doc: "the load-bearing action shown alongside the empty message, if any"
+
+  def empty_state(assigns) do
+    ~H"""
+    <div
+      id={@id}
+      class={["flex flex-col items-center justify-center gap-3 py-12 text-center", @class]}
+    >
+      <.icon name={@icon} class="size-10 text-base-content/40" />
+      <p class="text-base-content/70">{@message}</p>
+      <div :if={@action != []} class="mt-1">{render_slot(@action)}</div>
+    </div>
+    """
+  end
+
+  @doc """
+  Renders a modal — for `SEC-A09`'s creation form and `SEC-A13`'s dismissal
+  requirements.
+
+  Built on daisyUI's `.modal`/`.modal-box` classes (`AGENTS.md`) and
+  `Phoenix.Component.focus_wrap/1` for the Tab focus trap — `focus_wrap`
+  ships its own `Phoenix.FocusWrap` JS hook as part of `phoenix_live_view`,
+  so no colocated hook is needed here.
+
+  Closes on backdrop click (`phx-click-away`), Escape (`phx-window-keydown`),
+  or an explicit close/cancel control — all three route through the same
+  `data-cancel` attribute, so `on_cancel` (a `Phoenix.LiveView.JS` command)
+  always runs regardless of which one the user picks.
+
+  `show_modal/2` and `hide_modal/2` toggle daisyUI's `modal-open` trigger
+  class and use `JS.push_focus/1` + `JS.pop_focus/1` to return focus to
+  whatever triggered the modal on close — `SEC-A13`'s "focus returns to a
+  sensible place in the underlying page" is this pairing's job, not the
+  LiveView's.
+
+  ## Examples
+
+      <.button phx-click={show_modal("confirm-modal")}>Show modal</.button>
+
+      <.modal id="confirm-modal" on_cancel={JS.push("cancel_confirm")}>
+        <:title>Are you sure?</:title>
+        This cannot be undone.
+      </.modal>
+  """
+  attr :id, :string, required: true
+  attr :show, :boolean, default: false
+  attr :on_cancel, JS, default: %JS{}
+  slot :inner_block, required: true
+  slot :title
+
+  def modal(assigns) do
+    ~H"""
+    <div
+      id={@id}
+      phx-mounted={@show && show_modal(@id)}
+      phx-remove={hide_modal(@id)}
+      data-cancel={JS.exec(@on_cancel, "phx-remove")}
+      class="modal"
+    >
+      <.focus_wrap
+        id={"#{@id}-container"}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={@title != [] && "#{@id}-title"}
+        phx-window-keydown={JS.exec("data-cancel", to: "##{@id}")}
+        phx-key="escape"
+        phx-click-away={JS.exec("data-cancel", to: "##{@id}")}
+        class="modal-box relative"
+      >
+        <button
+          id={"#{@id}-close"}
+          phx-click={JS.exec("data-cancel", to: "##{@id}")}
+          type="button"
+          class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"
+          aria-label={gettext("close")}
+        >
+          <.icon name="hero-x-mark" class="size-5" />
+        </button>
+        <h2 :if={@title != []} id={"#{@id}-title"} class="text-lg font-semibold mb-4 pr-8">
+          {render_slot(@title)}
+        </h2>
+        <div id={"#{@id}-content"}>
+          {render_slot(@inner_block)}
+        </div>
+      </.focus_wrap>
+    </div>
+    """
+  end
+
+  @doc "Shows a `<.modal>` by id. See `hide_modal/2`."
+  def show_modal(js \\ %JS{}, id) when is_binary(id) do
+    js
+    |> JS.push_focus()
+    |> JS.add_class("modal-open", to: "##{id}")
+    |> JS.focus_first(to: "##{id}-container")
+  end
+
+  @doc "Hides a `<.modal>` by id, restoring focus saved by `show_modal/2`."
+  def hide_modal(js \\ %JS{}, id) do
+    js
+    |> JS.remove_class("modal-open", to: "##{id}")
+    |> JS.pop_focus()
+  end
+
+  @doc """
+  Renders a copy-to-clipboard button — `SEC-A02`.
+
+  Pure client-side: the value is already on the page, so a round-trip to the
+  server would add nothing. The colocated `.CopyButton` hook uses
+  `navigator.clipboard.writeText` where available, falling back to a hidden
+  `<textarea>` + `document.execCommand("copy")` both when the API is
+  undefined (non-secure contexts — `navigator.clipboard` only exists on
+  HTTPS/localhost) and when it rejects (e.g. a permissions prompt denial).
+  Confirmation is a ~2s icon swap plus an `aria-live="polite"` announcement,
+  per `SEC-A02` ("receives brief visual confirmation").
+
+  ## Examples
+
+      <.copy_button id="copy-arn" value={@secret.arn} label="Copy ARN" />
+  """
+  attr :id, :string, required: true
+  attr :value, :string, required: true
+  attr :label, :string, default: "Copy"
+  attr :class, :any, default: nil
+
+  def copy_button(assigns) do
+    ~H"""
+    <button
+      type="button"
+      id={@id}
+      phx-hook=".CopyButton"
+      data-value={@value}
+      data-label={@label}
+      class={["btn btn-ghost btn-sm gap-1", @class]}
+      aria-label={@label}
+    >
+      <span data-copy-icon><.icon name="hero-clipboard-document" class="size-4" /></span>
+      <span data-copied-icon class="hidden"><.icon name="hero-check" class="size-4" /></span>
+      <span>{@label}</span>
+      <span class="sr-only" aria-live="polite" data-copy-announce></span>
+    </button>
+    <script :type={Phoenix.LiveView.ColocatedHook} name=".CopyButton">
+      export default {
+        mounted() {
+          this.icon = this.el.querySelector("[data-copy-icon]")
+          this.checkIcon = this.el.querySelector("[data-copied-icon]")
+          this.announce = this.el.querySelector("[data-copy-announce]")
+          this.el.addEventListener("click", () => this.copy())
+        },
+        copy() {
+          const value = this.el.dataset.value
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(value)
+              .then(() => this.confirm())
+              .catch(() => this.fallbackCopy(value))
+          } else {
+            this.fallbackCopy(value)
+          }
+        },
+        fallbackCopy(value) {
+          const textarea = document.createElement("textarea")
+          textarea.value = value
+          textarea.setAttribute("readonly", "")
+          textarea.style.position = "fixed"
+          textarea.style.opacity = "0"
+          document.body.appendChild(textarea)
+          textarea.select()
+          try {
+            const ok = document.execCommand("copy")
+            if (ok) this.confirm()
+          } finally {
+            document.body.removeChild(textarea)
+          }
+        },
+        confirm() {
+          this.icon.classList.add("hidden")
+          this.checkIcon.classList.remove("hidden")
+          this.announce.textContent = `${this.el.dataset.label} copied`
+          clearTimeout(this._resetTimer)
+          this._resetTimer = setTimeout(() => {
+            this.icon.classList.remove("hidden")
+            this.checkIcon.classList.add("hidden")
+            this.announce.textContent = ""
+          }, 2000)
+        }
+      }
+    </script>
+    """
+  end
+
+  @doc """
   Translates an error message using gettext.
   """
   def translate_error({msg, opts}) do
