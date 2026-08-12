@@ -10,6 +10,13 @@ defmodule NucleusWeb.Router do
     plug :put_secure_browser_headers
   end
 
+  # Assigns `current_scope` (EN-6) — separate from :browser so a route can
+  # opt out (there are none yet; every future authenticated LiveView goes
+  # through this via the :authenticated live_session below).
+  pipeline :assign_scope do
+    plug NucleusWeb.Plugs.AssignScope
+  end
+
   pipeline :api do
     plug :accepts, ["json"]
   end
@@ -18,6 +25,24 @@ defmodule NucleusWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
+  end
+
+  scope "/", NucleusWeb do
+    pipe_through [:browser, :assign_scope]
+
+    # `on_mount` at the live_session level, not per LiveView, so no future
+    # view can be added under this scope without current_scope or the
+    # sidebar's environment list (AGENTS.md,
+    # docs/adr/0005-deferred-authentication.md). EnvironmentsHook runs after
+    # ScopeHook — it reads current_scope.token off the socket.
+    #
+    # SecretsLive is a placeholder (SEC-S1/S2 own the real feature) so this
+    # route compiles and Layouts.app's sidebar has somewhere real to link
+    # environments to, per this ticket's own plan.
+    live_session :authenticated,
+      on_mount: [{NucleusWeb.ScopeHook, :assign}, {NucleusWeb.EnvironmentsHook, :assign}] do
+      live "/environments/:environment/secrets", SecretsLive, :index
+    end
   end
 
   # Other scopes may use custom stacks.
@@ -32,6 +57,15 @@ defmodule NucleusWeb.Router do
     # If your application does not have an admins-only section yet,
     # you can use Plug.BasicAuth to set up some basic authentication
     # as long as you are also using SSL (which you should anyway).
+    #
+    # Acceptable here specifically because this whole block is behind
+    # Application.compile_env(:nucleus, :dev_routes) — false in every
+    # non-dev release config (config/{prod,test}.exs never set it), so it
+    # cannot compile into a production build regardless of runtime
+    # configuration. There is still no :auth boundary to gate it behind
+    # (EN-6/docs/adr/0005-deferred-authentication.md) — this guard is the
+    # only thing standing between LiveDashboard and the internet, and it
+    # holds because it's a compile-time, not runtime, switch.
     import Phoenix.LiveDashboard.Router
 
     scope "/dev" do
