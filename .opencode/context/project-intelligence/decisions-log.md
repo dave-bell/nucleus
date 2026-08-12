@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.5 | Updated: 2026-08-11 -->
+<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.6 | Updated: 2026-08-12 -->
 
 # Decisions Log
 
@@ -22,6 +22,7 @@
 | 4 | Audit emission — bypasses `Logger`, synchronous `Sink` behaviour, per-event field allowlist | 2026-08-11 | Decided | `docs/adr/0004-audit-emission.md` |
 | 5 | Deferred authentication — `Nucleus.Scope` seam, disabled-by-default provider, fail-loud `AUTH_ENABLED` | 2026-08-11 | Decided | `docs/adr/0005-deferred-authentication.md` |
 | 6 | Application shell & live session composition — daisyUI retained, stacked `on_mount` hooks, placeholder `SecretsLive` ships now | 2026-08-11 | Decided | `docs/adr/0006-application-shell-and-live-session-composition.md` |
+| 7 | Secrets store adapter — cluster/deployment Parameter Store path, `aws` package over `ex_aws`, `:persistent_term` credential cache, no dedicated local `Agent` | 2026-08-12 | Decided | `docs/adr/0007-secrets-store-adapter.md` |
 
 Two things this file deliberately does **not** contain:
 
@@ -154,6 +155,27 @@ Issues #9/#10 (SEC-S1/S2, replace the `SecretsLive` placeholder wholesale)
 
 ---
 
+## Decision: Secrets Store Adapter
+
+**Date**: 2026-08-12 | **Status**: Decided | **ADR**: `docs/adr/0007-secrets-store-adapter.md`
+
+Parameter Store path is `/{cluster}/deployments/{deployment}/faas/functions/{environment}/{key}`,
+decoupled from `Nucleus.TenantApi`'s environment list by design. AWS access goes through the
+`aws` hex package (STS `AssumeRole`/`GetCallerIdentity`, SSM get/put/get-by-path) over a custom
+`Req`-backed `AWS.HTTPClient`, chosen over `ex_aws` for SDK-accurate generated request shapes.
+Credentials cache in `:persistent_term`; local state reads/mutates directly through EN-3's
+`Nucleus.Backend.Seed`, reversing the ticket's original dedicated-`Agent` plan. Implementation
+surfaced two corrections no plan could have specified upfront: STS's decoded body nests under
+a full operation envelope, not the flat map `aws`'s typespecs imply, and Nucleus's own AWS
+identity is ambient standard SDK env vars, not new Nucleus-specific config.
+
+**Related**: Issue #4 (EN-4, the deciding issue) · `docs/adr/0002-backend-adapter-boundaries.md`
+(behaviour/real-local shape this fills in) · `docs/adr/0003-shared-local-backend-seed.md`
+(`Nucleus.Backend.Seed`, read and mutated here) · Issues #9–#15 (every SEC ticket touching
+secret material, now unblocked)
+
+---
+
 ## Deprecated Decisions
 
 Decisions that were later overturned (for historical context):
@@ -164,7 +186,7 @@ Decisions that were later overturned (for historical context):
 
 ## Onboarding Checklist
 
-- [ ] Read the Decision Index above; `adr/0001`–`0005` are binding
+- [ ] Read the Decision Index above; `adr/0001`–`0007` are binding
 - [ ] Know that the wiki's ADR-0001–0007 are reference only, not adopted
 - [ ] Know that new formal ADRs belong in `docs/adr/`, with only a short summary mirrored here
 - [ ] Know which decisions are pending (see `living-notes.md`)

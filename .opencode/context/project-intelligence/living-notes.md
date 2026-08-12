@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/notes | Priority: high | Version: 1.3 | Updated: 2026-08-11 -->
+<!-- Context: project-intelligence/notes | Priority: high | Version: 1.4 | Updated: 2026-08-12 -->
 
 # Living Notes
 
@@ -17,6 +17,7 @@
 | `docs/adr/` had no ADRs while 7 prototype ADRs sit in the wiki | ADR-shaped questions get answered in chat and lost | Medium | Write this project's own ADRs as decisions land — `0001` now exists |
 | LiveDashboard at `/dev/dashboard` unauthenticated | Fine in dev; a leak if ever exposed in prod | Medium | Gate behind auth before any production deploy |
 | `NucleusWeb.SecretsLive` is a placeholder ("not implemented" empty state) so `~p` verified routes compile | Looks like a real view; must not be patched incrementally | Medium | SEC-S1 (#9) replaces the module wholesale — see `docs/adr/0006-application-shell-and-live-session-composition.md` |
+| Nucleus's own AWS identity (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_SESSION_TOKEN`) is read ambiently by the `aws` package, with no boot-time check or ops-facing doc — unlike `TENANT_ROLE_ARN`/`AWS_REGION`/`CLUSTER_NAME`/`DEPLOYMENT_NAME`, which all raise at boot | A misconfigured deployment fails per-request as `:not_configured` on first `AssumeRole` call, not at boot | Low | Document in `OPS-*` config reference when that ticket lands; see `docs/adr/0007-secrets-store-adapter.md` |
 
 ### Technical Debt Details
 
