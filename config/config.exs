@@ -44,6 +44,24 @@ config :nucleus, Nucleus.TenantApi.Http,
   connect_timeout_ms: 5_000,
   receive_timeout_ms: 10_000
 
+# The cluster/deployment segments of every Parameter Store path — see
+# lib/nucleus/secrets/path.ex. No default here: unlike tenant_namespace above,
+# there is no single obvious placeholder that stays correct in every
+# environment, dev and test included, so each hardcodes its own literal below
+# and runtime.exs requires both unconditionally in production.
+config :nucleus, Nucleus.Secrets.Path,
+  cluster_name: nil,
+  deployment_name: nil
+
+# The tenant's cross-account role for Parameter Store access — see
+# lib/nucleus/secrets/store/aws.ex. No default: there is no sensible role to
+# assume by default, and runtime.exs requires this only when the :secrets
+# boundary is running its real implementation.
+config :nucleus, Nucleus.Secrets.Store.Aws,
+  role_arn: nil,
+  region: nil,
+  external_id: nil
+
 # Identity/scope seam (EN-6) — auth is deliberately deferred; see
 # lib/nucleus/scope.ex and docs/adr/0005-deferred-authentication.md.
 #

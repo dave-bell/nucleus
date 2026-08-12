@@ -68,6 +68,11 @@ defmodule Nucleus.MixProject do
        depth: 1},
       {:swoosh, "~> 1.16"},
       {:req, "~> 0.5"},
+      # AWS SigV4-signed request/response handling for the :secrets boundary's real
+      # implementation (STS AssumeRole, SSM GetParameter/PutParameter). Dispatches HTTP
+      # through Nucleus.Aws.ReqHttpClient rather than the bundled Hackney/Finch adapters —
+      # see docs/adr and EN-4's decision log. Pulls in :aws_signature transitively.
+      {:aws, "~> 1.0"},
       {:telemetry_metrics, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
       {:gettext, "~> 1.0"},
