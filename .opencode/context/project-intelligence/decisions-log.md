@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.4 | Updated: 2026-08-11 -->
+<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.5 | Updated: 2026-08-11 -->
 
 # Decisions Log
 
@@ -21,6 +21,7 @@
 | 3 | Shared local backend seed — one supervised `Agent`, boundary-neutral, started everywhere | 2026-08-11 | Decided | `docs/adr/0003-shared-local-backend-seed.md` |
 | 4 | Audit emission — bypasses `Logger`, synchronous `Sink` behaviour, per-event field allowlist | 2026-08-11 | Decided | `docs/adr/0004-audit-emission.md` |
 | 5 | Deferred authentication — `Nucleus.Scope` seam, disabled-by-default provider, fail-loud `AUTH_ENABLED` | 2026-08-11 | Decided | `docs/adr/0005-deferred-authentication.md` |
+| 6 | Application shell & live session composition — daisyUI retained, stacked `on_mount` hooks, placeholder `SecretsLive` ships now | 2026-08-11 | Decided | `docs/adr/0006-application-shell-and-live-session-composition.md` |
 
 Two things this file deliberately does **not** contain:
 
@@ -131,6 +132,25 @@ router) · Issue #15 (SEC-S7, the future consumer of the credential-expiry state
 `token` field exists for) · `docs/adr/0002-backend-adapter-boundaries.md` (the boot-warning
 pattern this builds on) · `docs/adr/0004-audit-emission.md` (`Nucleus.Audit.Source.from_conn/1`,
 reused here for the plug's `source_ip` capture)
+
+---
+
+## Decision: Application Shell & Live Session Composition
+
+**Date**: 2026-08-11 | **Status**: Decided | **ADR**: `docs/adr/0006-application-shell-and-live-session-composition.md`
+
+Reversed the ticket's own daisyUI-removal recommendation — daisyUI stays; new components build
+on its classes/tokens. `live_session :authenticated` stacks `on_mount: [ScopeHook,
+EnvironmentsHook]`, the second reading `current_scope.token` the first assigns. `SecretsLive`
+ships now as a documented placeholder because `~p` verified routes need a real compile-time
+destination, not deferred to SEC-S1 as originally planned. The sidebar degrades to an empty
+state on load failure (`NAV-A07`); Secrets itself stays fail-closed (`SEC-A17`) — deliberately
+asymmetric, not an oversight.
+
+**Related**: Issue #7 (EN-7, the deciding issue) · `docs/adr/0005-deferred-authentication.md`
+(`Nucleus.Scope`/`ScopeHook`, the `on_mount`-at-`live_session` convention this builds on) ·
+`docs/adr/0002-backend-adapter-boundaries.md` (`Nucleus.TenantApi`, read by `EnvironmentsHook`) ·
+Issues #9/#10 (SEC-S1/S2, replace the `SecretsLive` placeholder wholesale)
 
 ---
 

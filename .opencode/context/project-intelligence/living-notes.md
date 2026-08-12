@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/notes | Priority: high | Version: 1.2 | Updated: 2026-08-11 -->
+<!-- Context: project-intelligence/notes | Priority: high | Version: 1.3 | Updated: 2026-08-11 -->
 
 # Living Notes
 
@@ -16,6 +16,7 @@
 |------|--------|----------|------------|
 | `docs/adr/` had no ADRs while 7 prototype ADRs sit in the wiki | ADR-shaped questions get answered in chat and lost | Medium | Write this project's own ADRs as decisions land — `0001` now exists |
 | LiveDashboard at `/dev/dashboard` unauthenticated | Fine in dev; a leak if ever exposed in prod | Medium | Gate behind auth before any production deploy |
+| `NucleusWeb.SecretsLive` is a placeholder ("not implemented" empty state) so `~p` verified routes compile | Looks like a real view; must not be patched incrementally | Medium | SEC-S1 (#9) replaces the module wholesale — see `docs/adr/0006-application-shell-and-live-session-composition.md` |
 
 ### Technical Debt Details
 
@@ -103,6 +104,10 @@ deploys it.
 ### Code Patterns Worth Preserving
 - `@tag action: "SEC-A03"` on tests, enabling `mix test --only action:SEC-A03` — see
   `business-tech-bridge.md`.
+- Stack `on_mount` hooks at the `live_session` level, in a fixed order, when one hook's
+  assign depends on another's (`EnvironmentsHook` reads `current_scope.token` after
+  `ScopeHook` assigns it) — see `docs/adr/0006-application-shell-and-live-session-composition.md`.
+  Keeps every view under the session correct without each one opting in individually.
 
 ### Gotchas for Maintainers
 - **Requirements are a submodule.** Fresh clones need

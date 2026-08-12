@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.0 | Updated: 2026-08-07 -->
+<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.1 | Updated: 2026-08-11 -->
 
 # Business ↔ Tech Bridge
 
@@ -50,9 +50,12 @@ to cite from test names and bug reports.
 | `API-Proxy.md` | `PRX-A01`–`A07` | 7 | Backing-API forwarding layer | `test/nucleus_web/proxy_test.exs` |
 | `Platform-Operations.md` | `OPS-A01`–`A13` | 13 | Health/readiness endpoints, config reference | `test/nucleus_web/ops_test.exs` |
 
-**Nothing in the "Planned" columns exists yet.** The router currently serves only `get "/"`.
-These names are the agreed target so that work lands consistently — treat them as the
-convention to follow, and correct this table if a better structure emerges.
+**Most "Planned" columns are still unimplemented.** `NucleusWeb.Layouts` (app shell, header,
+sidebar) and `test/nucleus_web/live/shell_test.exs` now exist (EN-7) — a deliberate subset only,
+with no `@tag action:` claimed, so `NAV-A01`–`A12` coverage is still zero until the dedicated
+`NAV-*` ticket lands. Every other row is unimplemented. These names are the agreed target so
+that work lands consistently — treat them as the convention to follow, and correct this table
+if a better structure emerges.
 
 ## Tagging Convention
 
