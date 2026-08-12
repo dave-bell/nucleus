@@ -42,6 +42,22 @@ defmodule NucleusWeb.ShellTest do
   end
 
   @tag :unit
+  test "sidebar is open (not collapsed) by default, with a toggle control", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/environments/prod/secrets")
+
+    assert has_element?(view, ~s(#shell[data-collapsed="false"]))
+    assert has_element?(view, "#sidebar-toggle")
+  end
+
+  @tag :unit
+  test "sidebar's collapsed rail carries one icon per section", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/environments/prod/secrets")
+
+    assert has_element?(view, ~s([title="Tenant"]))
+    assert has_element?(view, ~s([title="Environments"]))
+  end
+
+  @tag :unit
   test "shows the identity control with the dev email, and no sign-out control", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/environments/prod/secrets")
 
