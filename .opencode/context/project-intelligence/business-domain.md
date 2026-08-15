@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/business | Priority: high | Version: 1.0 | Updated: 2026-08-07 -->
+<!-- Context: project-intelligence/business | Priority: high | Version: 1.1 | Updated: 2026-08-14 -->
 
 # Business Domain
 
@@ -113,7 +113,7 @@ feature work has begun.
 | Term | Meaning |
 |------|---------|
 | **Tenant** | A customer instance, identified by a namespace (e.g. `qa-bb`). One deployment serves one tenant. |
-| **Namespace** | The tenant's identifier. Prefixes Nomad jobs/variables and M2M client names; a path segment for Parameter Store secrets. |
+| **Namespace** | The tenant's identifier. Prefixes Nomad jobs/variables and M2M client names. Not used for Parameter Store paths — see `CLUSTER_NAME`/`DEPLOYMENT_NAME` (`docs/adr/0007-secrets-store-adapter.md`). |
 | **Environment** | A deployment stage within a tenant (e.g. `prod`, `staging`, `dev`). Defined by the tenant's backing API, not by Nucleus. |
 | **M2M client** | A Cognito App Client using the `client_credentials` OAuth flow, for external systems calling tenant APIs without a human user. |
 | **Data Export** | An optional tenant capability, configured via a dedicated Nomad job and matching Nomad Variables. |
