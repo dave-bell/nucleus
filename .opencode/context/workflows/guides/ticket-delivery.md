@@ -1,4 +1,4 @@
-<!-- Context: workflows/guides | Priority: high | Version: 1.0 | Updated: 2026-08-07 -->
+<!-- Context: workflows/guides | Priority: high | Version: 1.1 | Updated: 2026-08-14 -->
 
 # Delivering a Ticket
 
@@ -70,27 +70,43 @@ Do not put ticket IDs in commit subjects. The PR carries the link.
 
 ## Before Opening a PR
 
-`mix precommit` is the required gate — `compile --warnings-as-errors`, `deps.unlock --unused`,
-`format`, `test`. Run it **inside the worktree**. Never open a PR on a red gate.
+Two required steps, in this order.
+
+**1. Write the durable record.** Load the `durable-record` skill. If the ticket settled an
+architectural choice, `docs/adr/NNNN-<slug>.md` and the `decisions-log.md` entry are part of
+**this ticket's PR** — plus `business-tech-bridge.md` where traceability changed and
+`living-notes.md` where a question opened or closed. They go in as their own commit on top of the
+implementation, so a reviewer sees the reasoning next to the code.
+
+This means a ticket body listing doc updates in its plan or acceptance criteria is read
+**literally**: those files belong in that ticket's diff. `EN-1`/`EN-3`/`EN-5`/`EN-6`/`EN-7`/`EN-8`
+each landed their record as a follow-up commit *after* merge under the previous convention — that
+is history, not a pattern to copy.
+
+**2. Run the gate.** `mix precommit` — `compile --warnings-as-errors`, `deps.unlock --unused`,
+`format`, `test`. Run it **inside the worktree**, after the record commit. Never open a PR on a
+red gate.
 
 ## Pull Request
 
-`/pr` delegates the body to the `pr-author` subagent, then creates it. The body must:
+`/pr` writes the record, verifies the gate, delegates the body to the `pr-author` subagent, then
+creates it. The body must:
 
 - Open with what changed and why, in prose — not a bullet dump of the diff.
 - Carry `Closes #<number>` so the merge closes the issue automatically.
 - Call out any divergence from the plan in the issue body, and why.
 - Name the requirement IDs (`SEC-A09`, …) the change satisfies, where relevant.
+- Describe the record that shipped with it, or explain why the ticket earned none.
 
 ## After Merge
 
-`/land` squash-merges, deletes the branch, and removes the worktree. Then, and **only** then,
-write the durable record — per `ticket-decisions.md`, these are authored at implementation
-time, not decision time:
+`/land` squash-merges, deletes the branch, and removes the worktree. The record already merged
+with the code, so there is no documentation step left — squashing collapses the implementation
+commits and the record commit into the single ticket commit on the default branch.
 
-1. `docs/adr/NNNN-<slug>.md` — what we do now, if the ticket settled an architectural choice.
-2. `project-intelligence/decisions-log.md` — the in-repo mirror.
-3. `project-intelligence/business-tech-bridge.md` — if requirement traceability changed.
+What does remain: verify `Closes #<n>` actually closed the issue, run `mix precommit` on the
+default branch (a wave of individually-green tickets can still produce a red `main`), and
+propagate the outcome to any ticket whose plan branched on it, per `ticket-decisions.md`.
 
 ## Worktree Teardown
 
@@ -101,6 +117,7 @@ uncommitted changes, untracked files, and unpushed commits before forcing.
 ## Related Files
 
 - **Answering a question/decision on a ticket** → `ticket-decisions.md`
+- **Writing the ADR / decision log for a ticket** → `durable-record` skill
 - **Running several tickets at once** → `parallel-dispatch.md`
 - **Code standards** → `AGENTS.md` at the project root
 - **Decision log** → `../../project-intelligence/decisions-log.md`

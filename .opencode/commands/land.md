@@ -1,5 +1,5 @@
 ---
-description: Land a merged ticket — merge the PR, tear down the worktree and branch, then write the ADR and decision-log entries that are authored at implementation time.
+description: Land a reviewed ticket — confirm the durable record shipped in the PR, merge it, then tear down the worktree and branch.
 agent: build
 ---
 
@@ -7,9 +7,11 @@ agent: build
 
 Ticket: $ARGUMENTS
 
-Complete a ticket after review. This command both merges **and** writes the durable record —
-per `ticket-decisions.md`, the ADR and decision-log entries are authored at implementation time,
-not decision time. Skipping step 5 is how the reasoning gets lost.
+Complete a ticket after review: merge, tear down, propagate.
+
+This command **does not write the ADR or the decision log.** Those ship inside the ticket's own
+PR, written by the `durable-record` skill during `/pr`. Step 1 checks they are there; if they are
+not, the fix is to add them to the PR before merging, not to write them here afterwards.
 
 ## 1. Resolve and check
 
@@ -22,6 +24,20 @@ gh pr checks <pr>
 
 Stop and report if the PR is not mergeable, or if checks are failing or still running.
 
+Then confirm the durable record is in the PR:
+
+```sh
+gh pr diff <pr> --name-only
+```
+
+If the ticket settled an architectural choice and no `docs/adr/` or
+`project-intelligence/decisions-log.md` change appears, **stop.** Report it, and offer to write
+the record onto the ticket branch via the `durable-record` skill so it merges with the code. Do
+not merge first and paper over it after — that is the pattern this convention exists to end.
+
+A ticket that genuinely settled nothing architectural is allowed to carry no record. Say so
+explicitly rather than leaving it unmentioned.
+
 ## 2. Merge
 
 Confirm with the user before merging — this is irreversible.
@@ -31,7 +47,9 @@ gh pr merge <pr> --squash --delete-branch
 ```
 
 Squash matches the existing history: one commit per ticket, sentence-style subject, lower-case,
-trailing full stop. Verify `Closes #<n>` did its job:
+trailing full stop. The implementation commits and the record commit collapse into that one
+commit — the split existed for the reviewer, not for `main`'s history. Verify `Closes #<n>` did
+its job:
 
 ```sh
 gh issue view <n> --json state --jq .state
@@ -67,26 +85,9 @@ mix precommit
 ```
 
 On `main`, post-merge. A wave of individually-green tickets can still produce a red `main`.
-If it fails, say so immediately — that is more urgent than the paperwork below.
+If it fails, say so immediately.
 
-## 5. Write the durable record
-
-Now, and only now:
-
-1. **ADR** — if the ticket settled an architectural choice, add `docs/adr/NNNN-<slug>.md`
-   following the structure of the existing ADRs in that directory. Read one first; match it.
-   Number sequentially. If the ticket settled nothing architectural, skip this and say so.
-2. **Decision log** — mirror it into
-   `.opencode/context/project-intelligence/decisions-log.md`.
-3. **Traceability** — if the requirement mapping changed, update
-   `.opencode/context/project-intelligence/business-tech-bridge.md`.
-4. **Living notes** — if the work opened or closed a question, update
-   `.opencode/context/project-intelligence/living-notes.md`.
-
-Respect the MVI size limits on those context files. If an entry would push a file over, load the
-`context-manager` skill and compact rather than letting it sprawl.
-
-## 6. Propagate
+## 5. Propagate
 
 If any open ticket's plan branched on this outcome, add the one-line back-reference described in
 `ticket-decisions.md`, or the decision is invisible from the ticket that depends on it:
@@ -97,7 +98,7 @@ Resolved by #3: tenant API adapter landed, use Nucleus.TenantApi behaviour.
 
 Also remove the `blocked` label from any ticket this unblocked.
 
-## 7. Report
+## 6. Report
 
-Merge commit, issue state, worktree/branch teardown result, `mix precommit` on `main`, files
-written in step 5, and tickets updated in step 6.
+Merge commit, issue state, worktree/branch teardown result, `mix precommit` on `main`, the record
+artifacts step 1 confirmed were in the PR, and tickets updated in step 5.
