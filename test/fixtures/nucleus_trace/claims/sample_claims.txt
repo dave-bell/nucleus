@@ -1,0 +1,17 @@
+defmodule Fixture do
+  use ExUnit.Case
+
+  describe "FIX-A01 — fixture action one" do
+    @tag action: "FIX-A01"
+    test "claims the fixture's first defined action" do
+      assert true
+    end
+  end
+
+  describe "a typo'd or renumbered id" do
+    @tag action: "FIX-A77"
+    test "claims an id that does not exist in the fixture requirements" do
+      assert true
+    end
+  end
+end
