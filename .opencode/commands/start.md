@@ -45,10 +45,17 @@ Choose the slug to describe **the work**, not the ticket title, and propose it t
 before running. Precedent: `en-1-no-local-datastore` for a ticket titled *"Resolve
 Postgres-vs-stateless — drop ecto_sql/postgrex"*.
 
-If `bin/wt` creates a new worktree, this session cannot move into it. Report the printed launch
-line and stop.
+The skill tracks its own `isolation_status` and stops with a boxed `STOP` at the point a new
+worktree is created — follow that stop. Do not treat step 4 below as automatically next; its
+heading below repeats the same precondition so there is nothing to read past.
 
 ## 4. Load context
+
+**Precondition — only if `isolation_status` came back `already-isolated` or `declined`.** If the
+skill just created a new worktree, you already stopped inside it. This session ends at that
+`STOP` box: it reports the launch line and nothing else. Do not run the steps below in that
+session; they get redone from scratch by the fresh session that runs `/start` again inside the
+new worktree.
 
 Once isolation is settled and you are in the right directory:
 

@@ -72,7 +72,13 @@ You are given a ticket ID (e.g. `EN-3`) and optionally a base ref. If the base i
 4. **Check traceability.** If the issue references requirement IDs (`SEC-A09`, `EN-*`), confirm
    the diff actually addresses them and name them in the body.
 
-5. **Return the body** in the format below.
+5. **Account for the durable record.** Ticket PRs carry their own ADR and context-file updates
+   (`docs/adr/`, `decisions-log.md`, `business-tech-bridge.md`, `living-notes.md`) as a separate
+   commit — they are part of the change under review, not paperwork to ignore. Name the ADR and
+   summarise what it settles in one line. If the diff contains none and the ticket clearly
+   settled an architectural choice, flag that as a gap rather than staying silent.
+
+6. **Return the body** in the format below.
 
 ## Output Format
 
@@ -87,6 +93,12 @@ change, not the file list.
 - The substantive decisions — modules introduced, boundaries drawn, patterns followed.
 - One bullet per idea, not per file.
 - Name the requirement IDs satisfied, where the issue references them.
+
+## Record
+
+The ADR added and what it settles, in one line, plus which context files were updated. Omit the
+heading if the ticket settled nothing architectural and shipped no record — but say so in `What`
+rather than leaving it unexplained.
 
 ## Divergence from the plan
 

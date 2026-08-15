@@ -1,4 +1,4 @@
-<!-- Context: workflows/nav | Priority: high | Version: 1.1 | Updated: 2026-08-07 -->
+<!-- Context: workflows/nav | Priority: high | Version: 1.2 | Updated: 2026-08-14 -->
 
 # Workflows
 
@@ -21,7 +21,7 @@
 | File | Description | Priority |
 |------|-------------|----------|
 | `guides/ticket-decisions.md` | Answering a question or confirming a decision on a GitHub issue: the comment-then-unlabel loop, comment template, when to edit the issue body, ADR timing | high |
-| `guides/ticket-delivery.md` | Implementing a ticket end to end: readiness gate, worktree isolation via `bin/wt`, branch naming, commit style, `mix precommit` gate, opening a pull request, merging, cleanup | high |
+| `guides/ticket-delivery.md` | Implementing a ticket end to end: readiness gate, worktree isolation via `bin/wt`, branch naming, commit style, writing the durable record, `mix precommit` gate, opening a pull request, merging, cleanup | high |
 | `guides/parallel-dispatch.md` | Working several tickets simultaneously: computing dependency-safe waves, one worktree per ticket, headless `opencode run` trade-offs, merge/rebase reconciliation order | medium |
 
 ## Loading Strategy
@@ -41,8 +41,10 @@
 2. Then `guides/ticket-delivery.md` for the per-ticket mechanics
 
 **Recording a decision that has already been implemented**:
-1. Load `guides/ticket-decisions.md` (Timing section — issue vs ADR vs log)
-2. Then `../project-intelligence/decisions-log.md`
+1. Load the `durable-record` skill — it writes the ADR, `decisions-log.md`,
+   `business-tech-bridge.md`, and `living-notes.md`, and is invoked by `/pr` before the PR opens
+2. `guides/ticket-decisions.md` (Timing section) for why those artifacts are not written at
+   decision time
 
 ## Tooling
 
@@ -50,7 +52,8 @@
   IDs by issue **title**, branches from `origin/HEAD`, initialises submodules, runs
   `mix deps.get`. Run `bin/wt --help`.
 - Commands: `/start`, `/dispatch`, `/pr`, `/land` in `.opencode/commands/`.
-- Skill: `workspace-isolation` checks for worktree isolation before implementation begins.
+- Skills: `workspace-isolation` checks for worktree isolation before implementation begins;
+  `durable-record` writes the ADR and context-file updates into the ticket's PR.
 
 ## Maintenance
 

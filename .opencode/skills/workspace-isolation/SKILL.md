@@ -26,13 +26,14 @@ git rev-parse --show-superproject-working-tree 2>/dev/null
 If that prints a path, you are in a submodule, **not** a worktree. Treat it as a normal
 checkout, and note that editing files there commits to `nucleus.wiki`, not this repo.
 
-Decide:
+Decide, and set `isolation_status` to one of the three values in the right column — every later
+step in this skill is gated on that value, not on remembering the prose below:
 
-| Condition | Meaning | Action |
+| Condition | Meaning | `isolation_status` |
 |-----------|---------|--------|
-| Output above is non-empty | Inside the `docs/requirements` submodule | Stop. You are almost certainly in the wrong place — confirm with the user. |
-| `GIT_DIR != GIT_COMMON` | Already in a linked worktree | Report path + branch, skip to Step 2 |
-| `GIT_DIR == GIT_COMMON` | Main checkout | Go to Step 1 |
+| Output above is non-empty | Inside the `docs/requirements` submodule | `submodule` — stop, confirm with the user, do not set any other value |
+| `GIT_DIR != GIT_COMMON` | Already in a linked worktree | `already-isolated` — report path + branch, go to **Step 2** |
+| `GIT_DIR == GIT_COMMON` | Main checkout | unset — go to **Step 1** |
 
 Report as: "Already isolated at `.worktrees/en-3` on branch `en-3-tenant-api-adapter`."
 
@@ -44,7 +45,8 @@ honour it silently. Otherwise **ask before creating anything**:
 > "You're in the main checkout on `main`. Set up an isolated worktree for this ticket? It keeps
 > `main` clean and lets other tickets run in parallel."
 
-If they decline, work in place and skip to Step 2. Do not re-ask later in the session.
+If they decline: `isolation_status = declined`. Work in place and go to **Step 2**. Do not
+re-ask later in the session.
 
 If they accept, use `bin/wt` — never raw `git worktree add`:
 
@@ -56,19 +58,31 @@ bin/wt EN-3 tenant-api-adapter
 `mix deps.get`. Doing it by hand skips all three and produces a worktree with empty
 requirements and a wrong base. Run `bin/wt --help` for options.
 
-**The new worktree is a different directory, and this session cannot move into it.** Report the
-printed launch line and stop:
+`isolation_status = new-worktree-created`.
 
-```
-cd .worktrees/en-3 && opencode      # then: /start EN-3
-```
-
-Do not attempt to edit files inside `.worktrees/` from this session.
+> [!STOP]
+> **This session cannot move into the new worktree.** It is a different directory on disk; `cd`
+> from this process does not change what this session can edit. Output the launch line below,
+> then **end your turn. Do not call another tool. Do not read Step 2.**
+>
+> ```
+> cd .worktrees/en-3 && opencode      # then: /start EN-3
+> ```
+>
+> Loading `ticket-delivery.md`, running `context-indexer`, or reading the issue further in *this*
+> session is not "getting a head start" — it is wasted work. A fresh session inside the new
+> worktree runs `/start` again and reloads everything from the correct location. That session
+> does not inherit anything you do here after this point.
 
 ## Step 2: Proceed
 
+**Precondition — do not enter this step unless `isolation_status` is `already-isolated` or
+`declined`.** If `isolation_status` is `new-worktree-created`, you already stopped at the STOP
+box in Step 1; there is nothing here for that session to do.
+
 Isolation is settled. Load `.opencode/context/workflows/guides/ticket-delivery.md` for branch
-naming, commit style, the `mix precommit` gate, and PR conventions, then begin the work.
+naming, commit style, the durable-record timing, the `mix precommit` gate, and PR conventions,
+then begin the work.
 
 ## Related
 

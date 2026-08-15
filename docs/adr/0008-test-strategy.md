@@ -110,16 +110,23 @@ count would miss. Supports `--feature PREFIX` and `--exitcode`. Not added to
 tickets remain open would block every commit before any of them lands. See
 `living-notes.md`.
 
-### Context-file updates land after merge, not in the PR
+### Context-file updates landed after merge — a convention issue #24 has since replaced
 
-`test/README.md` documents the layer table, tag vocabulary, and
-traceability convention inline, and explicitly notes at review time that
-this ADR is not yet live. Per `ticket-delivery.md`'s "After Merge"
-convention — and matching how EN-1/EN-3/EN-5/EN-6/EN-7 actually shipped —
-this ADR, `living-notes.md`, and `business-tech-bridge.md` are updated in
-the landing commit, not the PR. Issue #24 was filed during this ticket to
-reconcile the ticket-body-vs-workflow-guide timing inconsistency that made
-this ambiguous going forward.
+`test/README.md` documents the layer table, tag vocabulary, and traceability convention inline,
+and noted at review time that this ADR was not yet live. That was correct under the convention
+in force when this ticket landed: per `ticket-delivery.md`'s then-current "After Merge" section —
+matching how EN-1/EN-3/EN-5/EN-6/EN-7 actually shipped — this ADR, `living-notes.md`, and
+`business-tech-bridge.md` were written in the landing commit, after the harness PR merged, not in
+the PR itself. That history is not being rewritten here.
+
+This ticket's own plan and acceptance-criteria checklist listed those same updates as PR-scope
+deliverables, contradicting the guide it was implemented under — an inconsistency this ticket's
+own kickoff surfaced and filed as issue #24. That issue's resolution changed the convention
+**going forward**: `docs/adr/`, `decisions-log.md`, `business-tech-bridge.md`, and
+`living-notes.md` updates now ship inside a ticket's own PR, as a dedicated commit written by the
+`durable-record` skill and invoked by `/pr` — not as a follow-up `/land` commit. `/land` no longer
+writes any of them. See `ticket-delivery.md`'s "Before Opening a PR" section and
+`ticket-decisions.md`'s "Timing" table, both updated by issue #24.
 
 ## Consequences
 
@@ -188,6 +195,8 @@ Secrets is complete, per `living-notes.md`.
   convention, in the form a developer reads day to day
 - `.opencode/context/project-intelligence/business-tech-bridge.md` — the
   `action:` tagging convention this task enforces
-- Issue #24 — files the ticket-body-vs-workflow-guide timing reconciliation
-  this ticket's own orientation surfaced
+- Issue #24 — filed during this ticket's own kickoff over the ticket-body-vs-workflow-guide
+  timing inconsistency; resolved by moving doc updates into the ticket's own PR going forward
+- `.opencode/skills/durable-record/SKILL.md` — the skill issue #24 introduced to write this
+  record inside a ticket's PR, for tickets after this one
 - Issues #9–#15 (every SEC ticket) — the harness's first consumers
