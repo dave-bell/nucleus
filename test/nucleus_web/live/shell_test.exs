@@ -89,7 +89,10 @@ defmodule NucleusWeb.ShellTest do
 
     render_async(view)
 
-    assert has_element?(view, "#secrets-not-implemented")
+    # SEC-S1's validation ladder resolves it (ENV-A06), not treated as an error.
+    refute has_element?(view, "#secrets-environment-not-found")
+    refute has_element?(view, "#secrets-invalid-environment")
+    refute has_element?(view, "#secrets-validation-unavailable")
     refute has_element?(view, "#environments-list", "Legacy QA")
   end
 
