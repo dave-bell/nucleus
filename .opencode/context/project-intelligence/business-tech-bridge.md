@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.2 | Updated: 2026-08-14 -->
+<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.3 | Updated: 2026-08-14 -->
 
 # Business ↔ Tech Bridge
 
@@ -53,9 +53,12 @@ to cite from test names and bug reports.
 **Most "Planned" columns are still unimplemented.** `NucleusWeb.Layouts` (app shell, header,
 sidebar) and `test/nucleus_web/live/shell_test.exs` now exist (EN-7) — a deliberate subset only,
 with no `@tag action:` claimed, so `NAV-A01`–`A12` coverage is still zero until the dedicated
-`NAV-*` ticket lands. Every other row is unimplemented. These names are the agreed target so
-that work lands consistently — treat them as the convention to follow, and correct this table
-if a better structure emerges.
+`NAV-*` ticket lands. `NucleusWeb.SecretsLive` and `test/nucleus_web/live/secrets_live_test.exs`
+also now exist (SEC-S1, issue #9) — but only `SEC-A15`–`A17` are claimed and covered; the module
+validates and resolves the environment and renders three fail-closed states, with no secrets UI
+of its own yet (`SEC-A01` onward is `SEC-S2` and later). Every other row is unimplemented. These
+names are the agreed target so that work lands consistently — treat them as the convention to
+follow, and correct this table if a better structure emerges.
 
 ## Tagging Convention
 
