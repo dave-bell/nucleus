@@ -49,3 +49,7 @@ config :phoenix_live_view,
 # Sort query params output of verified routes for robust url comparisons
 config :phoenix,
   sort_verified_routes_query_params: true
+
+# PhoenixTest (EN-8) needs to know which endpoint to route visited paths
+# through — see test/support/conn_case.ex.
+config :phoenix_test, :endpoint, NucleusWeb.Endpoint

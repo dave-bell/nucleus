@@ -1,0 +1,17 @@
+defmodule FullFixture do
+  use ExUnit.Case
+
+  describe "FIX-A01 — fixture action one" do
+    @tag action: "FIX-A01"
+    test "claims the fixture's first defined action" do
+      assert true
+    end
+  end
+
+  describe "FIX-A02 — fixture action two" do
+    @tag action: "FIX-A02"
+    test "claims the fixture's second defined action" do
+      assert true
+    end
+  end
+end
