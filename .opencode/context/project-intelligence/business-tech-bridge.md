@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.1 | Updated: 2026-08-11 -->
+<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.2 | Updated: 2026-08-14 -->
 
 # Business ↔ Tech Bridge
 
@@ -93,8 +93,18 @@ List every action ID currently claimed by a test:
 rg -o --no-filename 'action: "([A-Z0-9]+-A[0-9]+)"' -r '$1' test/ | sort -u
 ```
 
-Diffing those two lists gives requirement coverage. Automating it as `mix nucleus.trace` and
-adding it to the `precommit` alias is an open item in `living-notes.md`.
+Diffing those two lists by hand gives requirement coverage. `mix nucleus.trace` (EN-8,
+`docs/adr/0008-test-strategy.md`) automates exactly this diff — run it instead of the two `rg`
+commands above for day-to-day use:
+
+```sh
+mix nucleus.trace                # full report: covered / uncovered / claimed-but-undefined
+mix nucleus.trace --feature SEC  # one action prefix only
+mix nucleus.trace --exitcode     # non-zero exit when anything in scope is uncovered
+```
+
+Report-only today — not wired into `mix precommit` while most `SEC-*` tickets remain
+unimplemented; see `living-notes.md`.
 
 ## Reading a Requirement Against This Stack
 

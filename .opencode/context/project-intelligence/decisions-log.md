@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.6 | Updated: 2026-08-12 -->
+<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.7 | Updated: 2026-08-14 -->
 
 # Decisions Log
 
@@ -23,14 +23,12 @@
 | 5 | Deferred authentication — `Nucleus.Scope` seam, disabled-by-default provider, fail-loud `AUTH_ENABLED` | 2026-08-11 | Decided | `docs/adr/0005-deferred-authentication.md` |
 | 6 | Application shell & live session composition — daisyUI retained, stacked `on_mount` hooks, placeholder `SecretsLive` ships now | 2026-08-11 | Decided | `docs/adr/0006-application-shell-and-live-session-composition.md` |
 | 7 | Secrets store adapter — cluster/deployment Parameter Store path, `aws` package over `ex_aws`, `:persistent_term` credential cache, no dedicated local `Agent` | 2026-08-12 | Decided | `docs/adr/0007-secrets-store-adapter.md` |
+| 8 | Test strategy — `Phoenix.LiveViewTest` + `PhoenixTest`, no browser driver; `Nucleus.BackendCase`/`AuditCase`/`LiveCase`; `mix nucleus.trace` report-only | 2026-08-14 | Decided | `docs/adr/0008-test-strategy.md` |
 
-Two things this file deliberately does **not** contain:
-
-1. **No "re-platform" decision.** This project is a fresh start, not a migration — the earlier
-   prototype's architecture was never adopted here, so there is nothing to supersede.
-2. **No inherited ADRs.** The wiki's `ADR-0001`–`ADR-0007` under `docs/requirements/` are
-   **reference material only** and carry no status here. Adopting one is a decision made on
-   its own merits in `docs/adr/`, not by citation.
+This file deliberately contains **no "re-platform" decision** (fresh start, not a migration —
+nothing to supersede) and **no inherited ADRs** (the wiki's `ADR-0001`–`ADR-0007` under
+`docs/requirements/` are reference material only; adopting one is a decision made on its own
+merits in `docs/adr/`, not by citation).
 
 **Next decision likely needed** (tracked in `living-notes.md`): how a real token gets held and
 refreshed across a long-lived LiveView socket — narrowed by EN-6 to a fixed `token` field on
@@ -38,16 +36,9 @@ refreshed across a long-lived LiveView socket — narrowed by EN-6 to a fixed `t
 
 ## Decision Template
 
-```markdown
-## Decision: [Title]
-
-**Date**: YYYY-MM-DD | **Status**: [Decided/Pending/Under Review/Deprecated] | **ADR**: `docs/adr/NNNN-slug.md`
-
-[2-4 sentences: what was decided and the one-line reason. Link the ADR for context, rationale,
-alternatives, and consequences — do not restate them here.]
-
-**Related**: [issue links, related decisions]
-```
+`## Decision: [Title]` · `**Date**: YYYY-MM-DD | **Status**: ... | **ADR**: docs/adr/NNNN-slug.md`
+· 2-4 sentences (what + the one-line reason; link the ADR for rationale/alternatives/consequences,
+don't restate them) · `**Related**: [issue links, related decisions]`
 
 ---
 
@@ -72,7 +63,7 @@ audit records actually go)
 Every external system sits behind an Elixir **behaviour** with `real`/`local` implementations,
 selected **per boundary**, never raising — callbacks return `{:error, %Nucleus.Backend.Error{}}`
 with one of six neutral `kind`s. Every behaviour declares `health_check/0`. Auth is never
-swappable. Local implementations ship in the release with a loud boot warning; fault injection
+swappable. Local implementations ship with a loud boot warning; fault injection
 (`LOCAL_LATENCY_MS`, `LOCAL_FORCE_ERROR`) is required, not optional.
 
 **Related**: Issue #2 (EN-2) · Issues #3 (EN-3), #4 (EN-4) — the concrete boundaries · Issue #6
@@ -122,17 +113,13 @@ local option)
 LiveView, plug, and future audit call site reads identity from, whether auth is real or not.
 `Nucleus.Scope.Provider.Disabled` (default, `AUTH_ENABLED=false`) never fails and returns a
 single configured dev identity; `Nucleus.Scope.Provider.Cognito` is a stub that raises
-unconditionally. `Nucleus.Scope.verify_provider_at_boot!/0` calls whichever is configured on
-every boot, so `AUTH_ENABLED=true` fails the boot loudly instead of silently keeping the
-disabled provider on the first request. `token` is always `nil` for now — the field exists so
-retrofitting real token passthrough later is a substitution, not a refactor of every call site
-that reads it.
+unconditionally. Boot calls whichever is configured, so a bad `AUTH_ENABLED` fails loudly at
+boot, not on first request. `token` is always `nil` for now — the field exists so retrofitting
+real token passthrough later is a substitution, not a refactor of every call site that reads it.
 
 **Related**: Issue #6 (EN-6, the deciding issue) · Issue #7 (EN-7, wires the plug/hook into the
-router) · Issue #15 (SEC-S7, the future consumer of the credential-expiry state this seam's
-`token` field exists for) · `docs/adr/0002-backend-adapter-boundaries.md` (the boot-warning
-pattern this builds on) · `docs/adr/0004-audit-emission.md` (`Nucleus.Audit.Source.from_conn/1`,
-reused here for the plug's `source_ip` capture)
+router) · Issue #15 (SEC-S7, future consumer of the credential-expiry state `token` exists for) ·
+`docs/adr/0004-audit-emission.md` (`Nucleus.Audit.Source.from_conn/1`, reused for `source_ip`)
 
 ---
 
@@ -144,14 +131,12 @@ Reversed the ticket's own daisyUI-removal recommendation — daisyUI stays; new 
 on its classes/tokens. `live_session :authenticated` stacks `on_mount: [ScopeHook,
 EnvironmentsHook]`, the second reading `current_scope.token` the first assigns. `SecretsLive`
 ships now as a documented placeholder because `~p` verified routes need a real compile-time
-destination, not deferred to SEC-S1 as originally planned. The sidebar degrades to an empty
-state on load failure (`NAV-A07`); Secrets itself stays fail-closed (`SEC-A17`) — deliberately
-asymmetric, not an oversight.
+destination. The sidebar degrades to an empty state on load failure (`NAV-A07`); Secrets itself
+stays fail-closed (`SEC-A17`) — deliberately asymmetric, not an oversight.
 
 **Related**: Issue #7 (EN-7, the deciding issue) · `docs/adr/0005-deferred-authentication.md`
-(`Nucleus.Scope`/`ScopeHook`, the `on_mount`-at-`live_session` convention this builds on) ·
-`docs/adr/0002-backend-adapter-boundaries.md` (`Nucleus.TenantApi`, read by `EnvironmentsHook`) ·
-Issues #9/#10 (SEC-S1/S2, replace the `SecretsLive` placeholder wholesale)
+(the `on_mount`-at-`live_session` convention this builds on) · Issues #9/#10 (SEC-S1/S2, replace
+the `SecretsLive` placeholder wholesale)
 
 ---
 
@@ -164,15 +149,29 @@ decoupled from `Nucleus.TenantApi`'s environment list by design. AWS access goes
 `aws` hex package (STS `AssumeRole`/`GetCallerIdentity`, SSM get/put/get-by-path) over a custom
 `Req`-backed `AWS.HTTPClient`, chosen over `ex_aws` for SDK-accurate generated request shapes.
 Credentials cache in `:persistent_term`; local state reads/mutates directly through EN-3's
-`Nucleus.Backend.Seed`, reversing the ticket's original dedicated-`Agent` plan. Implementation
-surfaced two corrections no plan could have specified upfront: STS's decoded body nests under
-a full operation envelope, not the flat map `aws`'s typespecs imply, and Nucleus's own AWS
-identity is ambient standard SDK env vars, not new Nucleus-specific config.
+`Nucleus.Backend.Seed`, reversing the ticket's original dedicated-`Agent` plan.
 
-**Related**: Issue #4 (EN-4, the deciding issue) · `docs/adr/0002-backend-adapter-boundaries.md`
-(behaviour/real-local shape this fills in) · `docs/adr/0003-shared-local-backend-seed.md`
+**Related**: Issue #4 (EN-4, the deciding issue) · `docs/adr/0003-shared-local-backend-seed.md`
 (`Nucleus.Backend.Seed`, read and mutated here) · Issues #9–#15 (every SEC ticket touching
 secret material, now unblocked)
+
+---
+
+## Decision: Test Strategy
+
+**Date**: 2026-08-14 | **Status**: Decided | **ADR**: `docs/adr/0008-test-strategy.md`
+
+`Phoenix.LiveViewTest` plus the new `phoenix_test` dependency replace the wiki's
+Playwright-driven e2e layer — no browser driver added yet. `Nucleus.BackendCase` is
+`async: false`, not the plan's hoped-for `async: true`-safe shape, because `Nucleus.Backend.Seed`
+is a global `Agent` (`docs/adr/0003`), not a per-test process. `Nucleus.AuditCase` (async-safe)
+and `NucleusWeb.LiveCase` (composing both plus `ConnCase`) round out the harness.
+`mix nucleus.trace` diffs requirement action IDs against `@tag action:` claims, report-only —
+not wired into `precommit` while most SEC tickets remain unimplemented. `SEC-A02`/`SEC-A13` are
+recorded as browser-only gaps, asserted only for wiring, never claimed as covered.
+
+**Related**: Issue #8 (EN-8, the deciding issue) · Issue #24 (timing-convention reconciliation
+filed during this ticket) · Issues #9–#15 (every SEC ticket, the harness's first consumers)
 
 ---
 
@@ -186,7 +185,7 @@ Decisions that were later overturned (for historical context):
 
 ## Onboarding Checklist
 
-- [ ] Read the Decision Index above; `adr/0001`–`0007` are binding
+- [ ] Read the Decision Index above; `adr/0001`–`0008` are binding
 - [ ] Know that the wiki's ADR-0001–0007 are reference only, not adopted
 - [ ] Know that new formal ADRs belong in `docs/adr/`, with only a short summary mirrored here
 - [ ] Know which decisions are pending (see `living-notes.md`)

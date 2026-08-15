@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/notes | Priority: high | Version: 1.4 | Updated: 2026-08-12 -->
+<!-- Context: project-intelligence/notes | Priority: high | Version: 1.5 | Updated: 2026-08-14 -->
 
 # Living Notes
 
@@ -18,6 +18,7 @@
 | LiveDashboard at `/dev/dashboard` unauthenticated | Fine in dev; a leak if ever exposed in prod | Medium | Gate behind auth before any production deploy |
 | `NucleusWeb.SecretsLive` is a placeholder ("not implemented" empty state) so `~p` verified routes compile | Looks like a real view; must not be patched incrementally | Medium | SEC-S1 (#9) replaces the module wholesale — see `docs/adr/0006-application-shell-and-live-session-composition.md` |
 | Nucleus's own AWS identity (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_SESSION_TOKEN`) is read ambiently by the `aws` package, with no boot-time check or ops-facing doc — unlike `TENANT_ROLE_ARN`/`AWS_REGION`/`CLUSTER_NAME`/`DEPLOYMENT_NAME`, which all raise at boot | A misconfigured deployment fails per-request as `:not_configured` on first `AssumeRole` call, not at boot | Low | Document in `OPS-*` config reference when that ticket lands; see `docs/adr/0007-secrets-store-adapter.md` |
+| No browser-driven test coverage for `SEC-A02` (clipboard write confirmation) or `SEC-A13` (Escape dismissal, focus trap, focus restoration) — `navigator.clipboard` and real key/focus events need a browser, which this repo has no driver for | Tests assert wiring only (hook attached, `on_cancel` set), never claim `@tag action:` for these IDs — a real regression would not be caught until a browser harness exists | Medium | Add Wallaby once sign-in exists (deferred, EN-8); see `docs/adr/0008-test-strategy.md` |
 
 ### Technical Debt Details
 
@@ -30,7 +31,7 @@
 | How does token passthrough work over a LiveView socket? | Tech lead, security | Open | Design spike against `AUTH-*` and `SEC-A18` |
 | Do the wiki's `AUTH-A01`–`A11` still describe the intended flow? | Product, tech lead | Open | Review the 11 actions against a LiveView design |
 | Where does Nucleus deploy, and via what CI? | Ops | Open | Confirm target; no CI exists in this repo |
-| Should `mix nucleus.trace` gate `precommit`? | Tech lead | Open | Build the task, then decide if it blocks |
+| Should `mix nucleus.trace` gate `precommit`? | Tech lead | Open | Report-only since EN-8; revisit once Secrets (`SEC-*`) is complete — gating now would block every open SEC ticket |
 
 ### Open Question Details
 
@@ -120,13 +121,19 @@ deploys it.
 
 ## Active Projects
 
-| Project | Goal | Owner | Timeline |
-|---------|------|-------|----------|
-| Build `mix nucleus.trace` | Diff wiki action IDs against `@tag action:` in `test/` and report uncovered requirements | [Unassigned] | Before first feature merge |
+*(none currently — `mix nucleus.trace` shipped via EN-8; see Archive)*
 
 ## Archive (Resolved Items)
 
 Moved here for historical reference.
+
+**Build `mix nucleus.trace`** — *was: Active Project*
+*Resolved*: 2026-08-14 by EN-8 (issue #8).
+*Outcome*: `mix nucleus.trace` diffs `### PREFIX-A##` headers in `docs/requirements/*.md`
+against `@tag action:` claims in `test/`, reporting covered/uncovered/claimed-but-undefined.
+Supports `--feature`/`--exitcode`; deliberately report-only, not wired into `precommit` — see
+the open question above.
+*See*: `docs/adr/0008-test-strategy.md`
 
 **`Nucleus.Repo` / Postgres was generator scaffolding** — *was: Technical Debt, High*
 *Resolved*: 2026-08-07 by EN-1 (issue #1).
