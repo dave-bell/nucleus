@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.7 | Updated: 2026-08-14 -->
+<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.8 | Updated: 2026-08-14 -->
 
 # Decisions Log
 
@@ -24,6 +24,7 @@
 | 6 | Application shell & live session composition — daisyUI retained, stacked `on_mount` hooks, placeholder `SecretsLive` ships now | 2026-08-11 | Decided | `docs/adr/0006-application-shell-and-live-session-composition.md` |
 | 7 | Secrets store adapter — cluster/deployment Parameter Store path, `aws` package over `ex_aws`, `:persistent_term` credential cache, no dedicated local `Agent` | 2026-08-12 | Decided | `docs/adr/0007-secrets-store-adapter.md` |
 | 8 | Test strategy — `Phoenix.LiveViewTest` + `PhoenixTest`, no browser driver; `Nucleus.BackendCase`/`AuditCase`/`LiveCase`; `mix nucleus.trace` report-only | 2026-08-14 | Decided | `docs/adr/0008-test-strategy.md` |
+| 9 | Environment validation ladder — allowlist over denylist, strict validate-then-fetch ordering, no cache/no fallback ever, validation errors tagged `boundary: :tenant_api` | 2026-08-14 | Decided | `docs/adr/0009-environment-validation-ladder.md` |
 
 This file deliberately contains **no "re-platform" decision** (fresh start, not a migration —
 nothing to supersede) and **no inherited ADRs** (the wiki's `ADR-0001`–`ADR-0007` under
@@ -175,6 +176,25 @@ filed during this ticket) · Issues #9–#15 (every SEC ticket, the harness's fi
 
 ---
 
+## Decision: Environment Validation Ladder
+
+**Date**: 2026-08-14 | **Status**: Decided | **ADR**: `docs/adr/0009-environment-validation-ladder.md`
+
+`Nucleus.Environments.validate_name/1` rejects any environment name failing a positive charset
+allowlist (`~r/\A[a-z0-9][a-z0-9-]*\z/`, ≤64 chars) — not a `..`/`/`/`\` denylist, which percent-
+encoding and unicode lookalikes defeat. `fetch/2` runs it first, calls `TenantApi.list_environments/1`
+only if it passes, collapses `:unavailable`/`:not_configured` to `:unavailable`, passes
+`:auth_expired` through untouched, and matches archived environments too — with no cache and no
+fallback list, ever. `NucleusWeb.SecretsLive` replaced its EN-7 placeholder wholesale, validating
+in `handle_params/3` (not `mount/3`) so a patch between environments re-validates.
+
+**Related**: Issue #9 (SEC-S1, the deciding issue) · `docs/adr/0006-application-shell-and-live-session-composition.md`
+(the placeholder this ticket replaced) · `docs/adr/0007-secrets-store-adapter.md` (the boundary
+that explicitly deferred this validation here) · Issues #10–#15 (SEC-S2–S7, every one mounts
+through this gate)
+
+---
+
 ## Deprecated Decisions
 
 Decisions that were later overturned (for historical context):
@@ -185,7 +205,7 @@ Decisions that were later overturned (for historical context):
 
 ## Onboarding Checklist
 
-- [ ] Read the Decision Index above; `adr/0001`–`0008` are binding
+- [ ] Read the Decision Index above; `adr/0001`–`0009` are binding
 - [ ] Know that the wiki's ADR-0001–0007 are reference only, not adopted
 - [ ] Know that new formal ADRs belong in `docs/adr/`, with only a short summary mirrored here
 - [ ] Know which decisions are pending (see `living-notes.md`)

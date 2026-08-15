@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/notes | Priority: high | Version: 1.6 | Updated: 2026-08-14 -->
+<!-- Context: project-intelligence/notes | Priority: high | Version: 1.7 | Updated: 2026-08-14 -->
 
 # Living Notes
 
@@ -16,7 +16,6 @@
 |------|--------|----------|------------|
 | `docs/adr/` had no ADRs while 7 prototype ADRs sit in the wiki | ADR-shaped questions get answered in chat and lost | Medium | Write this project's own ADRs as decisions land — `0001` now exists |
 | LiveDashboard at `/dev/dashboard` unauthenticated | Fine in dev; a leak if ever exposed in prod | Medium | Gate behind auth before any production deploy |
-| `NucleusWeb.SecretsLive` is a placeholder ("not implemented" empty state) so `~p` verified routes compile | Looks like a real view; must not be patched incrementally | Medium | SEC-S1 (#9) replaces the module wholesale — see `docs/adr/0006-application-shell-and-live-session-composition.md` |
 | Nucleus's own AWS identity (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_SESSION_TOKEN`) is read ambiently by the `aws` package, with no boot-time check or ops-facing doc — unlike `TENANT_ROLE_ARN`/`AWS_REGION`/`CLUSTER_NAME`/`DEPLOYMENT_NAME`, which all raise at boot | A misconfigured deployment fails per-request as `:not_configured` on first `AssumeRole` call, not at boot | Low | `CLUSTER_NAME`/`DEPLOYMENT_NAME` are now correctly documented in the wiki's `Platform-Operations.md` config reference (issue #22). The ambient `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_SESSION_TOKEN` doc gap remains open — was out of scope for #22 |
 | No browser-driven test coverage for `SEC-A02` (clipboard write confirmation) or `SEC-A13` (Escape dismissal, focus trap, focus restoration) — `navigator.clipboard` and real key/focus events need a browser, which this repo has no driver for | Tests assert wiring only (hook attached, `on_cancel` set), never claim `@tag action:` for these IDs — a real regression would not be caught until a browser harness exists | Medium | Add Wallaby once sign-in exists (deferred, EN-8); see `docs/adr/0008-test-strategy.md` |
 
@@ -126,6 +125,13 @@ deploys it.
 ## Archive (Resolved Items)
 
 Moved here for historical reference.
+
+**`NucleusWeb.SecretsLive` was a placeholder** — *was: Technical Debt, Medium*
+*Resolved*: 2026-08-14 by SEC-S1 (issue #9).
+*Outcome*: Replaced wholesale, as ADR-0006 always intended. Validates the environment in
+`handle_params/3` via `Nucleus.Environments.fetch/2` and renders one of three fail-closed
+states (`SEC-A15`–`A17`); renders no secrets UI of its own yet — that is `SEC-S2` onward.
+*See*: `docs/adr/0009-environment-validation-ladder.md`
 
 **Build `mix nucleus.trace`** — *was: Active Project*
 *Resolved*: 2026-08-14 by EN-8 (issue #8).

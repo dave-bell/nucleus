@@ -2,8 +2,9 @@ defmodule NucleusWeb.SecretsFlowTest do
   @moduledoc """
   Demonstrates `PhoenixTest` (EN-8's acceptance criteria: "added and
   demonstrated by at least one flow test") against the one real flow that
-  exists today — `NucleusWeb.SecretsLive` is still a placeholder
-  (`SEC-S1`/`SEC-S2` replace it), but the shell's environment-picker
+  exists today — `NucleusWeb.SecretsLive` now resolves the environment
+  through `Nucleus.Environments` (`SEC-S1`), but renders no secrets UI of
+  its own yet (`SEC-S2` builds the list). The shell's environment-picker
   navigation is real (EN-7) and worth exercising end to end: load one
   environment's secrets page, then follow a sidebar link to another.
 
@@ -33,11 +34,11 @@ defmodule NucleusWeb.SecretsFlowTest do
   } do
     conn
     |> visit(~p"/environments/prod/secrets")
-    |> assert_has("#secrets-not-implemented", text: "prod")
+    |> assert_has("#tenant-identifier")
     |> assert_has("#environments-list", text: "Staging", timeout: 100)
     |> click_link("Staging")
     |> assert_path(~p"/environments/staging/secrets")
-    |> assert_has("#secrets-not-implemented", text: "staging")
+    |> assert_has("#tenant-identifier")
   end
 
   @tag :unit
@@ -45,7 +46,7 @@ defmodule NucleusWeb.SecretsFlowTest do
        %{conn: conn} do
     conn
     |> visit(~p"/environments/legacy-qa/secrets")
-    |> assert_has("#secrets-not-implemented", text: "legacy-qa")
+    |> assert_has("#tenant-identifier")
     # Wait for the async environments list to actually resolve (proven by a
     # real, non-archived entry appearing) before asserting an absence —
     # otherwise this would vacuously pass while #environments-list hasn't
