@@ -2,6 +2,198 @@ defmodule NucleusWeb.SecretsLiveTest do
   # `force_error/2` (`Nucleus.BackendCase`) mutates node-global state.
   use NucleusWeb.LiveCase, async: false
 
+  alias Nucleus.Backend.Error
+  alias Nucleus.Secrets
+
+  defmodule FailingSecretsStore do
+    @moduledoc """
+    A `Nucleus.Secrets.Store` implementation that always fails `list_secrets/1`
+    with a controllable `Nucleus.Backend.Error`.
+
+    `Nucleus.Backend.Faults`' `LOCAL_FORCE_ERROR` is node-global and checked by
+    `Nucleus.TenantApi.Local` too — since `Nucleus.Secrets.list/2` gates through
+    `Nucleus.Environments.fetch/2` first, a global fault is always caught there
+    (`boundary: :tenant_api`) and the store is never reached. Swapping the
+    `:secrets` boundary's implementation instead, the same technique
+    `test/nucleus/environments_test.exs`'s `ExplodingTenantApi` uses, is the
+    only way to exercise a `boundary: :secrets` failure from this LiveView.
+    """
+    @behaviour Nucleus.Secrets.Store
+
+    @impl Nucleus.Secrets.Store
+    def list_secrets(_environment) do
+      {:error, Error.new(:unavailable, :secrets, "forced for test", %{})}
+    end
+
+    @impl Nucleus.Secrets.Store
+    def get_secret(_environment, _key), do: raise("should not be called")
+
+    @impl Nucleus.Secrets.Store
+    def create_secret(_environment, _key, _value), do: raise("should not be called")
+
+    @impl Nucleus.Secrets.Store
+    def update_secret(_environment, _key, _value), do: raise("should not be called")
+
+    @impl Nucleus.Secrets.Store
+    def locate_secret(_environment, _key), do: raise("should not be called")
+
+    @impl Nucleus.Secrets.Store
+    def list_environments, do: raise("should not be called")
+
+    @impl Nucleus.Secrets.Store
+    def list_all_secrets, do: raise("should not be called")
+
+    @impl Nucleus.Secrets.Store
+    def health_check, do: raise("should not be called")
+  end
+
+  defp use_failing_secrets_store do
+    original = Application.get_env(:nucleus, :backends, [])
+    on_exit(fn -> Application.put_env(:nucleus, :backends, original) end)
+
+    Application.put_env(
+      :nucleus,
+      :backends,
+      Keyword.put(original, :secrets, FailingSecretsStore)
+    )
+  end
+
+  describe "SEC-A01 — list secrets for an environment" do
+    @tag action: "SEC-A01"
+    test "every seeded key under prod has a row", %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+
+      assert has_element?(view, "#secrets-table")
+      assert has_element?(view, "[data-key=\"DATABASE_URL\"]")
+      assert has_element?(view, "[data-key=\"STRIPE_API_KEY\"]")
+      assert has_element?(view, "[data-key=\"JWT_SIGNING_KEY\"]")
+    end
+
+    @tag action: "SEC-A01"
+    test "each row contains the full path and the full ARN", %{conn: conn} do
+      assert {:ok, refs} = Secrets.list("prod", %Nucleus.Scope{})
+      assert {:ok, _view, html} = live_secrets(conn, "prod")
+
+      for ref <- refs do
+        assert html =~ ref.path
+        assert html =~ ref.arn
+      end
+    end
+
+    @tag action: "SEC-A01"
+    test "no seeded secret value appears anywhere in the rendered HTML", %{conn: conn} do
+      assert {:ok, %{value: db_value}} = Nucleus.Secrets.Store.get_secret("prod", "DATABASE_URL")
+
+      assert {:ok, %{value: stripe_value}} =
+               Nucleus.Secrets.Store.get_secret("prod", "STRIPE_API_KEY")
+
+      assert {:ok, %{value: jwt_value}} =
+               Nucleus.Secrets.Store.get_secret("prod", "JWT_SIGNING_KEY")
+
+      assert {:ok, _view, html} = live_secrets(conn, "prod")
+
+      refute html =~ db_value
+      refute html =~ stripe_value
+      refute html =~ jwt_value
+    end
+
+    @tag action: "SEC-A01"
+    test "the mask is a fixed width regardless of the underlying value's length", %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+
+      db_row = view |> element("[data-key=\"DATABASE_URL\"]") |> render()
+      jwt_row = view |> element("[data-key=\"JWT_SIGNING_KEY\"]") |> render()
+
+      mask_regex = ~r/<span aria-hidden="true">(.*?)<\/span>/s
+      assert [_, db_mask] = Regex.run(mask_regex, db_row)
+      assert [_, jwt_mask] = Regex.run(mask_regex, jwt_row)
+
+      assert db_mask == jwt_mask
+      assert String.length(jwt_mask) < 20
+    end
+
+    @tag action: "SEC-A01"
+    test "the reveal control is present per row", %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+
+      assert has_element?(view, "button[phx-value-key=\"DATABASE_URL\"]")
+      assert has_element?(view, "button[phx-value-key=\"STRIPE_API_KEY\"]")
+      assert has_element?(view, "button[phx-value-key=\"JWT_SIGNING_KEY\"]")
+    end
+
+    test "ordering is stable across two mounts", %{conn: conn} do
+      assert {:ok, _view1, html1} = live_secrets(conn, "prod")
+      assert {:ok, _view2, html2} = live_secrets(conn, "prod")
+
+      assert {:ok, refs} = Secrets.list("prod", %Nucleus.Scope{})
+      keys = Enum.map(refs, & &1.key)
+
+      positions1 = Enum.map(keys, &key_position(html1, &1))
+      positions2 = Enum.map(keys, &key_position(html2, &1))
+
+      assert positions1 == Enum.sort(positions1)
+      assert positions1 == positions2
+    end
+  end
+
+  describe "SEC-A14 — empty state for an environment with no secrets" do
+    @tag action: "SEC-A14"
+    test "renders #secrets-empty, no #secrets-table", %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "sandbox")
+
+      assert has_element?(view, "#secrets-empty")
+      refute has_element?(view, "#secrets-table")
+    end
+
+    @tag action: "SEC-A14"
+    test "#secrets-create-button is present in the empty state", %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "sandbox")
+
+      assert has_element?(view, "#secrets-create-button")
+    end
+
+    @tag action: "SEC-A14"
+    test "#secrets-create-button is also present in the populated state", %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+
+      assert has_element?(view, "#secrets-table")
+      assert has_element?(view, "#secrets-create-button")
+    end
+  end
+
+  describe "store unavailable (boundary: :secrets)" do
+    test "renders #secrets-unavailable, shell intact, no crash", %{conn: conn} do
+      use_failing_secrets_store()
+
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+
+      assert has_element?(view, "#secrets-unavailable")
+      assert has_element?(view, "#tenant-identifier")
+      refute has_element?(view, "#secrets-table")
+      refute has_element?(view, "#secrets-validation-unavailable")
+    end
+  end
+
+  describe "placeholder handlers do not crash the LiveView" do
+    test "clicking the reveal control does not crash", %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+
+      view
+      |> element("button[phx-value-key=\"DATABASE_URL\"]")
+      |> render_click()
+
+      assert has_element?(view, "#secrets-table")
+    end
+
+    test "clicking the create button does not crash", %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+
+      view |> element("#secrets-create-button") |> render_click()
+
+      assert has_element?(view, "#secrets-table")
+    end
+  end
+
   describe "SEC-A16 — reject a well-formed but unknown environment" do
     @tag action: "SEC-A16"
     test "renders environment-not-found", %{conn: conn} do
@@ -85,5 +277,9 @@ defmodule NucleusWeb.SecretsLiveTest do
 
       assert has_element?(view, "#secrets-environment-not-found")
     end
+  end
+
+  defp key_position(html, key) do
+    :binary.match(html, key) |> elem(0)
   end
 end
