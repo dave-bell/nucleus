@@ -123,12 +123,45 @@ defmodule NucleusWeb.SecretsLiveTest do
     end
 
     @tag action: "SEC-A01"
+    test "path and ARN each carry a tooltip holding the full, untruncated value", %{conn: conn} do
+      assert {:ok, refs} = Secrets.list("prod", %Nucleus.Scope{})
+      assert {:ok, _view, html} = live_secrets(conn, "prod")
+      doc = LazyHTML.from_document(html)
+
+      for ref <- refs do
+        row = "[data-key=\"#{ref.key}\"]"
+
+        tips = doc |> LazyHTML.query("#{row} [data-tip]") |> LazyHTML.attribute("data-tip")
+
+        assert ref.path in tips
+        assert ref.arn in tips
+      end
+
+      # `truncate` includes `overflow: hidden`, and daisyUI renders the
+      # tooltip as a pseudo-element *inside* the `.tooltip` element — sharing
+      # one span would clip the tooltip. The wrapper must not truncate.
+      assert Enum.empty?(LazyHTML.query(doc, ".tooltip.truncate"))
+      refute Enum.empty?(LazyHTML.query(doc, ".tooltip > .truncate"))
+    end
+
+    @tag action: "SEC-A01"
     test "the reveal control is present per row", %{conn: conn} do
       assert {:ok, view, _html} = live_secrets(conn, "prod")
 
       assert has_element?(view, "button[phx-value-key=\"DATABASE_URL\"]")
       assert has_element?(view, "button[phx-value-key=\"STRIPE_API_KEY\"]")
       assert has_element?(view, "button[phx-value-key=\"JWT_SIGNING_KEY\"]")
+    end
+
+    @tag action: "SEC-A01"
+    test "the reveal control is its label alone — no icon", %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+      row_id = row_id(view, "DATABASE_URL")
+
+      button = view |> element("#reveal-#{row_id}") |> render() |> LazyHTML.from_fragment()
+
+      assert button |> LazyHTML.text() |> String.trim() == "View"
+      assert Enum.empty?(LazyHTML.query(button, "[class*=\"hero-\"]"))
     end
 
     test "ordering is stable across two mounts", %{conn: conn} do
@@ -421,6 +454,31 @@ defmodule NucleusWeb.SecretsLiveTest do
       view |> element("#reveal-#{row_id}") |> render_click()
 
       assert view |> element("#secret-modal-title") |> render() =~ "DATABASE_URL"
+    end
+
+    @tag action: "SEC-A03"
+    test "the modal's copy button is a label, sized to match Close, and carries no icon", %{
+      conn: conn
+    } do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+      row_id = row_id(view, "DATABASE_URL")
+
+      view |> element("#reveal-#{row_id}") |> render_click()
+      doc = view |> render() |> LazyHTML.from_fragment()
+
+      copy = LazyHTML.query(doc, "#secret-modal-copy")
+      assert copy |> LazyHTML.text() =~ "Copy value"
+      assert Enum.empty?(LazyHTML.query(doc, "#secret-modal-copy [class*=\"hero-\"]"))
+      assert Enum.empty?(LazyHTML.query(doc, "#secret-modal-copy [data-tip]"))
+
+      # Both action-row buttons are the same daisyUI size, so they line up.
+      assert [copy_class] = LazyHTML.attribute(copy, "class")
+
+      assert [close_class] =
+               doc |> LazyHTML.query("#secret-modal-dismiss") |> LazyHTML.attribute("class")
+
+      refute copy_class =~ "btn-sm"
+      refute close_class =~ "btn-sm"
     end
 
     @tag action: "SEC-A03"

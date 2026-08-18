@@ -59,13 +59,43 @@ tooltip appears on keyboard focus, not only hover.
 
 The tooltip goes on a **wrapper `<span>`**, never on the button itself. The
 button carries `phx-update="ignore"` (ADR-0011's companion decision, so the
-hook's icon-swap state survives a patch), and hover/tooltip state on an
+hook's confirmation state survives a patch), and hover/tooltip state on an
 ignored element is exactly the kind of thing that stops surviving one.
 
-A new `show_label` attribute opts the visible text back in for somewhere with
-room for it, and suppresses the tooltip when it does — a tooltip restating
-text already on screen is noise. The reveal modal's action row is the only
-current caller.
+### The hook toggles three named "faces", and does not know what is in them
+
+`copy_button/1` renders three mutually-exclusive children — `data-copy-idle`,
+`data-copy-done`, `data-copy-failed` — and the hook's only DOM job is
+toggling `hidden` between them. What a face *contains* is the template's
+business. That is what lets one hook drive both an icon-only and a text-only
+button with no branching, and it is why the attributes are not named "icon":
+in the labelled variant a face is a word.
+
+### `show_label` is text-only, full-size, and width-stable
+
+The reveal modal's copy button sits beside a `<.button>` in a `modal-action`
+row, so it must line up with one. `show_label` therefore renders **no icon at
+all** — the three faces become "Copy value" / "Copied" / "Copy failed" — and
+drops `btn-sm`, matching `button/1`'s default `btn` height. The tooltip goes
+too; it would only restate text already on screen.
+
+Swapping the text is what preserves `SEC-A02`'s "brief visual confirmation"
+once the icon is gone, and it brings a problem the icon variant did not have:
+three different strings mean three different intrinsic widths, and in a
+`justify-end` action row that shoves every sibling sideways for two seconds
+on each copy. `min-w-32` sets a floor wide enough for the longest face, so
+nothing moves.
+
+### Path and ARN get tooltips, on a wrapper, replacing `title`
+
+Both are truncated more often than not, and a truncated ARN is close to
+useless. Each is now a `.tooltip` wrapper with the truncating span nested
+inside it. The nesting is load-bearing: `truncate` includes
+`overflow: hidden`, and daisyUI renders the tooltip as an
+absolutely-positioned pseudo-element *inside* the `.tooltip` element, so one
+span carrying both would clip the tooltip by the very rule that made it
+necessary. This replaces a plain `title` attribute — see the alternatives
+below.
 
 ### The Value column is deleted outright — plaintext *and* mask
 
@@ -134,8 +164,11 @@ the browser-gap list.
 
 ### Positive
 
-- The row fits: five columns, three icon-only buttons, and no permanently
-  reserved space for a value almost never on screen.
+- The row fits: five columns, two icon-only buttons, a label-only reveal
+  control, and no permanently reserved space for a value almost never on
+  screen.
+- A truncated path or ARN is now readable on hover or keyboard focus, wrapped
+  to 20rem, instead of needing a copy-and-paste elsewhere to see.
 - A revealed value gets a modal's width and its own scroll region, instead of
   a table cell's.
 - Strictly less plaintext exposure than before. Previously a revealed value
@@ -145,8 +178,9 @@ the browser-gap list.
 - `SEC-A04`'s outcome is now proven by an executable test (the Close button)
   where before it was proven by a toggle click. The three JS-command routes
   are recorded gaps, not silent ones.
-- `SEC-S6`'s creation form inherits both a documented modal shape and an
-  icon-only/labelled copy button, with no new component work.
+- `SEC-S6`'s creation form inherits both a documented modal shape and a copy
+  button that works icon-only in a row and text-only in an action row, with no
+  new component work.
 
 ### Negative
 
@@ -164,6 +198,12 @@ the browser-gap list.
 - `modal/1` has two legitimate usages — mounted-and-toggled, and
   conditionally-rendered — and picking the wrong one for secret material is a
   silent leak rather than a visible bug. Mitigated only by documentation.
+- `min-w-32` is a magic number that holds only while no caller passes a label
+  longer than the floor. A caller that does gets the width jump back, with
+  nothing to warn them.
+- Both a row's copy button and its path/ARN now carry tooltips, adjacent to
+  each other. Nothing prevents a mouse path that shows two in quick
+  succession; it is busier than the single `title` it replaced.
 
 ## Alternatives considered
 
@@ -195,12 +235,21 @@ a `%{key => Secret.t()}` map alive to render a label that is behind a
 backdrop, unclickable, and discarded on dismissal. Conformance to the letter
 of the clause at the cost of dead UI and retained machinery.
 
-**Use the native `title` attribute for the copy label instead of daisyUI's
-tooltip.** Rejected — `title` has a ~1s browser-controlled delay, no styling,
-and inconsistent screen-reader treatment alongside `aria-label`. The
-neighbouring path/ARN spans already use `title` for their truncated text;
-adding a second `title` on the button inside the same cell reads as one
-tooltip fighting another.
+**Use the native `title` attribute for tooltips — for the copy label, and by
+leaving the path/ARN spans as they were.** Rejected on three counts: `title`
+has a ~1s browser-controlled delay the user cannot configure, no styling and
+no wrapping (a 100-character ARN becomes one unreadable line, where daisyUI
+wraps at 20rem), and inconsistent screen-reader treatment when it sits
+alongside `aria-label` on the same element. Consistency also matters here —
+one tooltip mechanism in a row, not a native one on the values and a styled
+one on the buttons.
+
+**Keep the icon alongside the label on the modal's copy button, so the
+existing icon-swap confirmation is untouched.** Rejected on the user's
+instruction, and it forces the `SEC-A02` confirmation question rather than
+answering it: with the icon gone, either the label swaps or there is no
+visual confirmation at all. Swapping the label is the better answer anyway —
+"Copied" is unambiguous where a check mark next to unchanged text is not.
 
 ## References
 

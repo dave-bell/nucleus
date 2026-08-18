@@ -104,6 +104,58 @@ defmodule NucleusWeb.CoreComponentsTest do
     end
 
     @tag :unit
+    test "show_label renders no icon at all, and no btn-sm so it lines up with button/1" do
+      html =
+        render_component(&CoreComponents.copy_button/1,
+          id: "copy-value",
+          value: "s3cr3t",
+          label: "Copy value",
+          show_label: true
+        )
+
+      doc = doc(html)
+
+      assert Enum.empty?(LazyHTML.query(doc, "#copy-value [class*=\"hero-\"]"))
+
+      assert [class] = doc |> LazyHTML.query("#copy-value") |> LazyHTML.attribute("class")
+      refute class =~ "btn-sm"
+      refute class =~ "btn-square"
+      # `button/1`'s default is a plain `btn`, so the heights match.
+      assert class =~ "btn"
+    end
+
+    @tag :unit
+    test "both variants render the same three faces, one visible, so one hook drives both" do
+      icon_only = doc(render_component(&CoreComponents.copy_button/1, id: "a", value: "v"))
+
+      labelled =
+        doc(
+          render_component(&CoreComponents.copy_button/1,
+            id: "b",
+            value: "v",
+            label: "Copy value",
+            show_label: true
+          )
+        )
+
+      for {doc, id} <- [{icon_only, "a"}, {labelled, "b"}] do
+        assert doc |> LazyHTML.query("##{id} [data-copy-idle]") |> Enum.count() == 1
+        assert doc |> LazyHTML.query("##{id} [data-copy-done]") |> Enum.count() == 1
+        assert doc |> LazyHTML.query("##{id} [data-copy-failed]") |> Enum.count() == 1
+
+        # Only the idle face starts visible.
+        assert doc |> LazyHTML.query("##{id} [data-copy-idle]") |> LazyHTML.attribute("class") ==
+                 []
+
+        assert doc |> LazyHTML.query("##{id} [data-copy-done]") |> LazyHTML.attribute("class") ==
+                 ["hidden"]
+      end
+
+      # In the labelled variant a face is a word, not an icon.
+      assert labelled |> LazyHTML.query("#b [data-copy-done]") |> LazyHTML.text() == "Copied"
+    end
+
+    @tag :unit
     test "the tooltip sits outside the phx-update=\"ignore\" subtree" do
       html = render_component(&CoreComponents.copy_button/1, id: "copy-arn", value: "arn:aws:1")
 

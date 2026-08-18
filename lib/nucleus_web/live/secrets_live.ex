@@ -96,6 +96,16 @@ defmodule NucleusWeb.SecretsLive do
   designed to survive. In-row copy buttons are icon-only, with the label as a
   tooltip — see `NucleusWeb.CoreComponents.copy_button/1`.
 
+  Path and ARN are truncated more often than not, so each carries a daisyUI
+  tooltip with its full value. The tooltip sits on a **wrapper** span with the
+  truncating span nested inside it, not on the truncating span itself:
+  `truncate` includes `overflow: hidden`, and daisyUI renders the tooltip as
+  an absolutely-positioned pseudo-element *inside* the element carrying
+  `.tooltip` — put both on one span and the tooltip is clipped by the very
+  rule that made it necessary. This replaced a plain `title` attribute, which
+  had a browser-controlled delay, no styling, and no wrapping for a string
+  this long.
+
   ## Reveal is a modal, and the modal is only in the DOM while it is open (`SEC-S4`)
 
   `:revealed` holds `nil` or exactly one `%Nucleus.Secrets.Secret{}` — the
@@ -299,13 +309,17 @@ defmodule NucleusWeb.SecretsLive do
                 <td class="font-medium">{ref.key}</td>
                 <td>
                   <div class="flex items-center gap-1">
-                    <span class="block max-w-xs truncate" title={ref.path}>{ref.path}</span>
+                    <span class="tooltip max-w-xs" data-tip={ref.path}>
+                      <span class="block truncate">{ref.path}</span>
+                    </span>
                     <.copy_button id={"copy-path-#{dom_id}"} value={ref.path} label="Copy path" />
                   </div>
                 </td>
                 <td>
                   <div class="flex items-center gap-1">
-                    <span class="block max-w-xs truncate" title={ref.arn}>{ref.arn}</span>
+                    <span class="tooltip max-w-xs" data-tip={ref.arn}>
+                      <span class="block truncate">{ref.arn}</span>
+                    </span>
                     <.copy_button id={"copy-arn-#{dom_id}"} value={ref.arn} label="Copy ARN" />
                   </div>
                 </td>
@@ -314,11 +328,11 @@ defmodule NucleusWeb.SecretsLive do
                   <button
                     id={reveal_id(dom_id)}
                     type="button"
-                    class="btn btn-sm gap-1"
+                    class="btn btn-sm"
                     phx-click="reveal"
                     phx-value-key={ref.key}
                   >
-                    <.icon name="hero-eye" class="size-4" /> View
+                    View
                   </button>
                 </td>
               </tr>
@@ -332,9 +346,6 @@ defmodule NucleusWeb.SecretsLive do
         --%>
         <.modal :if={@revealed} id={modal_id()} show on_cancel={JS.push("hide")}>
           <:title>{@revealed.key}</:title>
-          <p class="text-sm text-base-content/70 -mt-2 mb-3">
-            This value was fetched just now and is not stored by Nucleus.
-          </p>
           <div
             id="secret-modal-value"
             class="font-mono text-sm break-all select-all rounded-box bg-base-200 p-3 max-h-60 overflow-y-auto"
