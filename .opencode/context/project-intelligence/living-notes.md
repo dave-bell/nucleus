@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/notes | Priority: high | Version: 1.7 | Updated: 2026-08-14 -->
+<!-- Context: project-intelligence/notes | Priority: high | Version: 1.8 | Updated: 2026-08-17 -->
 
 # Living Notes
 
@@ -18,6 +18,7 @@
 | LiveDashboard at `/dev/dashboard` unauthenticated | Fine in dev; a leak if ever exposed in prod | Medium | Gate behind auth before any production deploy |
 | Nucleus's own AWS identity (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_SESSION_TOKEN`) is read ambiently by the `aws` package, with no boot-time check or ops-facing doc — unlike `TENANT_ROLE_ARN`/`AWS_REGION`/`CLUSTER_NAME`/`DEPLOYMENT_NAME`, which all raise at boot | A misconfigured deployment fails per-request as `:not_configured` on first `AssumeRole` call, not at boot | Low | `CLUSTER_NAME`/`DEPLOYMENT_NAME` are now correctly documented in the wiki's `Platform-Operations.md` config reference (issue #22). The ambient `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_SESSION_TOKEN` doc gap remains open — was out of scope for #22 |
 | No browser-driven test coverage for `SEC-A02` (clipboard write confirmation) or `SEC-A13` (Escape dismissal, focus trap, focus restoration) — `navigator.clipboard` and real key/focus events need a browser, which this repo has no driver for | Tests assert wiring only (hook attached, `on_cancel` set), never claim `@tag action:` for these IDs — a real regression would not be caught until a browser harness exists | Medium | Add Wallaby once sign-in exists (deferred, EN-8); see `docs/adr/0008-test-strategy.md` |
+| `LOCAL_FORCE_ERROR` (`Nucleus.Backend.Faults`) is node-global, not per-boundary — a fault set for one boundary is seen by every local implementation's next call | A test targeting the `:secrets` boundary's error path is actually caught by whichever boundary is called first; SEC-S2 found this when `Nucleus.Secrets.list/2`'s `Environments.fetch/2` gate always intercepted the fault before `Store.list_secrets/1` ran | Low | Swap in a real/failing module via `Application.put_env(:nucleus, :backends, ...)` instead of `force_error/2` for a specific-boundary test — see `SecretsLiveTest.FailingSecretsStore` |
 
 ### Technical Debt Details
 
@@ -127,11 +128,12 @@ deploys it.
 Moved here for historical reference.
 
 **`NucleusWeb.SecretsLive` was a placeholder** — *was: Technical Debt, Medium*
-*Resolved*: 2026-08-14 by SEC-S1 (issue #9).
-*Outcome*: Replaced wholesale, as ADR-0006 always intended. Validates the environment in
-`handle_params/3` via `Nucleus.Environments.fetch/2` and renders one of three fail-closed
-states (`SEC-A15`–`A17`); renders no secrets UI of its own yet — that is `SEC-S2` onward.
-*See*: `docs/adr/0009-environment-validation-ladder.md`
+*Resolved*: 2026-08-14 by SEC-S1 (issue #9); listing added 2026-08-17 by SEC-S2 (issue #10).
+*Outcome*: Replaced wholesale, as ADR-0006 always intended. `Nucleus.Secrets.list/2` now gates
+through `Nucleus.Environments.fetch/2` in one call and lists a `Nucleus.Secrets.Store`
+boundary's secrets (`SEC-A01`, `SEC-A14`); every `Nucleus.Backend.Error` kind across both
+boundaries renders without crashing.
+*See*: `docs/adr/0009-environment-validation-ladder.md`, `docs/adr/0010-secrets-listing-gate-collapse-and-dom-ids.md`
 
 **Build `mix nucleus.trace`** — *was: Active Project*
 *Resolved*: 2026-08-14 by EN-8 (issue #8).
