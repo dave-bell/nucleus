@@ -43,13 +43,21 @@ explicitly rather than leaving it unmentioned.
 Confirm with the user before merging — this is irreversible.
 
 ```sh
-gh pr merge <pr> --squash --delete-branch
+gh pr merge <pr> --squash --delete-branch \
+  --subject "<sentence-style subject, lower-case, trailing full stop.>" \
+  --body ""
 ```
 
-Squash matches the existing history: one commit per ticket, sentence-style subject, lower-case,
-trailing full stop. The implementation commits and the record commit collapse into that one
-commit — the split existed for the reviewer, not for `main`'s history. Verify `Closes #<n>` did
-its job:
+**Pass `--subject` explicitly — it is not the PR title.** `/pr` titles the PR
+`<ID>: <short description>` for the reviewer's benefit, and GitHub reuses that title as the squash
+subject unless you override it here. `main`'s history uses a different style deliberately: one
+commit per ticket, sentence-style, lower-case, trailing full stop, no ticket prefix
+(`add the secrets store adapter: ...`). The two differ by design, and this is the only step that
+can enforce it — omitting `--subject` silently inherits the PR title, which is how a56766a and
+b4c9d6c reached `main` non-conforming.
+
+The implementation commits and the record commit collapse into that one commit — the split existed
+for the reviewer, not for `main`'s history. Verify `Closes #<n>` did its job:
 
 ```sh
 gh issue view <n> --json state --jq .state
