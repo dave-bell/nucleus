@@ -84,6 +84,17 @@ defmodule NucleusWeb.SecretsLive do
   `live_session`'s `on_mount` hooks (`NucleusWeb.ScopeHook`,
   `NucleusWeb.EnvironmentsHook`) — this module does not assign either
   itself.
+
+  ## Copy affordances read from the full value, not the truncated span (`SEC-A02`)
+
+  `<.copy_button>` (`SEC-S3`) is given `ref.path`/`ref.arn` directly — the
+  same full strings the row's DOM id is hashed from — not the neighbouring
+  `<span class="truncate">`'s text. Truncation there is CSS-only; the full
+  value is always present in the DOM, and the button's `data-value` must
+  carry it or a copy silently produces a broken, visually-truncated value.
+  Button ids are suffixed with the row's `dom_id`, so they stay unique and
+  stable across the same `stream_insert/3` churn the row id itself is
+  designed to survive.
   """
 
   use NucleusWeb, :live_view
@@ -223,10 +234,16 @@ defmodule NucleusWeb.SecretsLive do
               <tr :for={{dom_id, ref} <- @streams.secrets} id={dom_id} data-key={ref.key}>
                 <td>{ref.key}</td>
                 <td>
-                  <span class="block max-w-xs truncate" title={ref.path}>{ref.path}</span>
+                  <div class="flex items-center gap-1">
+                    <span class="block max-w-xs truncate" title={ref.path}>{ref.path}</span>
+                    <.copy_button id={"copy-path-#{dom_id}"} value={ref.path} label="Copy path" />
+                  </div>
                 </td>
                 <td>
-                  <span class="block max-w-xs truncate" title={ref.arn}>{ref.arn}</span>
+                  <div class="flex items-center gap-1">
+                    <span class="block max-w-xs truncate" title={ref.arn}>{ref.arn}</span>
+                    <.copy_button id={"copy-arn-#{dom_id}"} value={ref.arn} label="Copy ARN" />
+                  </div>
                 </td>
                 <td>{format_last_modified(ref.last_modified)}</td>
                 <td>
