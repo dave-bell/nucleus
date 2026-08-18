@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/notes | Priority: high | Version: 1.9 | Updated: 2026-08-18 -->
+<!-- Context: project-intelligence/notes | Priority: high | Version: 1.10 | Updated: 2026-08-18 -->
 
 # Living Notes
 
@@ -17,7 +17,7 @@
 | `docs/adr/` had no ADRs while 7 prototype ADRs sit in the wiki | ADR-shaped questions get answered in chat and lost | Medium | Write this project's own ADRs as decisions land — `0001` now exists |
 | LiveDashboard at `/dev/dashboard` unauthenticated | Fine in dev; a leak if ever exposed in prod | Medium | Gate behind auth before any production deploy |
 | Nucleus's own AWS identity (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_SESSION_TOKEN`) is read ambiently by the `aws` package, with no boot-time check or ops-facing doc — unlike `TENANT_ROLE_ARN`/`AWS_REGION`/`CLUSTER_NAME`/`DEPLOYMENT_NAME`, which all raise at boot | A misconfigured deployment fails per-request as `:not_configured` on first `AssumeRole` call, not at boot | Low | `CLUSTER_NAME`/`DEPLOYMENT_NAME` are now correctly documented in the wiki's `Platform-Operations.md` config reference (issue #22). The ambient `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_SESSION_TOKEN` doc gap remains open — was out of scope for #22 |
-| No browser-driven test coverage for `SEC-A02` (the `navigator.clipboard.writeText` call itself, the confirmation icon swap/revert, the non-secure-context `execCommand` fallback, and the failure indication) or `SEC-A13` (Escape dismissal, focus trap, focus restoration) — `navigator.clipboard` and real key/focus events need a browser, which this repo has no driver for | Tests assert wiring only (hook attached, `data-value` full/untruncated, `phx-update="ignore"` present, `on_cancel` set), never claim `@tag action:` for these IDs — a real regression would not be caught until a browser harness exists | Medium | Add Wallaby once sign-in exists (deferred, EN-8); see `docs/adr/0008-test-strategy.md`. `SEC-S3`'s four gaps are also a skipped `:browser`-tagged placeholder module in `secrets_live_test.exs` |
+| No browser-driven test coverage for `SEC-A02` (the `navigator.clipboard.writeText` call itself, the confirmation icon swap/revert, the non-secure-context `execCommand` fallback, the failure indication, and now the tooltip's hover/`:focus-visible` reveal) or for modal dismissal — `SEC-A13`'s focus trap and focus restoration, plus `SEC-A04`'s Escape and backdrop-click routes, which reach the server only by running the `JS` chain in `data-cancel` | Tests assert wiring only (hook attached, `data-value` full/untruncated, `phx-update="ignore"` present, `data-tip` set, `on_cancel`/`phx-key`/`phx-click-away` present), and claim `@tag action:` for `SEC-A04` **only** via the Close button, whose plain `phx-click="hide"` a `render_click/1` can actually drive | Medium | Add Wallaby once sign-in exists (deferred, EN-8); see `docs/adr/0008-test-strategy.md`. Both gap sets are skipped `:browser`-tagged placeholder modules in `secrets_live_test.exs` — `CopyButtonBrowserGaps` (4) and `SecretRevealModalBrowserGaps` (5) |
 | `LOCAL_FORCE_ERROR` (`Nucleus.Backend.Faults`) is node-global, not per-boundary — a fault set for one boundary is seen by every local implementation's next call | A test targeting the `:secrets` boundary's error path is actually caught by whichever boundary is called first; SEC-S2 found this when `Nucleus.Secrets.list/2`'s `Environments.fetch/2` gate always intercepted the fault before `Store.list_secrets/1` ran | Low | Swap in a real/failing module via `Application.put_env(:nucleus, :backends, ...)` instead of `force_error/2` for a specific-boundary test — see `SecretsLiveTest.FailingSecretsStore` |
 | `Nucleus.Secrets.reveal/3`'s key validator is a second, weaker copy of `Environments.validate_name/1`'s deny-list (`..`, `/`, `\`, null byte only — no charset allowlist, no length cap) | A forged key using percent-double-encoding or a control character other than a null byte could still reach `Store.get_secret/2`/`Path.build/2`; cross-environment traversal is still blocked since `/`, `..`, `\` are denied | Low | `SEC-S6` (issue #14, `needs-decision`) should replace this with one shared validator, not add a third — see `docs/adr/0011-secret-reveal-stream-reinsertion-and-audit-test-fallback.md` |
 
@@ -111,6 +111,10 @@ deploys it.
   assign depends on another's (`EnvironmentsHook` reads `current_scope.token` after
   `ScopeHook` assigns it) — see `docs/adr/0006-application-shell-and-live-session-composition.md`.
   Keeps every view under the session correct without each one opting in individually.
+- Where a dismissal control must be provable in `Phoenix.LiveViewTest`, give it a plain
+  `phx-click="event"` rather than a `JS.exec("data-cancel", ...)` chain — `render_click/1` can
+  drive the former and not the latter. The modal's `phx-remove` still runs `hide_modal/2`, so
+  focus restoration is unaffected. See `docs/adr/0012-secret-reveal-modal-and-icon-only-copy-affordances.md`.
 - `Nucleus.Audit.Sink.Test` falls back to `Process.get(:"$callers")` when the writing process
   has no direct `register/1` call — reaches a test's own `AuditCase` registration from inside a
   mounted LiveView, using the same ancestry chain Ecto's SQL Sandbox relies on. Any test
@@ -124,6 +128,16 @@ deploys it.
 - **The wiki's `API:` lines are not routes.** Building a REST layer to satisfy them adds a
   surface no requirement asked for.
 - **`mix precommit` is the required gate** before finishing any change (see `AGENTS.md`).
+- **`LazyHTML.query/2` returns a `%LazyHTML{}` struct, not a list.** `assert LazyHTML.query(doc,
+  sel) != []` is therefore *always* true and proves nothing — several `SEC-A02` guards were
+  vacuous for exactly this reason until ADR-0012's change caught it. Use
+  `refute Enum.empty?(LazyHTML.query(doc, sel))`. `LazyHTML.attribute/2` **does** return a plain
+  list, so `== ["ignore"]` and `== []` on an attribute result are fine.
+- **`CoreComponents.modal/1` has two legitimate usages, and the wrong one leaks.** Left mounted
+  and toggled with `modal-open`, its inner block is in the DOM (and in view-source) while the
+  dialog is closed — fine for a form, a leak for secret material. Anything sensitive wraps the
+  `<.modal>` in a server-side `:if` and passes `show={true}`, as `NucleusWeb.SecretsLive`'s
+  reveal modal does. See `docs/adr/0012-secret-reveal-modal-and-icon-only-copy-affordances.md`.
 
 ## Active Projects
 

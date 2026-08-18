@@ -22,11 +22,16 @@ covered:
 | Gap | Action | Why |
 |---|---|---|
 | Clipboard write and its visual confirmation | `SEC-A02` | `navigator.clipboard` is a browser API |
+| Tooltip reveal on hover / `:focus-visible` | `SEC-A02` | daisyUI `.tooltip` is CSS pseudo-element state |
 | Escape-key dismissal, focus trap, focus restoration | `SEC-A13` | Real key events and focus management need a browser |
+| Escape and backdrop-click dismissal of the reveal modal | `SEC-A04` | Both reach the server only by running the `JS` chain in `data-cancel` |
 
 For these, assert the *wiring* (hook attached, `phx-window-keydown` bound,
 `on_cancel` set) — never tag the test `action:` for that ID, since the test
-does not prove the requirement's `Then` clauses.
+does not prove the requirement's `Then` clauses. `SEC-A04` is the one partial
+case: its `Then` *is* proven, through the modal's Close button, which pushes a
+plain event a `render_click/1` can drive. The tag is claimed there and only
+there — see `docs/adr/0012-secret-reveal-modal-and-icon-only-copy-affordances.md`.
 
 ## Tag vocabulary
 
