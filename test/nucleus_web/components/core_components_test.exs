@@ -60,6 +60,59 @@ defmodule NucleusWeb.CoreComponentsTest do
       assert LazyHTML.attribute(button, "data-value") == ["arn:aws:1"]
       assert LazyHTML.attribute(button, "id") == ["copy-arn"]
     end
+
+    @tag :unit
+    test "is icon-only by default, with the label as a tooltip and an aria-label" do
+      html =
+        render_component(&CoreComponents.copy_button/1,
+          id: "copy-arn",
+          value: "arn:aws:1",
+          label: "Copy ARN"
+        )
+
+      doc = doc(html)
+
+      assert doc |> LazyHTML.query(".tooltip") |> LazyHTML.attribute("data-tip") == ["Copy ARN"]
+
+      assert doc |> LazyHTML.query("#copy-arn") |> LazyHTML.attribute("aria-label") == [
+               "Copy ARN"
+             ]
+
+      # The hook interpolates `data-label` into its aria-live announcement.
+      assert doc |> LazyHTML.query("#copy-arn") |> LazyHTML.attribute("data-label") == [
+               "Copy ARN"
+             ]
+
+      refute doc |> LazyHTML.query("#copy-arn") |> LazyHTML.text() =~ "Copy ARN"
+    end
+
+    @tag :unit
+    test "show_label renders the label as text and drops the now-redundant tooltip" do
+      html =
+        render_component(&CoreComponents.copy_button/1,
+          id: "copy-value",
+          value: "s3cr3t",
+          label: "Copy value",
+          show_label: true
+        )
+
+      doc = doc(html)
+
+      assert doc |> LazyHTML.query("#copy-value") |> LazyHTML.text() =~ "Copy value"
+      assert Enum.empty?(LazyHTML.query(doc, ".tooltip"))
+      assert Enum.empty?(LazyHTML.query(doc, "[data-tip]"))
+    end
+
+    @tag :unit
+    test "the tooltip sits outside the phx-update=\"ignore\" subtree" do
+      html = render_component(&CoreComponents.copy_button/1, id: "copy-arn", value: "arn:aws:1")
+
+      doc = doc(html)
+
+      assert doc |> LazyHTML.query("#copy-arn") |> LazyHTML.attribute("phx-update") == ["ignore"]
+      assert Enum.empty?(LazyHTML.query(doc, "#copy-arn .tooltip"))
+      refute Enum.empty?(LazyHTML.query(doc, ".tooltip #copy-arn"))
+    end
   end
 
   describe "empty_state/1" do

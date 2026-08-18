@@ -102,18 +102,24 @@ defmodule NucleusWeb.SecretsLiveTest do
     end
 
     @tag action: "SEC-A01"
-    test "the mask is a fixed width regardless of the underlying value's length", %{conn: conn} do
-      assert {:ok, view, _html} = live_secrets(conn, "prod")
+    test "there is no value column at all — no plaintext cell and no mask", %{conn: conn} do
+      assert {:ok, _view, html} = live_secrets(conn, "prod")
+      doc = LazyHTML.from_document(html)
 
-      db_row = view |> element("[data-key=\"DATABASE_URL\"]") |> render()
-      jwt_row = view |> element("[data-key=\"JWT_SIGNING_KEY\"]") |> render()
+      headers =
+        doc
+        |> LazyHTML.query("#secrets-table thead th")
+        |> Enum.map(&(&1 |> LazyHTML.text() |> String.trim()))
 
-      mask_regex = ~r/<span aria-hidden="true">(.*?)<\/span>/s
-      assert [_, db_mask] = Regex.run(mask_regex, db_row)
-      assert [_, jwt_mask] = Regex.run(mask_regex, jwt_row)
+      assert headers == ["Key", "Path", "ARN", "Last modified", "Actions"]
 
-      assert db_mask == jwt_mask
-      assert String.length(jwt_mask) < 20
+      # One cell per header, so there is no orphaned value cell either.
+      assert doc |> LazyHTML.query("[data-key=\"DATABASE_URL\"] td") |> Enum.count() == 5
+
+      # A mask is a promise that nothing leaked, and one that has to be
+      # careful not to encode the real length. There is no mask because
+      # there is no column to put one in.
+      refute html =~ "••••"
     end
 
     @tag action: "SEC-A01"
@@ -158,8 +164,8 @@ defmodule NucleusWeb.SecretsLiveTest do
         row = view |> element("[data-key=\"#{key}\"]") |> render()
         doc = LazyHTML.from_fragment(row)
 
-        assert LazyHTML.query(doc, "[id^=\"copy-path-\"]") != []
-        assert LazyHTML.query(doc, "[id^=\"copy-arn-\"]") != []
+        refute Enum.empty?(LazyHTML.query(doc, "[id^=\"copy-path-\"]"))
+        refute Enum.empty?(LazyHTML.query(doc, "[id^=\"copy-arn-\"]"))
       end
     end
 
@@ -229,6 +235,26 @@ defmodule NucleusWeb.SecretsLiveTest do
     end
 
     @tag action: "SEC-A02"
+    test "in-row copy buttons are icon-only — the label is a tooltip, not layout width", %{
+      conn: conn
+    } do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+
+      row = view |> element("[data-key=\"DATABASE_URL\"]") |> render()
+      doc = LazyHTML.from_fragment(row)
+
+      # The label reaches a sighted user through daisyUI's `.tooltip` +
+      # `data-tip` (a CSS pseudo-element), so it costs no horizontal space.
+      refute Enum.empty?(LazyHTML.query(doc, ".tooltip[data-tip=\"Copy path\"]"))
+      refute Enum.empty?(LazyHTML.query(doc, ".tooltip[data-tip=\"Copy ARN\"]"))
+
+      # ...and is not a text node inside the button, which is what was
+      # taking the space.
+      path_text = doc |> LazyHTML.query("[id^=\"copy-path-\"]") |> LazyHTML.text()
+      refute path_text =~ "Copy path"
+    end
+
+    @tag action: "SEC-A02"
     test "phx-update=\"ignore\" is present so LiveView never patches over confirmation state",
          %{conn: conn} do
       assert {:ok, view, _html} = live_secrets(conn, "prod")
@@ -250,7 +276,7 @@ defmodule NucleusWeb.SecretsLiveTest do
       row = view |> element("[data-key=\"DATABASE_URL\"]") |> render()
       doc = LazyHTML.from_fragment(row)
 
-      assert LazyHTML.query(doc, "[aria-live=\"polite\"]") != []
+      refute Enum.empty?(LazyHTML.query(doc, "[aria-live=\"polite\"]"))
     end
 
     @tag action: "SEC-A02"
@@ -357,28 +383,44 @@ defmodule NucleusWeb.SecretsLiveTest do
 
   describe "SEC-A03 — reveal a secret's value" do
     @tag action: "SEC-A03"
-    test "shows plaintext, a copy affordance, and flips the control to Hide", %{conn: conn} do
+    test "opens a modal holding the plaintext and its own copy affordance", %{conn: conn} do
       assert {:ok, %{value: db_value}} = Secrets.Store.get_secret("prod", "DATABASE_URL")
       assert {:ok, view, html} = live_secrets(conn, "prod")
       refute html =~ db_value
+      refute has_element?(view, "#secret-modal")
 
       row_id = row_id(view, "DATABASE_URL")
 
       html = view |> element("#reveal-#{row_id}") |> render_click()
 
       assert html =~ db_value
-      assert has_element?(view, "#secret-value-#{row_id}")
-      assert has_element?(view, "#copy-value-#{row_id}")
+      assert has_element?(view, "#secret-modal")
+      assert has_element?(view, "#secret-modal-value")
+      assert has_element?(view, "#secret-modal-copy")
     end
 
     @tag action: "SEC-A03"
-    test "the control's label is now Hide", %{conn: conn} do
+    test "the modal's copy button carries the full plaintext as its data-value", %{conn: conn} do
+      assert {:ok, %{value: db_value}} = Secrets.Store.get_secret("prod", "DATABASE_URL")
       assert {:ok, view, _html} = live_secrets(conn, "prod")
       row_id = row_id(view, "DATABASE_URL")
 
       view |> element("#reveal-#{row_id}") |> render_click()
 
-      assert view |> element("#reveal-#{row_id}") |> render() =~ "Hide"
+      doc = view |> render() |> LazyHTML.from_fragment()
+
+      assert doc |> LazyHTML.query("#secret-modal-copy") |> LazyHTML.attribute("data-value") ==
+               [db_value]
+    end
+
+    @tag action: "SEC-A03"
+    test "the modal is titled with the secret's key", %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+      row_id = row_id(view, "DATABASE_URL")
+
+      view |> element("#reveal-#{row_id}") |> render_click()
+
+      assert view |> element("#secret-modal-title") |> render() =~ "DATABASE_URL"
     end
 
     @tag action: "SEC-A03"
@@ -406,23 +448,44 @@ defmodule NucleusWeb.SecretsLiveTest do
 
       assert_audit_event(:secret_viewed, tenant: "local")
     end
+
+    test "revealing a second secret replaces the first in the modal", %{conn: conn} do
+      assert {:ok, %{value: db_value}} = Secrets.Store.get_secret("prod", "DATABASE_URL")
+      assert {:ok, %{value: stripe_value}} = Secrets.Store.get_secret("prod", "STRIPE_API_KEY")
+
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+
+      view |> element("#reveal-#{row_id(view, "DATABASE_URL")}") |> render_click()
+      html = view |> element("#reveal-#{row_id(view, "STRIPE_API_KEY")}") |> render_click()
+
+      assert html =~ stripe_value
+      refute html =~ db_value
+    end
   end
 
   describe "SEC-A04 — hide a revealed secret's value" do
+    # The modal offers four dismissal routes. Only the Close button pushes a
+    # plain event a `render_click/1` can drive; the X, Escape, and a backdrop
+    # click all run a `Phoenix.LiveView.JS` command chain through the
+    # component's `data-cancel` attribute, which `Phoenix.LiveViewTest` does
+    # not execute (`docs/adr/0008-test-strategy.md`). Those three are asserted
+    # as wiring here and recorded as browser gaps below — the outcome they
+    # share with Close (the plaintext leaves the DOM) is proven through Close.
+
     @tag action: "SEC-A04"
-    test "clicking Hide removes the plaintext from the payload and restores View", %{
-      conn: conn
-    } do
+    test "the Close button removes the modal and the plaintext with it", %{conn: conn} do
       assert {:ok, %{value: db_value}} = Secrets.Store.get_secret("prod", "DATABASE_URL")
       assert {:ok, view, _html} = live_secrets(conn, "prod")
       row_id = row_id(view, "DATABASE_URL")
 
-      view |> element("#reveal-#{row_id}") |> render_click()
-      html = view |> element("#reveal-#{row_id}") |> render_click()
+      assert view |> element("#reveal-#{row_id}") |> render_click() =~ db_value
+
+      html = view |> element("#secret-modal-dismiss") |> render_click()
 
       refute html =~ db_value
-      refute has_element?(view, "#secret-value-#{row_id}")
-      assert html =~ "View"
+      refute has_element?(view, "#secret-modal")
+      refute has_element?(view, "#secret-modal-value")
+      assert has_element?(view, "#secrets-table")
     end
 
     @tag action: "SEC-A04"
@@ -433,7 +496,7 @@ defmodule NucleusWeb.SecretsLiveTest do
       view |> element("#reveal-#{row_id}") |> render_click()
       assert_audit_event(:secret_viewed)
 
-      view |> element("#reveal-#{row_id}") |> render_click()
+      view |> element("#secret-modal-dismiss") |> render_click()
 
       assert length(audit_events()) == 1
     end
@@ -444,23 +507,91 @@ defmodule NucleusWeb.SecretsLiveTest do
       assert {:ok, view, _html} = live_secrets(conn, "prod")
       row_id = row_id(view, "DATABASE_URL")
 
-      html = view |> element("#reveal-#{row_id}") |> render_click()
-      assert html =~ db_value
-
-      html = view |> element("#reveal-#{row_id}") |> render_click()
-      refute html =~ db_value
-
-      html = view |> element("#reveal-#{row_id}") |> render_click()
-      assert html =~ db_value
+      assert view |> element("#reveal-#{row_id}") |> render_click() =~ db_value
+      refute view |> element("#secret-modal-dismiss") |> render_click() =~ db_value
+      assert view |> element("#reveal-#{row_id}") |> render_click() =~ db_value
 
       events = Enum.filter(audit_events(), &(&1.event == :secret_viewed))
       assert length(events) == 2
+    end
+
+    test "the X, Escape, and a backdrop click are all wired to the same hide push", %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+      row_id = row_id(view, "DATABASE_URL")
+
+      view |> element("#reveal-#{row_id}") |> render_click()
+      doc = view |> render() |> LazyHTML.from_fragment()
+
+      # `on_cancel` is the one place the hide push is declared; the X,
+      # Escape, and the backdrop each `JS.exec` this attribute.
+      assert [cancel] =
+               doc |> LazyHTML.query("#secret-modal") |> LazyHTML.attribute("data-cancel")
+
+      assert cancel =~ "hide"
+
+      container = LazyHTML.query(doc, "#secret-modal-container")
+      assert LazyHTML.attribute(container, "phx-key") == ["escape"]
+      assert LazyHTML.attribute(container, "phx-window-keydown") != []
+      assert LazyHTML.attribute(container, "phx-click-away") != []
+      assert LazyHTML.attribute(container, "role") == ["dialog"]
+      assert LazyHTML.attribute(container, "aria-modal") == ["true"]
+
+      assert doc |> LazyHTML.query("#secret-modal-close") |> LazyHTML.attribute("phx-click") != []
+    end
+
+    test "the hide event is idempotent — a second dismissal cannot crash the view", %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+
+      render_click(view, "hide", %{})
+      render_click(view, "hide", %{})
+
+      assert has_element?(view, "#secrets-table")
+      refute has_element?(view, "#secret-modal")
+    end
+  end
+
+  defmodule SecretRevealModalBrowserGaps do
+    @moduledoc """
+    `SEC-A04` dismissal behaviour `Phoenix.LiveViewTest` structurally cannot
+    execute. Escape and a backdrop click reach the server only by running the
+    `Phoenix.LiveView.JS` chain in `data-cancel`, which needs a real key
+    event, a real click outside the `.modal-box`, and a client to interpret
+    the command list — none of which exist here
+    (`docs/adr/0008-test-strategy.md`). Focus restoration is the same story:
+    `JS.push_focus/1`/`JS.pop_focus/1` are client-side.
+
+    Skipped unconditionally rather than by default-exclude tag, so `mix test`
+    always reports them as skipped instead of silently passing zero
+    assertions, and so the gap is discoverable in the suite itself and not
+    only in `living-notes.md`, once a driver (Wallaby, deferred to `EN-8`) is
+    adopted. None carry `@tag action:` — the describe block above records what
+    is actually proven.
+    """
+
+    use ExUnit.Case, async: true
+
+    @moduletag :browser
+    @moduletag skip: "no browser driver in this repo — see docs/adr/0008-test-strategy.md"
+
+    test "pressing Escape while the modal is open removes it and its plaintext" do
+    end
+
+    test "clicking the backdrop outside the modal box removes it and its plaintext" do
+    end
+
+    test "the X in the top right removes the modal and its plaintext" do
+    end
+
+    test "focus moves into the modal on open and returns to the row's View button on dismissal" do
+    end
+
+    test "Tab is trapped inside the modal while it is open" do
     end
   end
 
   describe "SEC-A05 — handle a failed reveal" do
     @tag action: "SEC-A05"
-    test "store forced :unavailable: error flash shown, value stays absent, control stays View, view alive",
+    test "store forced :unavailable: error flash shown, no modal opens, view alive",
          %{conn: conn} do
       assert {:ok, view, _html} = live_secrets(conn, "prod")
       row_id = row_id(view, "DATABASE_URL")
@@ -470,7 +601,10 @@ defmodule NucleusWeb.SecretsLiveTest do
       html = view |> element("#reveal-#{row_id}") |> render_click()
 
       assert has_element?(view, "#flash-error")
-      refute has_element?(view, "#secret-value-#{row_id}")
+      # A failed reveal must not open an empty dialog — the error belongs on
+      # the page the user is already looking at.
+      refute has_element?(view, "#secret-modal")
+      refute has_element?(view, "#secret-modal-value")
       assert html =~ "View"
       assert has_element?(view, "#secrets-table")
     end
@@ -518,7 +652,7 @@ defmodule NucleusWeb.SecretsLiveTest do
   end
 
   describe "SEC-S4 — reveal state is cleared on navigation" do
-    test "navigating away and back clears the reveal", %{conn: conn} do
+    test "navigating away and back closes the modal and drops the plaintext", %{conn: conn} do
       assert {:ok, %{value: db_value}} = Secrets.Store.get_secret("prod", "DATABASE_URL")
       assert {:ok, view, _html} = live_secrets(conn, "prod")
       row_id = row_id(view, "DATABASE_URL")
@@ -528,34 +662,12 @@ defmodule NucleusWeb.SecretsLiveTest do
 
       html = render_patch(view, "/environments/staging/secrets")
       refute html =~ db_value
+      refute has_element?(view, "#secret-modal")
 
       html = render_patch(view, "/environments/prod/secrets")
       refute html =~ db_value
+      refute has_element?(view, "#secret-modal")
       assert html =~ "View"
-    end
-  end
-
-  describe "SEC-S4 — multiple independent reveals" do
-    test "revealing two secrets independently, then hiding one, leaves the other revealed", %{
-      conn: conn
-    } do
-      assert {:ok, %{value: db_value}} = Secrets.Store.get_secret("prod", "DATABASE_URL")
-      assert {:ok, %{value: stripe_value}} = Secrets.Store.get_secret("prod", "STRIPE_API_KEY")
-
-      assert {:ok, view, _html} = live_secrets(conn, "prod")
-      db_row_id = row_id(view, "DATABASE_URL")
-      stripe_row_id = row_id(view, "STRIPE_API_KEY")
-
-      view |> element("#reveal-#{db_row_id}") |> render_click()
-      html = view |> element("#reveal-#{stripe_row_id}") |> render_click()
-
-      assert html =~ db_value
-      assert html =~ stripe_value
-
-      html = view |> element("#reveal-#{db_row_id}") |> render_click()
-
-      refute html =~ db_value
-      assert html =~ stripe_value
     end
   end
 

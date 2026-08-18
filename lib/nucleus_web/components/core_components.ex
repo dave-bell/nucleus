@@ -576,6 +576,18 @@ defmodule NucleusWeb.CoreComponents do
   sensible place in the underlying page" is this pairing's job, not the
   LiveView's.
 
+  ## Visibility is client-side; presence in the DOM is the caller's call
+
+  `modal-open` only changes whether the markup is *painted*. The markup
+  itself is rendered whenever `modal/1` is, so anything in the inner block is
+  in the DOM — and readable in the page source — while the modal is
+  "closed". That is fine for a form, and not fine for a secret's plaintext.
+  A caller whose modal body must not exist until it is on screen wraps the
+  `<.modal>` itself in a server-side condition and passes `show={true}`, so
+  the element is only ever inserted already-open and is removed, not merely
+  unpainted, on dismissal. `NucleusWeb.SecretsLive`'s reveal modal does
+  exactly that.
+
   ## Examples
 
       <.button phx-click={show_modal("confirm-modal")}>Show modal</.button>
@@ -678,35 +690,60 @@ defmodule NucleusWeb.CoreComponents do
   timer would otherwise fire against a detached element once a row
   re-renders (`SEC-S4`/`SEC-S5`).
 
+  ## Icon-only by default, with the label as a tooltip
+
+  Inside a table row the visible label was the widest part of the button and
+  cost more horizontal space than the path and ARN it sits next to. The
+  default is therefore icon-only: `@label` still reaches assistive
+  technology through `aria-label`, still reaches the hook through
+  `data-label` (which is what the `aria-live` announcement interpolates), and
+  reaches a sighted mouse or keyboard user through daisyUI's `.tooltip` +
+  `data-tip` — CSS `content: attr(data-tip)` on a pseudo-element, so the
+  label text is never a DOM node competing for width, and `.tooltip`'s
+  `:has(:focus-visible)` rule means it appears on keyboard focus too, not
+  only hover.
+
+  The tooltip lives on a **wrapper** `<span>`, never on the button itself:
+  the button carries `phx-update="ignore"`, and putting hover state on an
+  ignored element is exactly the kind of thing that stops surviving a patch.
+
+  `show_label` opts the text back in for somewhere with room for it — a
+  modal's action row, say — and suppresses the tooltip, which would only
+  restate text already on screen.
+
   ## Examples
 
       <.copy_button id="copy-arn" value={@secret.arn} label="Copy ARN" />
+      <.copy_button id="copy-value" value={@secret.value} label="Copy value" show_label />
   """
   attr :id, :string, required: true
   attr :value, :string, required: true
   attr :label, :string, default: "Copy"
+  attr :show_label, :boolean, default: false
   attr :class, :any, default: nil
 
   def copy_button(assigns) do
     ~H"""
-    <button
-      type="button"
-      id={@id}
-      phx-hook=".CopyButton"
-      phx-update="ignore"
-      data-value={@value}
-      data-label={@label}
-      class={["btn btn-ghost btn-sm gap-1", @class]}
-      aria-label={@label}
-    >
-      <span data-copy-icon><.icon name="hero-clipboard-document" class="size-4" /></span>
-      <span data-copied-icon class="hidden"><.icon name="hero-check" class="size-4" /></span>
-      <span data-copy-failed-icon class="hidden">
-        <.icon name="hero-exclamation-triangle" class="size-4" />
-      </span>
-      <span>{@label}</span>
-      <span class="sr-only" aria-live="polite" data-copy-announce></span>
-    </button>
+    <span class={[!@show_label && "tooltip"]} data-tip={!@show_label && @label}>
+      <button
+        type="button"
+        id={@id}
+        phx-hook=".CopyButton"
+        phx-update="ignore"
+        data-value={@value}
+        data-label={@label}
+        class={["btn btn-ghost btn-sm", if(@show_label, do: "gap-1", else: "btn-square"), @class]}
+        aria-label={@label}
+      >
+        <span data-copy-icon><.icon name="hero-clipboard-document" class="size-4" /></span>
+        <span data-copied-icon class="hidden"><.icon name="hero-check" class="size-4" /></span>
+        <span data-copy-failed-icon class="hidden">
+          <.icon name="hero-exclamation-triangle" class="size-4" />
+        </span>
+        <span :if={@show_label}>{@label}</span>
+        <span class="sr-only" aria-live="polite" data-copy-announce></span>
+      </button>
+    </span>
     <script :type={Phoenix.LiveView.ColocatedHook} name=".CopyButton">
       export default {
         mounted() {
