@@ -19,6 +19,7 @@
 | Nucleus's own AWS identity (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_SESSION_TOKEN`) is read ambiently by the `aws` package, with no boot-time check or ops-facing doc — unlike `TENANT_ROLE_ARN`/`AWS_REGION`/`CLUSTER_NAME`/`DEPLOYMENT_NAME`, which all raise at boot | A misconfigured deployment fails per-request as `:not_configured` on first `AssumeRole` call, not at boot | Low | `CLUSTER_NAME`/`DEPLOYMENT_NAME` are now correctly documented in the wiki's `Platform-Operations.md` config reference (issue #22). The ambient `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_SESSION_TOKEN` doc gap remains open — was out of scope for #22 |
 | No browser-driven test coverage for `SEC-A02` (the `navigator.clipboard.writeText` call itself, the confirmation icon swap/revert, the non-secure-context `execCommand` fallback, and the failure indication) or `SEC-A13` (Escape dismissal, focus trap, focus restoration) — `navigator.clipboard` and real key/focus events need a browser, which this repo has no driver for | Tests assert wiring only (hook attached, `data-value` full/untruncated, `phx-update="ignore"` present, `on_cancel` set), never claim `@tag action:` for these IDs — a real regression would not be caught until a browser harness exists | Medium | Add Wallaby once sign-in exists (deferred, EN-8); see `docs/adr/0008-test-strategy.md`. `SEC-S3`'s four gaps are also a skipped `:browser`-tagged placeholder module in `secrets_live_test.exs` |
 | `LOCAL_FORCE_ERROR` (`Nucleus.Backend.Faults`) is node-global, not per-boundary — a fault set for one boundary is seen by every local implementation's next call | A test targeting the `:secrets` boundary's error path is actually caught by whichever boundary is called first; SEC-S2 found this when `Nucleus.Secrets.list/2`'s `Environments.fetch/2` gate always intercepted the fault before `Store.list_secrets/1` ran | Low | Swap in a real/failing module via `Application.put_env(:nucleus, :backends, ...)` instead of `force_error/2` for a specific-boundary test — see `SecretsLiveTest.FailingSecretsStore` |
+| `Nucleus.Secrets.reveal/3`'s key validator is a second, weaker copy of `Environments.validate_name/1`'s deny-list (`..`, `/`, `\`, null byte only — no charset allowlist, no length cap) | A forged key using percent-double-encoding or a control character other than a null byte could still reach `Store.get_secret/2`/`Path.build/2`; cross-environment traversal is still blocked since `/`, `..`, `\` are denied | Low | `SEC-S6` (issue #14, `needs-decision`) should replace this with one shared validator, not add a third — see `docs/adr/0011-secret-reveal-stream-reinsertion-and-audit-test-fallback.md` |
 
 ### Technical Debt Details
 
@@ -110,6 +111,11 @@ deploys it.
   assign depends on another's (`EnvironmentsHook` reads `current_scope.token` after
   `ScopeHook` assigns it) — see `docs/adr/0006-application-shell-and-live-session-composition.md`.
   Keeps every view under the session correct without each one opting in individually.
+- `Nucleus.Audit.Sink.Test` falls back to `Process.get(:"$callers")` when the writing process
+  has no direct `register/1` call — reaches a test's own `AuditCase` registration from inside a
+  mounted LiveView, using the same ancestry chain Ecto's SQL Sandbox relies on. Any test
+  asserting on an audit event emitted from a `handle_event/3` gets this for free; no per-ticket
+  sink workaround needed. See `docs/adr/0011-secret-reveal-stream-reinsertion-and-audit-test-fallback.md`.
 
 ### Gotchas for Maintainers
 - **Requirements are a submodule.** Fresh clones need

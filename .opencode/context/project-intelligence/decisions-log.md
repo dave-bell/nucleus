@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.11 | Updated: 2026-08-17 -->
+<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.12 | Updated: 2026-08-18 -->
 
 # Decisions Log
 
@@ -35,6 +35,7 @@ job and the row should point rather than paraphrase.
 | 8 | Test strategy — `Phoenix.LiveViewTest` + `PhoenixTest`, no browser driver (`SEC-A02`/`SEC-A13` left as recorded browser-only gaps); `BackendCase`/`AuditCase`/`LiveCase`; `mix nucleus.trace` report-only | 2026-08-14 | Decided | `docs/adr/0008-test-strategy.md` |
 | 9 | Environment validation ladder — allowlist over denylist, strict validate-then-fetch ordering, no cache/no fallback ever, validation errors tagged `boundary: :tenant_api` | 2026-08-14 | Decided | `docs/adr/0009-environment-validation-ladder.md` |
 | 10 | Secrets listing — one context call replaces two, ARN-hashed DOM ids with `data-key` carrying the real key, errors matched on `{kind, boundary}` | 2026-08-17 | Decided | `docs/adr/0010-secrets-listing-gate-collapse-and-dom-ids.md` |
+| 11 | Secret reveal — re-stream a converted `SecretRef` (never the value-bearing `Secret`), audit `user:` via `Scope.audit_user/1`, `Nucleus.Audit.Sink.Test` falls back to `$callers` for LiveView-emitted audit events | 2026-08-18 | Decided | `docs/adr/0011-secret-reveal-stream-reinsertion-and-audit-test-fallback.md` |
 
 No **"re-platform" decision** (fresh start) and no **inherited ADRs** — the wiki's `ADR-0001`–
 `ADR-0007` are reference only; adopting one is a decision made on its own merits.
@@ -50,7 +51,7 @@ being edited in place, so the ADR it points at stays findable.
 
 ## Onboarding Checklist
 
-- [ ] Read the Decision Index above; `adr/0001`–`0010` are binding
+- [ ] Read the Decision Index above; `adr/0001`–`0011` are binding
 - [ ] New formal ADRs belong in `docs/adr/`, with only an index row mirrored here — the wiki's
       ADR-0001–0007 are reference only, not adopted
 - [ ] Know which decisions are pending (see `living-notes.md`)

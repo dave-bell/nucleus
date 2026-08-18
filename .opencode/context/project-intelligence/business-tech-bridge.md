@@ -54,14 +54,19 @@ to cite from test names and bug reports.
 sidebar) and `test/nucleus_web/live/shell_test.exs` now exist (EN-7) — a deliberate subset only,
 with no `@tag action:` claimed, so `NAV-A01`–`A12` coverage is still zero until the dedicated
 `NAV-*` ticket lands. `NucleusWeb.SecretsLive` and `test/nucleus_web/live/secrets_live_test.exs`
-also now exist (SEC-S1/#9, SEC-S2/#10, SEC-S3/#11) — `SEC-A01`, `SEC-A02`, `SEC-A14`–`A17` are
-claimed and covered; the module validates and resolves the environment, lists a
-`Nucleus.Secrets` boundary's secrets with a masked value and reveal placeholder, copies a row's
-path/ARN to the clipboard (`SEC-A02` — wiring only; the clipboard write itself is a recorded
-browser gap, `docs/adr/0008-test-strategy.md`), and renders every fail-closed/empty state
-(`SEC-A03`–`A13`, `A18` are SEC-S4–S7 and later). Every other row is unimplemented. These names
-are the agreed target so that work lands consistently — treat them as the convention to follow,
-and correct this table if a better structure emerges.
+**Most "Planned" columns are still unimplemented.** `NucleusWeb.Layouts` (app shell, header,
+sidebar) and `test/nucleus_web/live/shell_test.exs` now exist (EN-7) — a deliberate subset only,
+with no `@tag action:` claimed, so `NAV-A01`–`A12` coverage is still zero until the dedicated
+`NAV-*` ticket lands. `NucleusWeb.SecretsLive` and `test/nucleus_web/live/secrets_live_test.exs`
+also now exist (SEC-S1/#9, SEC-S2/#10, SEC-S3/#11, SEC-S4/#12) — `SEC-A01`–`A05`, `SEC-A14`–`A17`
+are claimed and covered; the module validates and resolves the environment, lists a
+`Nucleus.Secrets` boundary's secrets with a masked value, copies a row's path/ARN to the
+clipboard (`SEC-A02` — wiring only; the clipboard write itself is a recorded browser gap,
+`docs/adr/0008-test-strategy.md`), reveals/hides a value per row with a fresh audited fetch on
+every reveal, and renders every fail-closed/empty/failed-reveal state (`SEC-A06`–`A13`, `A18`
+are SEC-S5–S7 and later). Every other row is unimplemented. These names are the agreed target
+so that work lands consistently — treat them as the convention to follow, and correct this
+table if a better structure emerges.
 
 ## Tagging Convention
 

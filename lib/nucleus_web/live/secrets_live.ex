@@ -64,11 +64,11 @@ defmodule NucleusWeb.SecretsLive do
   which have no `value` field — this module cannot render, prefetch, or leak
   a value during listing even by accident. The "Value" column renders a
   fixed-width mask that does not depend on the real value's length (which
-  would leak it). Revealing a value is `SEC-S4`'s `handle_event("reveal", …)`
-  — this module renders the control and a placeholder handler so a click
-  cannot crash the LiveView before that ticket replaces it. Creating a
-  secret is `SEC-S6`'s modal; the same placeholder-handler rule applies to
-  the create button.
+  would leak it), unless the row's key is in `:revealed` — see "Reveal, hide,
+  and a failed reveal" below for that state. Creating a secret is `SEC-S6`'s
+  modal; this module still only renders a placeholder handler for the create
+  button so a click cannot crash the LiveView before that ticket replaces
+  it.
 
   ## Row DOM ids are a hash of the ARN, not the key (`SEC-S2` decision 2)
 
@@ -95,12 +95,44 @@ defmodule NucleusWeb.SecretsLive do
   Button ids are suffixed with the row's `dom_id`, so they stay unique and
   stable across the same `stream_insert/3` churn the row id itself is
   designed to survive.
+
+  ## Reveal, hide, and a failed reveal (`SEC-S4`)
+
+  `:revealed` is a `%{key => Nucleus.Secrets.Secret.t()}` map — only the
+  secrets a user has actually revealed are in it, and each entry carries its
+  own fresh plaintext value. Nothing here caches a value across a
+  hide/re-reveal cycle: `handle_event("reveal", ...)` always calls
+  `Nucleus.Secrets.reveal/3` again, which is a fresh `Store.get_secret/2`
+  call and a fresh `secret_viewed` audit record every time (`SEC-A03`).
+
+  **Every reveal or hide re-streams the row** (`stream_insert/3`), converting
+  the `Secret` back to a `SecretRef` first — `AGENTS.md` is explicit that an
+  assign changing content *inside* a streamed item must re-stream that item,
+  and this is the single most likely cause of a "reveal does nothing" bug.
+  The stream itself still only ever carries `SecretRef` structs, which have
+  no `value` field — the plaintext lives only in the `:revealed` assign, read
+  directly from `@revealed` in the template, never smuggled into the stream.
+
+  A failed reveal (`SEC-A05`) leaves `:revealed` untouched — the value stays
+  masked, the control stays "View", and a kind-specific flash explains what
+  happened. `:auth_expired` does not yet have `SEC-S7`'s shared handler to
+  delegate to (that ticket is still open) — the copy here is deliberately
+  generic and will move under that handler once it lands, not duplicate it.
+
+  Hiding is local-only: it deletes the key from `:revealed` and re-streams
+  the row, with no backend call and no audit event — the wiki's audit
+  catalogue has no event for hiding a value.
+
+  `:revealed` is reset to `%{}` on every `handle_params/3` call, so patching
+  between environments (or navigating back to this same route) never carries
+  a previously-revealed plaintext value across.
   """
 
   use NucleusWeb, :live_view
 
   alias Nucleus.Backend.Error
   alias Nucleus.Secrets
+  alias Nucleus.Secrets.Secret
   alias Nucleus.Secrets.SecretRef
 
   @masked_value "••••••••"
@@ -120,14 +152,44 @@ defmodule NucleusWeb.SecretsLive do
     socket =
       socket
       |> assign(:environment, environment)
+      |> assign(:revealed, %{})
       |> fetch_secrets(environment)
 
     {:noreply, socket}
   end
 
   @impl Phoenix.LiveView
-  def handle_event("reveal", %{"key" => _key}, socket) do
-    {:noreply, put_flash(socket, :info, "Revealing a secret's value is not yet implemented.")}
+  def handle_event("reveal", %{"key" => key}, socket) do
+    case Secrets.reveal(socket.assigns.environment, key, socket.assigns.current_scope) do
+      {:ok, secret} ->
+        socket =
+          socket
+          |> update(:revealed, &Map.put(&1, key, secret))
+          |> stream_insert(:secrets, to_secret_ref(secret))
+
+        {:noreply, socket}
+
+      {:error, %Error{} = error} ->
+        {:noreply, put_flash(socket, :error, reveal_error_message(error))}
+    end
+  end
+
+  @impl Phoenix.LiveView
+  def handle_event("hide", %{"key" => key}, socket) do
+    {secret, revealed} = Map.pop(socket.assigns.revealed, key)
+
+    socket =
+      case secret do
+        nil ->
+          assign(socket, :revealed, revealed)
+
+        %Secret{} = secret ->
+          socket
+          |> assign(:revealed, revealed)
+          |> stream_insert(:secrets, to_secret_ref(secret))
+      end
+
+    {:noreply, socket}
   end
 
   @impl Phoenix.LiveView
@@ -232,6 +294,7 @@ defmodule NucleusWeb.SecretsLive do
             </thead>
             <tbody id="secrets-table-body" phx-update="stream">
               <tr :for={{dom_id, ref} <- @streams.secrets} id={dom_id} data-key={ref.key}>
+                <% revealed = Map.get(@revealed, ref.key) %>
                 <td>{ref.key}</td>
                 <td>
                   <div class="flex items-center gap-1">
@@ -247,18 +310,30 @@ defmodule NucleusWeb.SecretsLive do
                 </td>
                 <td>{format_last_modified(ref.last_modified)}</td>
                 <td>
-                  <span aria-hidden="true">{masked_value()}</span>
-                  <span class="sr-only">value hidden</span>
+                  <div :if={revealed} class="flex items-center gap-2">
+                    <span id={secret_value_id(dom_id)} class="font-mono text-sm break-all">
+                      {revealed.value}
+                    </span>
+                    <.copy_button
+                      id={copy_value_id(dom_id)}
+                      value={revealed.value}
+                      label="Copy value"
+                    />
+                  </div>
+                  <div :if={!revealed}>
+                    <span aria-hidden="true">{masked_value()}</span>
+                    <span class="sr-only">value hidden</span>
+                  </div>
                 </td>
                 <td>
                   <button
                     id={reveal_id(dom_id)}
                     type="button"
                     class="btn btn-sm"
-                    phx-click="reveal"
+                    phx-click={if revealed, do: "hide", else: "reveal"}
                     phx-value-key={ref.key}
                   >
-                    View
+                    {if revealed, do: "Hide", else: "View"}
                   </button>
                 </td>
               </tr>
@@ -272,11 +347,44 @@ defmodule NucleusWeb.SecretsLive do
 
   defp masked_value, do: @masked_value
 
-  defp dom_id(%SecretRef{arn: arn}) do
+  defp dom_id(%SecretRef{arn: arn}), do: dom_id_from_arn(arn)
+  defp dom_id(%Secret{arn: arn}), do: dom_id_from_arn(arn)
+
+  defp dom_id_from_arn(arn) do
     "secret-" <> (:crypto.hash(:sha256, arn) |> Base.url_encode64(padding: false))
   end
 
   defp reveal_id("secret-" <> hash), do: "reveal-" <> hash
+  defp secret_value_id("secret-" <> hash), do: "secret-value-" <> hash
+  defp copy_value_id("secret-" <> hash), do: "copy-value-" <> hash
+
+  # The stream only ever carries `SecretRef` structs — no `value` field — so
+  # a reveal or hide converts the `Secret` back before re-streaming
+  # (`stream_insert/3`). The plaintext itself lives only in the `:revealed`
+  # assign, read directly in the template.
+  defp to_secret_ref(%Secret{key: key, path: path, arn: arn, last_modified: last_modified}) do
+    %SecretRef{key: key, path: path, arn: arn, last_modified: last_modified}
+  end
+
+  defp reveal_error_message(%Error{kind: :not_found}) do
+    "This secret no longer exists. It may have been removed outside Nucleus."
+  end
+
+  defp reveal_error_message(%Error{kind: :auth_expired}) do
+    "This environment's secrets can't be reached right now."
+  end
+
+  defp reveal_error_message(%Error{kind: :unavailable}) do
+    "Can't retrieve this secret's value right now. Try again shortly."
+  end
+
+  defp reveal_error_message(%Error{kind: :invalid}) do
+    "That secret key isn't valid."
+  end
+
+  defp reveal_error_message(%Error{}) do
+    "Can't retrieve this secret's value right now. Try again shortly."
+  end
 
   defp format_last_modified(nil), do: "—"
 
