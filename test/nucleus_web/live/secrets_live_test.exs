@@ -136,6 +136,173 @@ defmodule NucleusWeb.SecretsLiveTest do
     end
   end
 
+  describe "SEC-A02 — copy a secret's path or ARN" do
+    # `Phoenix.LiveViewTest` cannot execute JS hooks (`docs/adr/0008-test-strategy.md`)
+    # — the actual `navigator.clipboard.writeText` call, the confirmation
+    # icon swap/revert, the non-secure-context fallback, and the failure
+    # indication are recorded as browser gaps, never claimed here. These
+    # tests prove only the wiring the hook depends on: the button is
+    # present per row, carries the colocated hook, and carries the full,
+    # untruncated value at click time — which is why they carry
+    # `@tag action: "SEC-A02"` while the unverified behaviours below do not.
+
+    @tag action: "SEC-A02"
+    test "each row carries a copy button for its path and its ARN", %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+
+      for key <- ["DATABASE_URL", "STRIPE_API_KEY", "JWT_SIGNING_KEY"] do
+        row = view |> element("[data-key=\"#{key}\"]") |> render()
+        doc = LazyHTML.from_fragment(row)
+
+        assert LazyHTML.query(doc, "[id^=\"copy-path-\"]") != []
+        assert LazyHTML.query(doc, "[id^=\"copy-arn-\"]") != []
+      end
+    end
+
+    @tag action: "SEC-A02"
+    test "each copy button carries the colocated hook", %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+
+      row = view |> element("[data-key=\"DATABASE_URL\"]") |> render()
+      doc = LazyHTML.from_fragment(row)
+
+      path_button = LazyHTML.query(doc, "[id^=\"copy-path-\"]")
+      arn_button = LazyHTML.query(doc, "[id^=\"copy-arn-\"]")
+
+      assert [hook] = LazyHTML.attribute(path_button, "phx-hook")
+      assert hook =~ "CopyButton"
+      assert [hook] = LazyHTML.attribute(arn_button, "phx-hook")
+      assert hook =~ "CopyButton"
+    end
+
+    @tag action: "SEC-A02"
+    test "data-value holds the full, untruncated path and ARN — the truncation guard", %{
+      conn: conn
+    } do
+      assert {:ok, refs} = Secrets.list("prod", %Nucleus.Scope{})
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+
+      for ref <- refs do
+        row = view |> element("[data-key=\"#{ref.key}\"]") |> render()
+        doc = LazyHTML.from_fragment(row)
+
+        path_button = LazyHTML.query(doc, "[id^=\"copy-path-\"]")
+        arn_button = LazyHTML.query(doc, "[id^=\"copy-arn-\"]")
+
+        # ARNs here run well past `max-w-xs`'s truncation width — the exact
+        # equality below fails if the source were ever the truncated span
+        # rather than the stream item's own untruncated field.
+        assert LazyHTML.attribute(path_button, "data-value") == [ref.path]
+        assert LazyHTML.attribute(arn_button, "data-value") == [ref.arn]
+      end
+    end
+
+    @tag action: "SEC-A02"
+    test "copy button ids are unique across rows", %{conn: conn} do
+      assert {:ok, _view, html} = live_secrets(conn, "prod")
+      doc = LazyHTML.from_fragment(html)
+
+      path_ids = LazyHTML.query(doc, "[id^=\"copy-path-\"]") |> LazyHTML.attribute("id")
+      arn_ids = LazyHTML.query(doc, "[id^=\"copy-arn-\"]") |> LazyHTML.attribute("id")
+
+      assert length(path_ids) == 3
+      assert length(arn_ids) == 3
+      assert Enum.uniq(path_ids ++ arn_ids) == path_ids ++ arn_ids
+    end
+
+    @tag action: "SEC-A02"
+    test "aria-label distinguishes copying a path from copying an ARN", %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+
+      row = view |> element("[data-key=\"DATABASE_URL\"]") |> render()
+      doc = LazyHTML.from_fragment(row)
+
+      path_button = LazyHTML.query(doc, "[id^=\"copy-path-\"]")
+      arn_button = LazyHTML.query(doc, "[id^=\"copy-arn-\"]")
+
+      assert LazyHTML.attribute(path_button, "aria-label") == ["Copy path"]
+      assert LazyHTML.attribute(arn_button, "aria-label") == ["Copy ARN"]
+    end
+
+    @tag action: "SEC-A02"
+    test "phx-update=\"ignore\" is present so LiveView never patches over confirmation state",
+         %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+
+      row = view |> element("[data-key=\"DATABASE_URL\"]") |> render()
+      doc = LazyHTML.from_fragment(row)
+
+      path_button = LazyHTML.query(doc, "[id^=\"copy-path-\"]")
+      arn_button = LazyHTML.query(doc, "[id^=\"copy-arn-\"]")
+
+      assert LazyHTML.attribute(path_button, "phx-update") == ["ignore"]
+      assert LazyHTML.attribute(arn_button, "phx-update") == ["ignore"]
+    end
+
+    @tag action: "SEC-A02"
+    test "an aria-live region exists for the copy confirmation announcement", %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+
+      row = view |> element("[data-key=\"DATABASE_URL\"]") |> render()
+      doc = LazyHTML.from_fragment(row)
+
+      assert LazyHTML.query(doc, "[aria-live=\"polite\"]") != []
+    end
+
+    @tag action: "SEC-A02"
+    test "copy buttons have no phx-click — copying is client-side only, no server round-trip",
+         %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+      refute has_element?(view, "#flash-info")
+      refute has_element?(view, "#flash-error")
+
+      row = view |> element("[data-key=\"DATABASE_URL\"]") |> render()
+      doc = LazyHTML.from_fragment(row)
+
+      path_button = LazyHTML.query(doc, "[id^=\"copy-path-\"]")
+      arn_button = LazyHTML.query(doc, "[id^=\"copy-arn-\"]")
+
+      assert LazyHTML.attribute(path_button, "phx-click") == []
+      assert LazyHTML.attribute(arn_button, "phx-click") == []
+      assert_no_audit_event(:secret_created)
+      assert_no_audit_event(:secret_viewed)
+      assert_no_audit_event(:secret_updated)
+    end
+  end
+
+  defmodule CopyButtonBrowserGaps do
+    @moduledoc """
+    `SEC-A02` behaviour `Phoenix.LiveViewTest` structurally cannot execute —
+    there is no browser here to run `navigator.clipboard`, no real click
+    event dispatch, and no wall clock for a `setTimeout` revert
+    (`docs/adr/0008-test-strategy.md`). Skipped unconditionally, not by
+    default-exclude tag, so `mix test` output always shows these as skipped
+    rather than silently passing zero assertions — and so they are
+    discoverable in the suite itself, not only in `living-notes.md`, once a
+    driver (Wallaby, deferred to `EN-8`) is adopted.
+
+    None of these carry `@tag action: "SEC-A02"` — see the wiring-only
+    describe block above for what is actually proven today.
+    """
+
+    use ExUnit.Case, async: true
+
+    @moduletag :browser
+    @moduletag skip: "no browser driver in this repo — see docs/adr/0008-test-strategy.md"
+
+    test "navigator.clipboard.writeText is called with the button's full, untruncated value" do
+    end
+
+    test "on success, the icon swaps to a check and reverts to the clipboard icon after ~2s" do
+    end
+
+    test "over a non-secure context (no navigator.clipboard), the execCommand fallback copies" do
+    end
+
+    test "a failed copy (permission denied, unfocused document) shows failure, never success" do
+    end
+  end
+
   describe "SEC-A14 — empty state for an environment with no secrets" do
     @tag action: "SEC-A14"
     test "renders #secrets-empty, no #secrets-table", %{conn: conn} do

@@ -649,13 +649,34 @@ defmodule NucleusWeb.CoreComponents do
   Renders a copy-to-clipboard button — `SEC-A02`.
 
   Pure client-side: the value is already on the page, so a round-trip to the
-  server would add nothing. The colocated `.CopyButton` hook uses
-  `navigator.clipboard.writeText` where available, falling back to a hidden
-  `<textarea>` + `document.execCommand("copy")` both when the API is
-  undefined (non-secure contexts — `navigator.clipboard` only exists on
-  HTTPS/localhost) and when it rejects (e.g. a permissions prompt denial).
-  Confirmation is a ~2s icon swap plus an `aria-live="polite"` announcement,
-  per `SEC-A02` ("receives brief visual confirmation").
+  server would add nothing. `phx-update="ignore"` is set because the
+  colocated `.CopyButton` hook mutates its own icon/announce children
+  directly — LiveView must never patch over that state mid-confirmation. The
+  value itself is read from `data-value` at click time rather than cached in
+  `mounted()`, since an ignored subtree does not otherwise pick up a
+  re-rendered attribute if the row's value ever changes.
+
+  The hook uses `navigator.clipboard.writeText` where available. Three
+  distinct failure paths are handled without ever showing a false success
+  (a false confirmation means the user pastes stale clipboard content into a
+  config file):
+
+    * `navigator.clipboard` is `undefined` — a non-secure context (plain
+      HTTP on a non-localhost origin). Falls back to a hidden `<textarea>` +
+      `document.execCommand("copy")`.
+    * `writeText` rejects — permission denied, or `NotAllowedError` because
+      the document isn't focused. Shown as a failure, not retried through
+      the fallback (a rejection here is a real "no", not "API unavailable").
+    * The `execCommand` fallback itself returns `false` or throws — also
+      shown as a failure.
+
+  Confirmation and failure are both a ~2s icon swap plus an
+  `aria-live="polite"` announcement, per `SEC-A02` ("receives brief visual
+  confirmation"). Any pending revert timer is cleared before starting a new
+  one, so rapid repeat clicks cannot leave the icon stuck, and again in
+  `destroyed()` — LiveView reuses DOM nodes across patches, and a leaked
+  timer would otherwise fire against a detached element once a row
+  re-renders (`SEC-S4`/`SEC-S5`).
 
   ## Examples
 
@@ -672,6 +693,7 @@ defmodule NucleusWeb.CoreComponents do
       type="button"
       id={@id}
       phx-hook=".CopyButton"
+      phx-update="ignore"
       data-value={@value}
       data-label={@label}
       class={["btn btn-ghost btn-sm gap-1", @class]}
@@ -679,6 +701,9 @@ defmodule NucleusWeb.CoreComponents do
     >
       <span data-copy-icon><.icon name="hero-clipboard-document" class="size-4" /></span>
       <span data-copied-icon class="hidden"><.icon name="hero-check" class="size-4" /></span>
+      <span data-copy-failed-icon class="hidden">
+        <.icon name="hero-exclamation-triangle" class="size-4" />
+      </span>
       <span>{@label}</span>
       <span class="sr-only" aria-live="polite" data-copy-announce></span>
     </button>
@@ -687,15 +712,19 @@ defmodule NucleusWeb.CoreComponents do
         mounted() {
           this.icon = this.el.querySelector("[data-copy-icon]")
           this.checkIcon = this.el.querySelector("[data-copied-icon]")
+          this.failIcon = this.el.querySelector("[data-copy-failed-icon]")
           this.announce = this.el.querySelector("[data-copy-announce]")
           this.el.addEventListener("click", () => this.copy())
+        },
+        destroyed() {
+          clearTimeout(this._resetTimer)
         },
         copy() {
           const value = this.el.dataset.value
           if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(value)
               .then(() => this.confirm())
-              .catch(() => this.fallbackCopy(value))
+              .catch(() => this.fail())
           } else {
             this.fallbackCopy(value)
           }
@@ -709,20 +738,30 @@ defmodule NucleusWeb.CoreComponents do
           document.body.appendChild(textarea)
           textarea.select()
           try {
-            const ok = document.execCommand("copy")
-            if (ok) this.confirm()
+            document.execCommand("copy") ? this.confirm() : this.fail()
+          } catch (_error) {
+            this.fail()
           } finally {
             document.body.removeChild(textarea)
           }
         },
         confirm() {
+          this.showState(this.checkIcon, `${this.el.dataset.label} copied`)
+        },
+        fail() {
+          this.showState(this.failIcon, `${this.el.dataset.label} failed to copy`)
+        },
+        showState(activeIcon, message) {
           this.icon.classList.add("hidden")
-          this.checkIcon.classList.remove("hidden")
-          this.announce.textContent = `${this.el.dataset.label} copied`
+          this.checkIcon.classList.add("hidden")
+          this.failIcon.classList.add("hidden")
+          activeIcon.classList.remove("hidden")
+          this.announce.textContent = message
           clearTimeout(this._resetTimer)
           this._resetTimer = setTimeout(() => {
             this.icon.classList.remove("hidden")
             this.checkIcon.classList.add("hidden")
+            this.failIcon.classList.add("hidden")
             this.announce.textContent = ""
           }, 2000)
         }
