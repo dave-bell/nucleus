@@ -8,15 +8,17 @@ defmodule NucleusWeb.SecretsLiveTest do
   defmodule FailingSecretsStore do
     @moduledoc """
     A `Nucleus.Secrets.Store` implementation that always fails `list_secrets/1`
-    with a controllable `Nucleus.Backend.Error`.
+    and `get_secret/2` with a controllable `Nucleus.Backend.Error`.
 
     `Nucleus.Backend.Faults`' `LOCAL_FORCE_ERROR` is node-global and checked by
-    `Nucleus.TenantApi.Local` too — since `Nucleus.Secrets.list/2` gates through
-    `Nucleus.Environments.fetch/2` first, a global fault is always caught there
-    (`boundary: :tenant_api`) and the store is never reached. Swapping the
-    `:secrets` boundary's implementation instead, the same technique
+    `Nucleus.TenantApi.Local` too — since `Nucleus.Secrets.list/2` and
+    `Nucleus.Secrets.reveal/3` both gate through `Nucleus.Environments.fetch/2`
+    first, a global fault is always caught there (`boundary: :tenant_api`) and
+    the store is never reached. Swapping the `:secrets` boundary's
+    implementation instead, the same technique
     `test/nucleus/environments_test.exs`'s `ExplodingTenantApi` uses, is the
-    only way to exercise a `boundary: :secrets` failure from this LiveView.
+    only way to exercise a `boundary: :secrets` failure from this LiveView —
+    for both listing (`SEC-A17`) and a failed reveal (`SEC-A05`).
     """
     @behaviour Nucleus.Secrets.Store
 
@@ -26,7 +28,9 @@ defmodule NucleusWeb.SecretsLiveTest do
     end
 
     @impl Nucleus.Secrets.Store
-    def get_secret(_environment, _key), do: raise("should not be called")
+    def get_secret(_environment, _key) do
+      {:error, Error.new(:unavailable, :secrets, "forced for test", %{})}
+    end
 
     @impl Nucleus.Secrets.Store
     def create_secret(_environment, _key, _value), do: raise("should not be called")
@@ -342,22 +346,216 @@ defmodule NucleusWeb.SecretsLiveTest do
   end
 
   describe "placeholder handlers do not crash the LiveView" do
-    test "clicking the reveal control does not crash", %{conn: conn} do
-      assert {:ok, view, _html} = live_secrets(conn, "prod")
-
-      view
-      |> element("button[phx-value-key=\"DATABASE_URL\"]")
-      |> render_click()
-
-      assert has_element?(view, "#secrets-table")
-    end
-
     test "clicking the create button does not crash", %{conn: conn} do
       assert {:ok, view, _html} = live_secrets(conn, "prod")
 
       view |> element("#secrets-create-button") |> render_click()
 
       assert has_element?(view, "#secrets-table")
+    end
+  end
+
+  describe "SEC-A03 — reveal a secret's value" do
+    @tag action: "SEC-A03"
+    test "shows plaintext, a copy affordance, and flips the control to Hide", %{conn: conn} do
+      assert {:ok, %{value: db_value}} = Secrets.Store.get_secret("prod", "DATABASE_URL")
+      assert {:ok, view, html} = live_secrets(conn, "prod")
+      refute html =~ db_value
+
+      row_id = row_id(view, "DATABASE_URL")
+
+      html = view |> element("#reveal-#{row_id}") |> render_click()
+
+      assert html =~ db_value
+      assert has_element?(view, "#secret-value-#{row_id}")
+      assert has_element?(view, "#copy-value-#{row_id}")
+    end
+
+    @tag action: "SEC-A03"
+    test "the control's label is now Hide", %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+      row_id = row_id(view, "DATABASE_URL")
+
+      view |> element("#reveal-#{row_id}") |> render_click()
+
+      assert view |> element("#reveal-#{row_id}") |> render() =~ "Hide"
+    end
+
+    @tag action: "SEC-A03"
+    test "only the revealed secret's value appears — other seeded values stay absent", %{
+      conn: conn
+    } do
+      assert {:ok, %{value: stripe_value}} = Secrets.Store.get_secret("prod", "STRIPE_API_KEY")
+      assert {:ok, %{value: jwt_value}} = Secrets.Store.get_secret("prod", "JWT_SIGNING_KEY")
+
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+      row_id = row_id(view, "DATABASE_URL")
+
+      html = view |> element("#reveal-#{row_id}") |> render_click()
+
+      refute html =~ stripe_value
+      refute html =~ jwt_value
+    end
+
+    @tag action: "SEC-A03"
+    test "emits a secret_viewed audit event", %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+      row_id = row_id(view, "DATABASE_URL")
+
+      view |> element("#reveal-#{row_id}") |> render_click()
+
+      assert_audit_event(:secret_viewed, tenant: "local")
+    end
+  end
+
+  describe "SEC-A04 — hide a revealed secret's value" do
+    @tag action: "SEC-A04"
+    test "clicking Hide removes the plaintext from the payload and restores View", %{
+      conn: conn
+    } do
+      assert {:ok, %{value: db_value}} = Secrets.Store.get_secret("prod", "DATABASE_URL")
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+      row_id = row_id(view, "DATABASE_URL")
+
+      view |> element("#reveal-#{row_id}") |> render_click()
+      html = view |> element("#reveal-#{row_id}") |> render_click()
+
+      refute html =~ db_value
+      refute has_element?(view, "#secret-value-#{row_id}")
+      assert html =~ "View"
+    end
+
+    @tag action: "SEC-A04"
+    test "hiding emits no audit event", %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+      row_id = row_id(view, "DATABASE_URL")
+
+      view |> element("#reveal-#{row_id}") |> render_click()
+      assert_audit_event(:secret_viewed)
+
+      view |> element("#reveal-#{row_id}") |> render_click()
+
+      assert length(audit_events()) == 1
+    end
+
+    @tag action: "SEC-A04"
+    test "reveal -> hide -> reveal works and emits two events", %{conn: conn} do
+      assert {:ok, %{value: db_value}} = Secrets.Store.get_secret("prod", "DATABASE_URL")
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+      row_id = row_id(view, "DATABASE_URL")
+
+      html = view |> element("#reveal-#{row_id}") |> render_click()
+      assert html =~ db_value
+
+      html = view |> element("#reveal-#{row_id}") |> render_click()
+      refute html =~ db_value
+
+      html = view |> element("#reveal-#{row_id}") |> render_click()
+      assert html =~ db_value
+
+      events = Enum.filter(audit_events(), &(&1.event == :secret_viewed))
+      assert length(events) == 2
+    end
+  end
+
+  describe "SEC-A05 — handle a failed reveal" do
+    @tag action: "SEC-A05"
+    test "store forced :unavailable: error flash shown, value stays absent, control stays View, view alive",
+         %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+      row_id = row_id(view, "DATABASE_URL")
+
+      use_failing_secrets_store()
+
+      html = view |> element("#reveal-#{row_id}") |> render_click()
+
+      assert has_element?(view, "#flash-error")
+      refute has_element?(view, "#secret-value-#{row_id}")
+      assert html =~ "View"
+      assert has_element?(view, "#secrets-table")
+    end
+
+    @tag action: "SEC-A05"
+    test "store forced :not_found: distinct error copy", %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+
+      render_click(view, "reveal", %{"key" => "NO_SUCH_KEY"})
+
+      not_found_message = view |> element("#flash-error") |> render()
+      assert not_found_message =~ "no longer exists"
+
+      use_failing_secrets_store()
+      row_id = row_id(view, "DATABASE_URL")
+      unavailable_message = view |> element("#reveal-#{row_id}") |> render_click()
+
+      refute unavailable_message =~ "no longer exists"
+    end
+
+    @tag action: "SEC-A05"
+    test "the failure is distinguishable from success: the error element is present", %{
+      conn: conn
+    } do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+      row_id = row_id(view, "DATABASE_URL")
+
+      use_failing_secrets_store()
+
+      view |> element("#reveal-#{row_id}") |> render_click()
+
+      assert has_element?(view, "#flash-error")
+    end
+
+    @tag action: "SEC-A05"
+    test "a forged phx-value-key containing '..' produces an error and no crash", %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+
+      render_click(view, "reveal", %{"key" => "../../other-env/secret"})
+
+      assert has_element?(view, "#flash-error")
+      assert has_element?(view, "#secrets-table")
+      refute_audit_contains("../../other-env/secret")
+    end
+  end
+
+  describe "SEC-S4 — reveal state is cleared on navigation" do
+    test "navigating away and back clears the reveal", %{conn: conn} do
+      assert {:ok, %{value: db_value}} = Secrets.Store.get_secret("prod", "DATABASE_URL")
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+      row_id = row_id(view, "DATABASE_URL")
+
+      html = view |> element("#reveal-#{row_id}") |> render_click()
+      assert html =~ db_value
+
+      html = render_patch(view, "/environments/staging/secrets")
+      refute html =~ db_value
+
+      html = render_patch(view, "/environments/prod/secrets")
+      refute html =~ db_value
+      assert html =~ "View"
+    end
+  end
+
+  describe "SEC-S4 — multiple independent reveals" do
+    test "revealing two secrets independently, then hiding one, leaves the other revealed", %{
+      conn: conn
+    } do
+      assert {:ok, %{value: db_value}} = Secrets.Store.get_secret("prod", "DATABASE_URL")
+      assert {:ok, %{value: stripe_value}} = Secrets.Store.get_secret("prod", "STRIPE_API_KEY")
+
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+      db_row_id = row_id(view, "DATABASE_URL")
+      stripe_row_id = row_id(view, "STRIPE_API_KEY")
+
+      view |> element("#reveal-#{db_row_id}") |> render_click()
+      html = view |> element("#reveal-#{stripe_row_id}") |> render_click()
+
+      assert html =~ db_value
+      assert html =~ stripe_value
+
+      html = view |> element("#reveal-#{db_row_id}") |> render_click()
+
+      refute html =~ db_value
+      assert html =~ stripe_value
     end
   end
 
@@ -448,5 +646,19 @@ defmodule NucleusWeb.SecretsLiveTest do
 
   defp key_position(html, key) do
     :binary.match(html, key) |> elem(0)
+  end
+
+  # `SEC-S2` decision 2: the row id is a hash of the ARN, not the key — a
+  # test selects on `[data-key="..."]` and reads the id LiveView actually
+  # assigned, rather than recomputing the sha256 hash itself (`docs/adr/0010`).
+  defp row_id(view, key) do
+    document = view |> render() |> LazyHTML.from_fragment()
+
+    ["secret-" <> hash] =
+      document
+      |> LazyHTML.query(~s([data-key="#{key}"]))
+      |> LazyHTML.attribute("id")
+
+    hash
   end
 end
