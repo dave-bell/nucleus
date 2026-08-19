@@ -117,6 +117,59 @@ defmodule Nucleus.SecretsTest do
     )
   end
 
+  defmodule FailingUpdateSecretStore do
+    @moduledoc """
+    A `Nucleus.Secrets.Store` implementation whose `update_secret/3` always
+    fails `:unavailable`, mirroring `FailingGetSecretStore` above — same
+    reasoning: `LOCAL_FORCE_ERROR` is node-global and would be intercepted by
+    `update/4`'s environment gate (`boundary: :tenant_api`) first.
+
+    `get_secret/2` delegates to the real `Nucleus.Secrets.Store.Local`, so a
+    test can still confirm the value is unchanged after a forced update
+    failure.
+    """
+    @behaviour Nucleus.Secrets.Store
+
+    @impl Nucleus.Secrets.Store
+    def list_secrets(_environment), do: raise("should not be called")
+
+    @impl Nucleus.Secrets.Store
+    def get_secret(environment, key) do
+      Nucleus.Secrets.Store.Local.get_secret(environment, key)
+    end
+
+    @impl Nucleus.Secrets.Store
+    def create_secret(_environment, _key, _value), do: raise("should not be called")
+
+    @impl Nucleus.Secrets.Store
+    def update_secret(_environment, _key, _value) do
+      {:error, Error.new(:unavailable, :secrets, "forced for test", %{})}
+    end
+
+    @impl Nucleus.Secrets.Store
+    def locate_secret(_environment, _key), do: raise("should not be called")
+
+    @impl Nucleus.Secrets.Store
+    def list_environments, do: raise("should not be called")
+
+    @impl Nucleus.Secrets.Store
+    def list_all_secrets, do: raise("should not be called")
+
+    @impl Nucleus.Secrets.Store
+    def health_check, do: raise("should not be called")
+  end
+
+  defp use_failing_get_secret_or_update_store do
+    original = Application.get_env(:nucleus, :backends, [])
+    on_exit(fn -> Application.put_env(:nucleus, :backends, original) end)
+
+    Application.put_env(
+      :nucleus,
+      :backends,
+      Keyword.put(original, :secrets, FailingUpdateSecretStore)
+    )
+  end
+
   describe "list/2 — SEC-A01 shape" do
     @tag action: "SEC-A01"
     test "returns SecretRef structs with key, path, arn populated" do
@@ -282,6 +335,157 @@ defmodule Nucleus.SecretsTest do
         end)
 
       refute log =~ @db_url_value
+    end
+  end
+
+  describe "update/4 — SEC-A06 success" do
+    @tag action: "SEC-A06"
+    test "changes the value; a subsequent reveal/3 returns the new value" do
+      assert {:ok, %SecretRef{key: "DATABASE_URL"}} =
+               Secrets.update("prod", "DATABASE_URL", "new-value", @scope)
+
+      assert {:ok, %Secret{value: "new-value"}} =
+               Secrets.reveal("prod", "DATABASE_URL", @scope)
+    end
+
+    @tag action: "SEC-A06"
+    test "emits exactly one secret_updated with the full path as resource" do
+      assert {:ok, ref} = Secrets.update("prod", "DATABASE_URL", "new-value", @scope)
+
+      assert_audit_event(:secret_updated, tenant: "acme", resource: ref.path)
+
+      events = Enum.filter(audit_events(), &(&1.event == :secret_updated))
+      assert length(events) == 1
+    end
+
+    @tag action: "SEC-A06"
+    test "the AUD-A02 guard — refute_audit_contains/1 for both the old and the new value" do
+      Secrets.update("prod", "DATABASE_URL", "new-value", @scope)
+
+      refute_audit_contains(@db_url_value)
+      refute_audit_contains("new-value")
+    end
+
+    @tag action: "SEC-A06"
+    test "user is Scope.audit_user/1's result, falling back to username when email is absent" do
+      scope = %Scope{tenant: "acme", user: %{email: nil, username: "auser"}}
+
+      Secrets.update("prod", "DATABASE_URL", "new-value", scope)
+
+      assert_audit_event(:secret_updated, user: "auser")
+    end
+
+    @tag action: "SEC-A06"
+    test "resource is the full path, not the bare key" do
+      assert {:ok, ref} = Secrets.update("prod", "DATABASE_URL", "new-value", @scope)
+
+      record = assert_audit_event(:secret_updated)
+      assert record.resource == ref.path
+      refute record.resource == "DATABASE_URL"
+    end
+
+    @tag action: "SEC-A06"
+    test "returns a SecretRef, with no value key" do
+      assert {:ok, ref} = Secrets.update("prod", "DATABASE_URL", "new-value", @scope)
+
+      refute Map.has_key?(ref, :value)
+    end
+  end
+
+  describe "update/4 — SEC-A06 missing key" do
+    @tag action: "SEC-A06"
+    test "on a missing key returns :not_found, creates nothing, emits no audit event" do
+      assert {:error, %Error{kind: :not_found}} =
+               Secrets.update("prod", "NO_SUCH_KEY", "value", @scope)
+
+      assert {:error, %Error{kind: :not_found}} =
+               Secrets.reveal("prod", "NO_SUCH_KEY", @scope)
+
+      assert_no_audit_event(:secret_updated)
+    end
+  end
+
+  describe "update/4 — SEC-A08 validation failures" do
+    @tag action: "SEC-A08"
+    test "an over-4096-character value is :invalid, no store call, no audit event" do
+      use_exploding_secrets_store()
+      too_long = String.duplicate("a", 4097)
+
+      assert {:error, %Error{kind: :invalid}} =
+               Secrets.update("prod", "DATABASE_URL", too_long, @scope)
+
+      assert_no_audit_event(:secret_updated)
+    end
+
+    @tag action: "SEC-A08"
+    test "an empty value is :invalid" do
+      use_exploding_secrets_store()
+
+      assert {:error, %Error{kind: :invalid}} =
+               Secrets.update("prod", "DATABASE_URL", "", @scope)
+
+      assert_no_audit_event(:secret_updated)
+    end
+
+    @tag action: "SEC-A08"
+    test "a forged key containing '..' is :invalid, no store call" do
+      use_exploding_secrets_store()
+
+      assert {:error, %Error{kind: :invalid}} =
+               Secrets.update("prod", "../../other-env/secret", "value", @scope)
+
+      assert_no_audit_event(:secret_updated)
+    end
+
+    @tag action: "SEC-A08"
+    test "a forced store :unavailable emits no audit event; the value is unchanged in the store" do
+      original = Secrets.Store.get_secret("prod", "DATABASE_URL")
+      use_failing_get_secret_or_update_store()
+
+      assert {:error, %Error{kind: :unavailable, boundary: :secrets}} =
+               Secrets.update("prod", "DATABASE_URL", "attempted-new-value", @scope)
+
+      assert_no_audit_event(:secret_updated)
+      assert original == Secrets.Store.get_secret("prod", "DATABASE_URL")
+    end
+  end
+
+  describe "update/4 — value length boundary" do
+    @tag action: "SEC-A06"
+    test "a 4096-character value succeeds; 4097 fails" do
+      exactly_max = String.duplicate("a", 4096)
+      over_max = String.duplicate("a", 4097)
+
+      assert {:ok, _ref} = Secrets.update("prod", "DATABASE_URL", exactly_max, @scope)
+
+      assert {:error, %Error{kind: :invalid}} =
+               Secrets.update("prod", "DATABASE_URL", over_max, @scope)
+    end
+
+    @tag action: "SEC-A06"
+    test "a multi-byte value of 4096 characters succeeds — String.length, not byte_size" do
+      # "é" is two bytes in UTF-8 but one character.
+      multibyte_value = String.duplicate("é", 4096)
+      assert String.length(multibyte_value) == 4096
+      assert byte_size(multibyte_value) > 4096
+
+      assert {:ok, _ref} = Secrets.update("prod", "DATABASE_URL", multibyte_value, @scope)
+    end
+  end
+
+  describe "update/4 — no value in logs" do
+    test "neither the old nor the new value appears in captured log output, success or failure" do
+      new_value = "brand-new-value"
+
+      log =
+        capture_log(fn ->
+          Secrets.update("prod", "DATABASE_URL", new_value, @scope)
+          Secrets.update("prod", "NO_SUCH_KEY", new_value, @scope)
+          Secrets.update("prod", "DATABASE_URL", "", @scope)
+        end)
+
+      refute log =~ @db_url_value
+      refute log =~ new_value
     end
   end
 end

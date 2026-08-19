@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/notes | Priority: high | Version: 1.13 | Updated: 2026-08-18 -->
+<!-- Context: project-intelligence/notes | Priority: high | Version: 1.14 | Updated: 2026-08-18 -->
 
 # Living Notes
 
@@ -19,7 +19,6 @@
 | Nucleus's own AWS identity (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_SESSION_TOKEN`) is read ambiently by the `aws` package, with no boot-time check or ops-facing doc — unlike `TENANT_ROLE_ARN`/`AWS_REGION`/`CLUSTER_NAME`/`DEPLOYMENT_NAME`, which all raise at boot | A misconfigured deployment fails per-request as `:not_configured` on first `AssumeRole` call, not at boot | Low | `CLUSTER_NAME`/`DEPLOYMENT_NAME` are now correctly documented in the wiki's `Platform-Operations.md` config reference (issue #22). The ambient `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_SESSION_TOKEN` doc gap remains open — was out of scope for #22 |
 | No browser-driven test coverage for `SEC-A02` (the `navigator.clipboard.writeText` call itself, the confirmation face swap/revert — an icon in a row, the word "Copied" in the modal — the non-secure-context `execCommand` fallback, the failure indication, and the hover/`:focus-visible` reveal of any tooltip, now on path and ARN values as well as the copy buttons) or for modal dismissal — `SEC-A13`'s focus trap and focus restoration, plus `SEC-A04`'s Escape and backdrop-click routes, which reach the server only by running the `JS` chain in `data-cancel` | Tests assert wiring only (hook attached, `data-value` full/untruncated, `phx-update="ignore"` present, `data-tip` set, `on_cancel`/`phx-key`/`phx-click-away` present), and claim `@tag action:` for `SEC-A04` **only** via the Close button, whose plain `phx-click="hide"` a `render_click/1` can actually drive | Medium | Add Wallaby once sign-in exists (deferred, EN-8); see `docs/adr/0008-test-strategy.md`. Both gap sets are skipped `:browser`-tagged placeholder modules in `secrets_live_test.exs` — `CopyButtonBrowserGaps` (4) and `SecretRevealModalBrowserGaps` (5) |
 | `LOCAL_FORCE_ERROR` (`Nucleus.Backend.Faults`) is node-global, not per-boundary — a fault set for one boundary is seen by every local implementation's next call | A test targeting the `:secrets` boundary's error path is actually caught by whichever boundary is called first; SEC-S2 found this when `Nucleus.Secrets.list/2`'s `Environments.fetch/2` gate always intercepted the fault before `Store.list_secrets/1` ran | Low | Swap in a real/failing module via `Application.put_env(:nucleus, :backends, ...)` instead of `force_error/2` for a specific-boundary test — see `SecretsLiveTest.FailingSecretsStore` |
-| `SEC-S5`'s plan (issue #13) specifies the reveal-before-edit gate against "the `:revealed` map established by SEC-S4", which ADR-0012 replaced with a single `%Secret{}` or `nil` | Following the plan literally will not compile; and a row-level Edit button is now the wrong shape, since reveal state lives only while the modal is open | Medium | Gate on `socket.assigns.revealed` being a `%Secret{}` whose `key` matches — still server-side, still re-checked on save — and put the edit affordance inside the reveal modal. `SEC-A07`'s re-masking then comes free with dismissal. Commented on #13 |
 | `Nucleus.Secrets.reveal/3`'s key validator is a second, weaker copy of `Environments.validate_name/1`'s deny-list (`..`, `/`, `\`, null byte only — no charset allowlist, no length cap) | A forged key using percent-double-encoding or a control character other than a null byte could still reach `Store.get_secret/2`/`Path.build/2`; cross-environment traversal is still blocked since `/`, `..`, `\` are denied | Low | `SEC-S6` (issue #14, `needs-decision`) should replace this with one shared validator, not add a third — see `docs/adr/0011-secret-reveal-stream-reinsertion-and-audit-test-fallback.md` |
 
 ### Technical Debt Details
@@ -121,6 +120,17 @@ deploys it.
   mounted LiveView, using the same ancestry chain Ecto's SQL Sandbox relies on. Any test
   asserting on an audit event emitted from a `handle_event/3` gets this for free; no per-ticket
   sink workaround needed. See `docs/adr/0011-secret-reveal-stream-reinsertion-and-audit-test-fallback.md`.
+- A LiveView form backed by a tiny `embedded_schema` + `Ecto.Changeset`, one module per form
+  (`NucleusWeb.SecretsLive.EditForm`), with shape validation (length, emptiness) delegated to a
+  plain function (`Nucleus.Secrets.Value.validate/1`) via `validate_change/3` — so the inline
+  error shown while typing and the error the context function returns on submission are the same
+  text, defined once. `SEC-S6`'s creation form is expected to follow this shape and reuse
+  `Value.validate/1` rather than invent a second copy. See
+  `docs/adr/0013-secret-edit-in-modal-and-value-form.md`.
+- Swap a modal's *content* in place (an `:editing`-style boolean toggling which `~H` block
+  renders inside one already-open `<.modal>`) rather than stacking a second `<.modal>` over the
+  first — sidesteps ADR-0012's `focusStack`/`JS.pop_focus/1` double-pop risk entirely instead of
+  needing a fix for it. See `docs/adr/0013-secret-edit-in-modal-and-value-form.md`.
 
 ### Gotchas for Maintainers
 - **Requirements are a submodule.** Fresh clones need
@@ -155,6 +165,15 @@ deploys it.
 ## Archive (Resolved Items)
 
 Moved here for historical reference.
+
+**`SEC-S5`'s plan (issue #13) was stale under ADR-0012** — *was: Technical Debt, Medium*
+*Resolved*: 2026-08-18 by SEC-S5 (issue #13).
+*Outcome*: Gated on `socket.assigns.revealed` matching `%Secret{key: ^key}`, not a map lookup.
+The edit affordance moved inside the reveal modal, swapping its content in place rather than
+stacking a second `<.modal>` — which also sidesteps ADR-0012's `focusStack` double-pop risk
+entirely instead of needing a fix for it. `SEC-A07`'s re-masking came free with `:revealed` going
+to `nil` on save success, exactly as ADR-0012 predicted.
+*See*: `docs/adr/0013-secret-edit-in-modal-and-value-form.md`
 
 **`NucleusWeb.SecretsLive` was a placeholder** — *was: Technical Debt, Medium*
 *Resolved*: 2026-08-14 by SEC-S1 (issue #9); listing added 2026-08-17 by SEC-S2 (issue #10).

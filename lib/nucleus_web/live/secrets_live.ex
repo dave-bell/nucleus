@@ -156,13 +156,62 @@ defmodule NucleusWeb.SecretsLive do
   `:revealed` is reset to `nil` on every `handle_params/3` call, so patching
   between environments (or navigating back to this same route) never carries
   a previously-revealed plaintext value across.
+
+  ## Editing lives inside the reveal modal, not a row (`SEC-S5`)
+
+  The plan this ticket originally shipped with (issue #13) specified the
+  reveal-before-edit gate against "the `:revealed` map established by
+  SEC-S4" and a row-level Edit button. Both are stale by the time this
+  module implements them: `#43`/ADR-0012 (above) already narrowed
+  `:revealed` to a single `%Secret{}` or `nil`, so there is no map, and
+  reveal state now lives only as long as the modal is open — a row-level
+  Edit button would almost always hit the gate and dead-end, since a user
+  who reveals, dismisses, and then clicks a row's Edit has nothing left to
+  edit against. See `docs/adr/0012-...md`'s own "Negative" consequences and
+  `living-notes.md`'s Technical Debt entry for this ticket, both of which
+  record the correction this module implements:
+
+  - **The gate checks `socket.assigns.revealed` is a `%Secret{}` whose `key`
+    matches the incoming key** — still server-side, in `handle_event/3`,
+    still re-checked on save. `handle_event("edit", %{"key" => key}, ...)`
+    and `handle_event("save_edit", %{"key" => key, ...}, ...)` both pattern
+    match `%Secret{key: ^key}` and reject (flash, no other effect) on
+    anything else, including no reveal at all. Hiding the Edit button unless
+    revealed is UI convenience; a `phx-click` can be dispatched directly
+    against the socket regardless of what is rendered, so the check here is
+    the actual gate.
+  - **Edit swaps the modal's own content, in place** — there is no second
+    `<.modal>`. `:editing` (boolean) toggles between the value-display
+    content and a `to_form/2`-built edit form, both inside the same
+    `#secret-modal`. This sidesteps ADR-0012's recorded `focusStack`
+    gotcha entirely: two modals stacked would have the inner one's dismissal
+    consume the outer one's saved `JS.push_focus/1` call, and swapping
+    content in one modal never opens a second one.
+  - **`SEC-A07`'s re-masking is a consequence of `:revealed` going to `nil`
+    on save success, not a separate step.** Because the modal is wrapped in
+    `:if={@revealed}` (see above), clearing `:revealed` removes the modal —
+    plaintext and edit form both — from the DOM in the same assign that
+    confirms success. There is nothing else to re-mask.
+  - **Save starts disabled and enables only once the entered value differs
+    from `@revealed.value`.** A dirty-check, not merely non-empty — decided
+    directly for this ticket rather than following the plan's DOM id table
+    literally, since that table assumed a row-scoped edit control this
+    module does not have. The disabled attribute is UI convenience only;
+    the reveal-before-edit gate above is what actually stops a save.
+  - **Cancel clears `:editing`/`:edit_form` only.** `:revealed` is
+    untouched — `SEC-A06`'s "cancel to discard the change" is not
+    `SEC-A04`'s hide, and the value stays revealed exactly as it does today
+    when a user dismisses nothing at all.
   """
 
   use NucleusWeb, :live_view
 
   alias Nucleus.Backend.Error
   alias Nucleus.Secrets
+  alias Nucleus.Secrets.Secret
   alias Nucleus.Secrets.SecretRef
+  alias Nucleus.Secrets.Value
+  alias NucleusWeb.SecretsLive.EditForm
 
   @modal_id "secret-modal"
 
@@ -182,6 +231,9 @@ defmodule NucleusWeb.SecretsLive do
       socket
       |> assign(:environment, environment)
       |> assign(:revealed, nil)
+      |> assign(:editing, false)
+      |> assign(:edit_form, nil)
+      |> assign(:edit_error, nil)
       |> fetch_secrets(environment)
 
     {:noreply, socket}
@@ -191,7 +243,14 @@ defmodule NucleusWeb.SecretsLive do
   def handle_event("reveal", %{"key" => key}, socket) do
     case Secrets.reveal(socket.assigns.environment, key, socket.assigns.current_scope) do
       {:ok, secret} ->
-        {:noreply, assign(socket, :revealed, secret)}
+        socket =
+          socket
+          |> assign(:revealed, secret)
+          |> assign(:editing, false)
+          |> assign(:edit_form, nil)
+          |> assign(:edit_error, nil)
+
+        {:noreply, socket}
 
       {:error, %Error{} = error} ->
         {:noreply, put_flash(socket, :error, reveal_error_message(error))}
@@ -203,7 +262,86 @@ defmodule NucleusWeb.SecretsLive do
   # so there is nothing to identify.
   @impl Phoenix.LiveView
   def handle_event("hide", _params, socket) do
-    {:noreply, assign(socket, :revealed, nil)}
+    socket =
+      socket
+      |> assign(:revealed, nil)
+      |> assign(:editing, false)
+      |> assign(:edit_form, nil)
+      |> assign(:edit_error, nil)
+
+    {:noreply, socket}
+  end
+
+  # `SEC-A06`'s reveal-before-edit gate: `key` is forgeable via
+  # `phx-value-key`, exactly like `reveal/3`'s `key` argument, so this
+  # pattern-matches `socket.assigns.revealed` — never trusts the UI having
+  # hidden the Edit button — and rejects anything that is not a `%Secret{}`
+  # for this exact key. Hiding a button is convenience; this check is the
+  # gate.
+  @impl Phoenix.LiveView
+  def handle_event("edit", %{"key" => key}, socket) do
+    case socket.assigns.revealed do
+      %Secret{key: ^key} = secret ->
+        socket =
+          socket
+          |> assign(:editing, true)
+          |> assign(:edit_form, build_edit_form(secret.value))
+          |> assign(:edit_error, nil)
+
+        {:noreply, socket}
+
+      _not_revealed ->
+        {:noreply, put_flash(socket, :error, "Reveal the value before editing it.")}
+    end
+  end
+
+  @impl Phoenix.LiveView
+  def handle_event("validate_edit", %{"secret" => params}, socket) do
+    if socket.assigns.editing do
+      changeset =
+        %EditForm{}
+        |> EditForm.changeset(params)
+        |> Map.put(:action, :validate)
+
+      {:noreply, assign(socket, :edit_form, to_form(changeset, as: :secret))}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  # Re-checked here, not only in "edit" — the reveal could have been cleared
+  # (a hide, a navigation) between opening the form and submitting it.
+  @impl Phoenix.LiveView
+  def handle_event("save_edit", %{"key" => key, "secret" => params}, socket) do
+    case socket.assigns.revealed do
+      %Secret{key: ^key} ->
+        changeset =
+          %EditForm{}
+          |> EditForm.changeset(params)
+          |> Map.put(:action, :validate)
+
+        if changeset.valid? do
+          save_edit(socket, key, Ecto.Changeset.get_field(changeset, :value))
+        else
+          {:noreply, assign(socket, :edit_form, to_form(changeset, as: :secret))}
+        end
+
+      _not_revealed ->
+        {:noreply, put_flash(socket, :error, "Reveal the value before editing it.")}
+    end
+  end
+
+  @impl Phoenix.LiveView
+  def handle_event("cancel_edit", _params, socket) do
+    # `:revealed` is untouched — cancelling an edit is not hiding
+    # (`SEC-A04`), and no backend call or audit event happens on this path.
+    socket =
+      socket
+      |> assign(:editing, false)
+      |> assign(:edit_form, nil)
+      |> assign(:edit_error, nil)
+
+    {:noreply, socket}
   end
 
   @impl Phoenix.LiveView
@@ -214,6 +352,41 @@ defmodule NucleusWeb.SecretsLive do
   @impl Phoenix.LiveView
   def handle_event("retry", _params, socket) do
     {:noreply, fetch_secrets(socket, socket.assigns.environment)}
+  end
+
+  defp save_edit(socket, key, value) do
+    case Secrets.update(socket.assigns.environment, key, value, socket.assigns.current_scope) do
+      {:ok, ref} ->
+        socket =
+          socket
+          # `SEC-A07`: re-masked because `:revealed` goes to `nil`, which
+          # also removes the modal (and the edit form inside it) from the
+          # DOM — there is no separate re-mask step.
+          |> assign(:revealed, nil)
+          |> assign(:editing, false)
+          |> assign(:edit_form, nil)
+          |> assign(:edit_error, nil)
+          |> put_flash(:info, "#{key} was updated.")
+          |> stream_insert(:secrets, ref)
+
+        {:noreply, socket}
+
+      {:error, %Error{} = error} ->
+        # `SEC-A08`: the form stays open (`:editing` untouched, `:edit_form`
+        # keeps the submitted value via the caller's own reassignment below)
+        # and `:revealed` is untouched — a failure must not re-mask.
+        changeset =
+          %EditForm{}
+          |> EditForm.changeset(%{"value" => value})
+          |> Map.put(:action, :validate)
+
+        socket =
+          socket
+          |> assign(:edit_form, to_form(changeset, as: :secret))
+          |> assign(:edit_error, edit_error_message(error))
+
+        {:noreply, socket}
+    end
   end
 
   defp fetch_secrets(socket, environment) do
@@ -347,32 +520,85 @@ defmodule NucleusWeb.SecretsLive do
         --%>
         <.modal :if={@revealed} id={modal_id()} show on_cancel={JS.push("hide")}>
           <:title>{@revealed.key}</:title>
-          <%!--
-          `tabindex="0"` is not decoration: `max-h-60` is about twelve lines
-          of `font-mono text-sm`, and a PEM key or a service-account JSON blob
-          runs past that. Without it the region scrolls for a mouse and is
-          unreachable for a keyboard, since `focus_wrap` cycles only the three
-          buttons. `role="region"` + a name is what makes a focus stop on
-          non-interactive content announce as something rather than nothing.
-          --%>
-          <div
-            id="secret-modal-value"
-            tabindex="0"
-            role="region"
-            aria-label="Secret value"
-            class="font-mono text-sm break-all select-all rounded-box bg-base-200 p-3 max-h-60 overflow-y-auto"
-          >
-            {@revealed.value}
-          </div>
-          <div class="modal-action">
-            <.copy_button
-              id="secret-modal-copy"
-              value={@revealed.value}
-              label="Copy value"
-              show_label
-            />
-            <.button id="secret-modal-dismiss" phx-click="hide">Close</.button>
-          </div>
+          <%= if @editing do %>
+            <.form
+              for={@edit_form}
+              id="secret-edit-form"
+              phx-change="validate_edit"
+              phx-submit="save_edit"
+            >
+              <input type="hidden" name="key" value={@revealed.key} />
+              <.input
+                field={@edit_form[:value]}
+                id="secret-edit-value"
+                type="textarea"
+                label="Value"
+                rows="6"
+                class="w-full textarea font-mono text-sm"
+              />
+              <div id="secret-edit-count" class="text-xs text-base-content/70 text-right mt-1">
+                {edit_value_length(@edit_form)}/{Value.max_length()} characters
+              </div>
+              <p
+                :if={@edit_error}
+                id="secret-edit-error"
+                role="alert"
+                class="text-error text-sm mt-2"
+              >
+                {@edit_error}
+              </p>
+              <div class="modal-action">
+                <.button id="cancel-edit" type="button" phx-click="cancel_edit">
+                  Cancel
+                </.button>
+                <.button
+                  id="save-edit"
+                  type="submit"
+                  variant="primary"
+                  disabled={not edit_dirty?(@edit_form, @revealed.value)}
+                  phx-disable-with="Saving..."
+                >
+                  Save
+                </.button>
+              </div>
+            </.form>
+          <% else %>
+            <%!--
+            `tabindex="0"` is not decoration: `max-h-60` is about twelve lines
+            of `font-mono text-sm`, and a PEM key or a service-account JSON
+            blob runs past that. Without it the region scrolls for a mouse
+            and is unreachable for a keyboard, since `focus_wrap` cycles only
+            the buttons. `role="region"` + a name is what makes a focus stop
+            on non-interactive content announce as something rather than
+            nothing.
+            --%>
+            <div
+              id="secret-modal-value"
+              tabindex="0"
+              role="region"
+              aria-label="Secret value"
+              class="font-mono text-sm break-all select-all rounded-box bg-base-200 p-3 max-h-60 overflow-y-auto"
+            >
+              {@revealed.value}
+            </div>
+            <div class="modal-action">
+              <.button
+                id="edit-secret"
+                variant="primary"
+                phx-click="edit"
+                phx-value-key={@revealed.key}
+              >
+                Edit
+              </.button>
+              <.copy_button
+                id="secret-modal-copy"
+                value={@revealed.value}
+                label="Copy value"
+                show_label
+              />
+              <.button id="secret-modal-dismiss" phx-click="hide">Close</.button>
+            </div>
+          <% end %>
         </.modal>
       </div>
     </Layouts.app>
@@ -407,6 +633,55 @@ defmodule NucleusWeb.SecretsLive do
 
   defp reveal_error_message(%Error{}) do
     "Can't retrieve this secret's value right now. Try again shortly."
+  end
+
+  # `SEC-A08`'s kind-specific copy for a failed save — mirrors
+  # `reveal_error_message/1`'s shape, but distinct text: a reveal failure
+  # means no dialog opens at all, where a save failure means the dialog (and
+  # the user's typed value) must stay exactly where it was.
+  defp edit_error_message(%Error{kind: :not_found}) do
+    "This secret no longer exists. It may have been removed outside Nucleus."
+  end
+
+  defp edit_error_message(%Error{kind: :auth_expired}) do
+    "This environment's secrets can't be reached right now."
+  end
+
+  defp edit_error_message(%Error{kind: :unavailable}) do
+    "Can't save this value right now. Try again shortly."
+  end
+
+  defp edit_error_message(%Error{kind: :invalid}) do
+    "That value isn't valid."
+  end
+
+  defp edit_error_message(%Error{}) do
+    "Can't save this value right now. Try again shortly."
+  end
+
+  # Fresh each time, never reused across a reveal/edit cycle — a schemaless
+  # `%EditForm{}` prefilled with the currently-revealed value, unvalidated
+  # (`action: nil`) so opening the form shows no errors before the user has
+  # typed anything.
+  defp build_edit_form(value) do
+    %EditForm{}
+    |> EditForm.changeset(%{"value" => value})
+    |> to_form(as: :secret)
+  end
+
+  defp edit_value_length(form) do
+    form[:value].value
+    |> to_string()
+    |> String.length()
+  end
+
+  # Save starts disabled and enables only once the entered value differs
+  # from the currently-revealed one — decided directly for this ticket, not
+  # merely "non-empty". Convenience only: the reveal-before-edit gate in
+  # `handle_event("save_edit", ...)` is what actually stops a save, not this
+  # attribute.
+  defp edit_dirty?(form, original_value) do
+    to_string(form[:value].value) != to_string(original_value)
   end
 
   defp format_last_modified(nil), do: "—"
