@@ -141,9 +141,10 @@ defmodule NucleusWeb.SecretsLive do
   modal is open it is behind a backdrop and cannot be clicked, so a "Hide"
   label there would be state nobody can act on, and the modal's own dismiss
   controls are the hide affordance `SEC-A04` asks for (see
-  `docs/adr/0012-secret-reveal-modal.md`). This also keeps the stream free of
-  reveal state entirely: it carries `SecretRef` structs, which have no
-  `value` field, and it is never re-inserted for a reveal.
+  `docs/adr/0012-secret-reveal-modal-and-icon-only-copy-affordances.md`). This
+  also keeps the stream free of reveal state entirely: it carries `SecretRef`
+  structs, which have no `value` field, and it is never re-inserted for a
+  reveal.
 
   A failed reveal (`SEC-A05`) leaves `:revealed` as `nil` — no modal opens,
   so there is no blank dialog to explain, and a kind-specific flash on the
