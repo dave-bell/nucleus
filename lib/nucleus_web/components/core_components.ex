@@ -576,6 +576,18 @@ defmodule NucleusWeb.CoreComponents do
   sensible place in the underlying page" is this pairing's job, not the
   LiveView's.
 
+  ## Visibility is client-side; presence in the DOM is the caller's call
+
+  `modal-open` only changes whether the markup is *painted*. The markup
+  itself is rendered whenever `modal/1` is, so anything in the inner block is
+  in the DOM — and readable in the page source — while the modal is
+  "closed". That is fine for a form, and not fine for a secret's plaintext.
+  A caller whose modal body must not exist until it is on screen wraps the
+  `<.modal>` itself in a server-side condition and passes `show={true}`, so
+  the element is only ever inserted already-open and is removed, not merely
+  unpainted, on dismissal. `NucleusWeb.SecretsLive`'s reveal modal does
+  exactly that.
+
   ## Examples
 
       <.button phx-click={show_modal("confirm-modal")}>Show modal</.button>
@@ -670,49 +682,103 @@ defmodule NucleusWeb.CoreComponents do
     * The `execCommand` fallback itself returns `false` or throws — also
       shown as a failure.
 
-  Confirmation and failure are both a ~2s icon swap plus an
-  `aria-live="polite"` announcement, per `SEC-A02` ("receives brief visual
-  confirmation"). Any pending revert timer is cleared before starting a new
-  one, so rapid repeat clicks cannot leave the icon stuck, and again in
+  Confirmation and failure are both a ~2s swap of the button's visible face
+  plus an `aria-live="polite"` announcement, per `SEC-A02` ("receives brief
+  visual confirmation"). Any pending revert timer is cleared before starting a
+  new one, so rapid repeat clicks cannot leave the button stuck, and again in
   `destroyed()` — LiveView reuses DOM nodes across patches, and a leaked
   timer would otherwise fire against a detached element once a row
-  re-renders (`SEC-S4`/`SEC-S5`).
+  re-renders (`SEC-S5`).
+
+  ## Three faces, one visible at a time
+
+  The button renders three mutually-exclusive children — `data-copy-idle`,
+  `data-copy-done`, `data-copy-failed` — and the hook does nothing but toggle
+  `hidden` between them. What a face *contains* is the template's business,
+  not the hook's, which is what lets the same hook drive both variants below
+  without branching. They are not called "icon" for that reason: in the
+  labelled variant a face is a word.
+
+  ## Icon-only by default, with the label as a tooltip
+
+  Inside a table row the visible label was the widest part of the button and
+  cost more horizontal space than the path and ARN it sits next to. The
+  default is therefore icon-only: `@label` still reaches assistive
+  technology through `aria-label`, still reaches the hook through
+  `data-label` (which is what the `aria-live` announcement interpolates), and
+  reaches a sighted mouse or keyboard user through daisyUI's `.tooltip` +
+  `data-tip` — CSS `content: attr(data-tip)` on a pseudo-element, so the
+  label text is never a DOM node competing for width, and `.tooltip`'s
+  `:has(:focus-visible)` rule means it appears on keyboard focus too, not
+  only hover.
+
+  The tooltip lives on a **wrapper** `<span>`, never on the button itself:
+  the button carries `phx-update="ignore"`, and putting hover state on an
+  ignored element is exactly the kind of thing that stops surviving a patch.
+
+  ## `show_label` — text only, full size, no icon
+
+  `show_label` is for somewhere with room for the words and a sibling
+  `<.button>` to line up with: a modal's action row. It renders text with no
+  icon at all, so the three faces become "Copy value" / "Copied" / "Copy
+  failed", and it drops `btn-sm` so the height matches `button/1`'s default
+  `btn`. The tooltip goes too — it would only restate text already on screen.
+
+  `min-w-32` is on that variant for one reason: swapping the label's text
+  changes the button's intrinsic width, and in a `justify-end` action row that
+  would shove every sibling sideways for two seconds on each copy. The floor
+  is wide enough for the longest of the three faces, so nothing moves.
 
   ## Examples
 
       <.copy_button id="copy-arn" value={@secret.arn} label="Copy ARN" />
+      <.copy_button id="copy-value" value={@secret.value} label="Copy value" show_label />
   """
   attr :id, :string, required: true
   attr :value, :string, required: true
   attr :label, :string, default: "Copy"
+  attr :show_label, :boolean, default: false
   attr :class, :any, default: nil
 
   def copy_button(assigns) do
     ~H"""
-    <button
-      type="button"
-      id={@id}
-      phx-hook=".CopyButton"
-      phx-update="ignore"
-      data-value={@value}
-      data-label={@label}
-      class={["btn btn-ghost btn-sm gap-1", @class]}
-      aria-label={@label}
-    >
-      <span data-copy-icon><.icon name="hero-clipboard-document" class="size-4" /></span>
-      <span data-copied-icon class="hidden"><.icon name="hero-check" class="size-4" /></span>
-      <span data-copy-failed-icon class="hidden">
-        <.icon name="hero-exclamation-triangle" class="size-4" />
-      </span>
-      <span>{@label}</span>
-      <span class="sr-only" aria-live="polite" data-copy-announce></span>
-    </button>
+    <span class={[!@show_label && "tooltip"]} data-tip={!@show_label && @label}>
+      <button
+        type="button"
+        id={@id}
+        phx-hook=".CopyButton"
+        phx-update="ignore"
+        data-value={@value}
+        data-label={@label}
+        class={[
+          "btn btn-ghost",
+          if(@show_label, do: "min-w-32", else: "btn-sm btn-square"),
+          @class
+        ]}
+        aria-label={@label}
+      >
+        <%= if @show_label do %>
+          <span data-copy-idle>{@label}</span>
+          <span data-copy-done class="hidden">Copied</span>
+          <span data-copy-failed class="hidden">Copy failed</span>
+        <% else %>
+          <span data-copy-idle><.icon name="hero-clipboard-document" class="size-4" /></span>
+          <span data-copy-done class="hidden"><.icon name="hero-check" class="size-4" /></span>
+          <span data-copy-failed class="hidden">
+            <.icon name="hero-exclamation-triangle" class="size-4" />
+          </span>
+        <% end %>
+        <span class="sr-only" aria-live="polite" data-copy-announce></span>
+      </button>
+    </span>
     <script :type={Phoenix.LiveView.ColocatedHook} name=".CopyButton">
       export default {
         mounted() {
-          this.icon = this.el.querySelector("[data-copy-icon]")
-          this.checkIcon = this.el.querySelector("[data-copied-icon]")
-          this.failIcon = this.el.querySelector("[data-copy-failed-icon]")
+          this.faces = {
+            idle: this.el.querySelector("[data-copy-idle]"),
+            done: this.el.querySelector("[data-copy-done]"),
+            failed: this.el.querySelector("[data-copy-failed]")
+          }
           this.announce = this.el.querySelector("[data-copy-announce]")
           this.el.addEventListener("click", () => this.copy())
         },
@@ -746,24 +812,24 @@ defmodule NucleusWeb.CoreComponents do
           }
         },
         confirm() {
-          this.showState(this.checkIcon, `${this.el.dataset.label} copied`)
+          this.showFace("done", `${this.el.dataset.label} copied`)
         },
         fail() {
-          this.showState(this.failIcon, `${this.el.dataset.label} failed to copy`)
+          this.showFace("failed", `${this.el.dataset.label} failed to copy`)
         },
-        showState(activeIcon, message) {
-          this.icon.classList.add("hidden")
-          this.checkIcon.classList.add("hidden")
-          this.failIcon.classList.add("hidden")
-          activeIcon.classList.remove("hidden")
+        showFace(name, message) {
+          this.reveal(name)
           this.announce.textContent = message
           clearTimeout(this._resetTimer)
           this._resetTimer = setTimeout(() => {
-            this.icon.classList.remove("hidden")
-            this.checkIcon.classList.add("hidden")
-            this.failIcon.classList.add("hidden")
+            this.reveal("idle")
             this.announce.textContent = ""
           }, 2000)
+        },
+        reveal(name) {
+          for (const face in this.faces) {
+            this.faces[face].classList.toggle("hidden", face !== name)
+          }
         }
       }
     </script>

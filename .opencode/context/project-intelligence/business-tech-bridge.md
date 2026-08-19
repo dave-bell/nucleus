@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.5 | Updated: 2026-08-18 -->
+<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.6 | Updated: 2026-08-18 -->
 
 # Business ↔ Tech Bridge
 
@@ -54,19 +54,23 @@ to cite from test names and bug reports.
 sidebar) and `test/nucleus_web/live/shell_test.exs` now exist (EN-7) — a deliberate subset only,
 with no `@tag action:` claimed, so `NAV-A01`–`A12` coverage is still zero until the dedicated
 `NAV-*` ticket lands. `NucleusWeb.SecretsLive` and `test/nucleus_web/live/secrets_live_test.exs`
-**Most "Planned" columns are still unimplemented.** `NucleusWeb.Layouts` (app shell, header,
-sidebar) and `test/nucleus_web/live/shell_test.exs` now exist (EN-7) — a deliberate subset only,
-with no `@tag action:` claimed, so `NAV-A01`–`A12` coverage is still zero until the dedicated
-`NAV-*` ticket lands. `NucleusWeb.SecretsLive` and `test/nucleus_web/live/secrets_live_test.exs`
 also now exist (SEC-S1/#9, SEC-S2/#10, SEC-S3/#11, SEC-S4/#12) — `SEC-A01`–`A05`, `SEC-A14`–`A17`
 are claimed and covered; the module validates and resolves the environment, lists a
-`Nucleus.Secrets` boundary's secrets with a masked value, copies a row's path/ARN to the
-clipboard (`SEC-A02` — wiring only; the clipboard write itself is a recorded browser gap,
-`docs/adr/0008-test-strategy.md`), reveals/hides a value per row with a fresh audited fetch on
-every reveal, and renders every fail-closed/empty/failed-reveal state (`SEC-A06`–`A13`, `A18`
-are SEC-S5–S7 and later). Every other row is unimplemented. These names are the agreed target
-so that work lands consistently — treat them as the convention to follow, and correct this
-table if a better structure emerges.
+`Nucleus.Secrets` boundary's secrets **with no value column at all** (no plaintext and no mask —
+ADR-0012), copies a row's path/ARN to the clipboard from icon-only buttons whose label is a
+tooltip (`SEC-A02` — wiring only; the clipboard write itself is a recorded browser gap,
+`docs/adr/0008-test-strategy.md`), reveals a value into a modal that is only in the DOM while it
+is open, with a fresh audited fetch on every reveal, and renders every
+fail-closed/empty/failed-reveal state (`SEC-A06`–`A13`, `A18` are SEC-S5–S7 and later). Every
+other row is unimplemented. These names are the agreed target so that work lands consistently —
+treat them as the convention to follow, and correct this table if a better structure emerges.
+
+Two conformance notes worth carrying forward, both recorded in
+`docs/adr/0012-secret-reveal-modal-and-icon-only-copy-affordances.md`:
+`SEC-A03`'s "the control changes to 'Hide'" is **not** implemented literally — the row's control
+always reads "View" and the modal's dismiss controls are the hide affordance. `SEC-A04` is
+claimed on the modal's Close button only, the one dismissal route `Phoenix.LiveViewTest` can
+drive; Escape and a backdrop click are wiring-only browser gaps.
 
 ## Tagging Convention
 
@@ -76,7 +80,7 @@ needed to use it:
 ```elixir
 describe "SEC-A03 — reveal a secret's value" do
   @tag action: "SEC-A03"
-  test "reveals plaintext and flips the control to Hide", %{conn: conn} do
+  test "opens a modal holding the plaintext and its own copy affordance", %{conn: conn} do
     # ...
   end
 end
@@ -141,7 +145,8 @@ Each wiki action has an `Actor` / `Given` / `When` / `Then`, and often an `API:`
 **Technical Implementation**:
 - Solution: `NucleusWeb.SecretsLive` over an SSM Parameter Store client behind a swappable
   behaviour, reached by assuming a scoped role in the tenant's AWS account
-- Architecture: values fetched live per reveal; nothing cached (stateless constraint)
+- Architecture: values fetched live per reveal; nothing cached (stateless constraint), and a
+  revealed value exists in the DOM only while its modal is drawn
 - Trade-offs: `SEC-A06` requires a value be *revealed before it can be edited*, deliberately
   trading a slower edit path for protection against blind overwrites
 

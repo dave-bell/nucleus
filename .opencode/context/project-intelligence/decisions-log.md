@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.12 | Updated: 2026-08-18 -->
+<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.13 | Updated: 2026-08-18 -->
 
 # Decisions Log
 
@@ -36,6 +36,7 @@ job and the row should point rather than paraphrase.
 | 9 | Environment validation ladder — allowlist over denylist, strict validate-then-fetch ordering, no cache/no fallback ever, validation errors tagged `boundary: :tenant_api` | 2026-08-14 | Decided | `docs/adr/0009-environment-validation-ladder.md` |
 | 10 | Secrets listing — one context call replaces two, ARN-hashed DOM ids with `data-key` carrying the real key, errors matched on `{kind, boundary}` | 2026-08-17 | Decided | `docs/adr/0010-secrets-listing-gate-collapse-and-dom-ids.md` |
 | 11 | Secret reveal — re-stream a converted `SecretRef` (never the value-bearing `Secret`), audit `user:` via `Scope.audit_user/1`, `Nucleus.Audit.Sink.Test` falls back to `$callers` for LiveView-emitted audit events | 2026-08-18 | Decided | `docs/adr/0011-secret-reveal-stream-reinsertion-and-audit-test-fallback.md` |
+| 12 | Secret reveal moves into a conditionally-rendered modal (plaintext never in the DOM while closed), Value column deleted outright, copy buttons icon-only with the label as a daisyUI tooltip; partially supersedes #11's map/re-stream mechanics | 2026-08-18 | Decided | `docs/adr/0012-secret-reveal-modal-and-icon-only-copy-affordances.md` |
 
 No **"re-platform" decision** (fresh start) and no **inherited ADRs** — the wiki's `ADR-0001`–
 `ADR-0007` are reference only; adopting one is a decision made on its own merits.
@@ -45,13 +46,19 @@ live socket — narrowed by EN-6 to a fixed `Nucleus.Scope.token` field, open on
 
 ## Deprecated Decisions
 
-*None — no decision has been overturned yet.* Record one here when it happens: the decision, the
-date, what replaced it, and why. A superseded row keeps its number and moves here rather than
-being edited in place, so the ADR it points at stays findable.
+Row **11**'s reveal *mechanics* are partially superseded by row 12 (2026-08-18): `:revealed` is a
+single `Secret` rather than a `%{key => Secret.t()}` map, and a reveal or hide no longer calls
+`stream_insert/3` because no row markup depends on reveal state. Row 11 keeps its number and its
+ADR — its `SecretRef`-only stream guarantee, its `Scope.audit_user/1` decision, and its `$callers`
+sink fallback all still stand. Read `0011` then `0012`, in that order.
+
+A wholly overturned decision is recorded here in full: the decision, the date, what replaced it,
+and why. A superseded row keeps its number and moves here rather than being edited in place, so
+the ADR it points at stays findable.
 
 ## Onboarding Checklist
 
-- [ ] Read the Decision Index above; `adr/0001`–`0011` are binding
+- [ ] Read the Decision Index above; `adr/0001`–`0012` are binding
 - [ ] New formal ADRs belong in `docs/adr/`, with only an index row mirrored here — the wiki's
       ADR-0001–0007 are reference only, not adopted
 - [ ] Know which decisions are pending (see `living-notes.md`)
