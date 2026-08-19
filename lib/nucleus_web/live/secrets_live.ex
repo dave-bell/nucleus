@@ -534,7 +534,7 @@ defmodule NucleusWeb.SecretsLive do
                 type="textarea"
                 label="Value"
                 rows="6"
-                class="font-mono text-sm"
+                class="w-full textarea font-mono text-sm"
               />
               <div id="secret-edit-count" class="text-xs text-base-content/70 text-right mt-1">
                 {edit_value_length(@edit_form)}/{Value.max_length()} characters
@@ -554,7 +554,7 @@ defmodule NucleusWeb.SecretsLive do
                 <.button
                   id="save-edit"
                   type="submit"
-                  class="btn-primary"
+                  variant="primary"
                   disabled={not edit_dirty?(@edit_form, @revealed.value)}
                   phx-disable-with="Saving..."
                 >
@@ -582,7 +582,12 @@ defmodule NucleusWeb.SecretsLive do
               {@revealed.value}
             </div>
             <div class="modal-action">
-              <.button id="edit-secret" phx-click="edit" phx-value-key={@revealed.key}>
+              <.button
+                id="edit-secret"
+                variant="primary"
+                phx-click="edit"
+                phx-value-key={@revealed.key}
+              >
                 Edit
               </.button>
               <.copy_button
