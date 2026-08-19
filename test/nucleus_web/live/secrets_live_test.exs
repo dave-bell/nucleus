@@ -742,6 +742,352 @@ defmodule NucleusWeb.SecretsLiveTest do
     end
   end
 
+  defmodule FailingUpdateSecretsStore do
+    @moduledoc """
+    A `Nucleus.Secrets.Store` implementation whose `update_secret/3` always
+    fails `:unavailable` while `list_secrets/1` and `get_secret/2` delegate
+    to the real `Nucleus.Secrets.Store.Local` — so a reveal (needed to open
+    the edit form in the first place) still succeeds, and only the save
+    itself fails. Mirrors `FailingSecretsStore`'s reasoning for why swapping
+    the boundary's implementation, not `LOCAL_FORCE_ERROR`, is the only way
+    to force a `boundary: :secrets` failure from this LiveView.
+    """
+    @behaviour Nucleus.Secrets.Store
+
+    @impl Nucleus.Secrets.Store
+    def list_secrets(environment), do: Nucleus.Secrets.Store.Local.list_secrets(environment)
+
+    @impl Nucleus.Secrets.Store
+    def get_secret(environment, key), do: Nucleus.Secrets.Store.Local.get_secret(environment, key)
+
+    @impl Nucleus.Secrets.Store
+    def create_secret(_environment, _key, _value), do: raise("should not be called")
+
+    @impl Nucleus.Secrets.Store
+    def update_secret(_environment, _key, _value) do
+      {:error, Error.new(:unavailable, :secrets, "forced for test", %{})}
+    end
+
+    @impl Nucleus.Secrets.Store
+    def locate_secret(_environment, _key), do: raise("should not be called")
+
+    @impl Nucleus.Secrets.Store
+    def list_environments, do: raise("should not be called")
+
+    @impl Nucleus.Secrets.Store
+    def list_all_secrets, do: raise("should not be called")
+
+    @impl Nucleus.Secrets.Store
+    def health_check, do: raise("should not be called")
+  end
+
+  defp use_failing_update_secrets_store do
+    original = Application.get_env(:nucleus, :backends, [])
+    on_exit(fn -> Application.put_env(:nucleus, :backends, original) end)
+
+    Application.put_env(
+      :nucleus,
+      :backends,
+      Keyword.put(original, :secrets, FailingUpdateSecretsStore)
+    )
+  end
+
+  defp restore_secrets_store do
+    original = Application.get_env(:nucleus, :backends, [])
+
+    Application.put_env(
+      :nucleus,
+      :backends,
+      Keyword.put(original, :secrets, Secrets.Store.Local)
+    )
+  end
+
+  describe "SEC-A06 — edit a secret's value" do
+    @tag action: "SEC-A06"
+    test "rejects editing a value that has not been revealed", %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+
+      render_click(view, "edit", %{"key" => "DATABASE_URL"})
+
+      refute has_element?(view, "#secret-edit-form")
+      assert has_element?(view, "#flash-error")
+    end
+
+    @tag action: "SEC-A06"
+    test "rejects save_edit dispatched directly without a prior reveal: no mutation, no audit event",
+         %{conn: conn} do
+      assert {:ok, %{value: db_value}} = Secrets.Store.get_secret("prod", "DATABASE_URL")
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+
+      render_click(view, "save_edit", %{
+        "key" => "DATABASE_URL",
+        "secret" => %{"value" => "attacker-value"}
+      })
+
+      assert {:ok, %{value: ^db_value}} = Secrets.Store.get_secret("prod", "DATABASE_URL")
+      assert_no_audit_event(:secret_updated)
+    end
+
+    @tag action: "SEC-A06"
+    test "reveal -> edit opens the form prefilled with the current value", %{conn: conn} do
+      assert {:ok, %{value: db_value}} = Secrets.Store.get_secret("prod", "DATABASE_URL")
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+      row_id = row_id(view, "DATABASE_URL")
+
+      view |> element("#reveal-#{row_id}") |> render_click()
+      html = render_click(view, "edit", %{"key" => "DATABASE_URL"})
+
+      assert has_element?(view, "#secret-edit-form")
+      assert has_element?(view, "#secret-edit-value")
+      assert html =~ db_value
+    end
+
+    @tag action: "SEC-A06"
+    test "save with a new value updates it; revealing again shows the new value", %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+      row_id = row_id(view, "DATABASE_URL")
+
+      view |> element("#reveal-#{row_id}") |> render_click()
+      render_click(view, "edit", %{"key" => "DATABASE_URL"})
+
+      view
+      |> form("#secret-edit-form", secret: %{"value" => "brand-new-connection-string"})
+      |> render_submit()
+
+      row_id = row_id(view, "DATABASE_URL")
+      html = view |> element("#reveal-#{row_id}") |> render_click()
+
+      assert html =~ "brand-new-connection-string"
+    end
+
+    @tag action: "SEC-A06"
+    test "cancel discards the change, the value is unchanged in the store, and stays revealed",
+         %{conn: conn} do
+      assert {:ok, %{value: db_value}} = Secrets.Store.get_secret("prod", "DATABASE_URL")
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+      row_id = row_id(view, "DATABASE_URL")
+
+      html = view |> element("#reveal-#{row_id}") |> render_click()
+      assert html =~ db_value
+
+      render_click(view, "edit", %{"key" => "DATABASE_URL"})
+      assert has_element?(view, "#secret-edit-form")
+
+      view
+      |> form("#secret-edit-form", secret: %{"value" => "not-going-to-be-saved"})
+      |> render_change()
+
+      html = view |> element("#cancel-edit") |> render_click()
+
+      refute has_element?(view, "#secret-edit-form")
+      # The value stays revealed — cancelling an edit is not hiding.
+      assert has_element?(view, "#secret-modal")
+      assert html =~ db_value
+
+      assert {:ok, %{value: ^db_value}} = Secrets.Store.get_secret("prod", "DATABASE_URL")
+      assert_no_audit_event(:secret_updated)
+    end
+  end
+
+  describe "SEC-A07 — confirmation on successful secret update" do
+    @tag action: "SEC-A07"
+    test "a confirmation flash appears on success", %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+      row_id = row_id(view, "DATABASE_URL")
+
+      view |> element("#reveal-#{row_id}") |> render_click()
+      render_click(view, "edit", %{"key" => "DATABASE_URL"})
+
+      view
+      |> form("#secret-edit-form", secret: %{"value" => "brand-new-connection-string"})
+      |> render_submit()
+
+      assert has_element?(view, "#flash-info")
+      assert view |> element("#flash-info") |> render() =~ "DATABASE_URL"
+    end
+
+    @tag action: "SEC-A07"
+    test "after save the value is re-masked: absent from the payload and the control reads View again",
+         %{conn: conn} do
+      assert {:ok, %{value: db_value}} = Secrets.Store.get_secret("prod", "DATABASE_URL")
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+      row_id = row_id(view, "DATABASE_URL")
+
+      view |> element("#reveal-#{row_id}") |> render_click()
+      render_click(view, "edit", %{"key" => "DATABASE_URL"})
+
+      html =
+        view
+        |> form("#secret-edit-form", secret: %{"value" => "brand-new-connection-string"})
+        |> render_submit()
+
+      refute html =~ db_value
+      refute html =~ "brand-new-connection-string"
+      refute has_element?(view, "#secret-modal")
+      assert html =~ "View"
+    end
+
+    @tag action: "SEC-A07"
+    test "the form is closed after a successful save", %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+      row_id = row_id(view, "DATABASE_URL")
+
+      view |> element("#reveal-#{row_id}") |> render_click()
+      render_click(view, "edit", %{"key" => "DATABASE_URL"})
+      assert has_element?(view, "#secret-edit-form")
+
+      view
+      |> form("#secret-edit-form", secret: %{"value" => "brand-new-connection-string"})
+      |> render_submit()
+
+      refute has_element?(view, "#secret-edit-form")
+    end
+
+    @tag action: "SEC-A07"
+    test "last_modified in the row updates", %{conn: conn} do
+      assert {:ok, view, html_before} = live_secrets(conn, "prod")
+      row_id_before = row_id(view, "DATABASE_URL")
+
+      view |> element("#reveal-#{row_id_before}") |> render_click()
+      render_click(view, "edit", %{"key" => "DATABASE_URL"})
+
+      html_after =
+        view
+        |> form("#secret-edit-form", secret: %{"value" => "brand-new-connection-string"})
+        |> render_submit()
+
+      before_row =
+        LazyHTML.from_fragment(html_before) |> LazyHTML.query("[data-key=\"DATABASE_URL\"]")
+
+      before_text = LazyHTML.text(before_row)
+
+      after_row =
+        LazyHTML.from_fragment(html_after) |> LazyHTML.query("[data-key=\"DATABASE_URL\"]")
+
+      after_text = LazyHTML.text(after_row)
+
+      refute before_text == after_text
+    end
+  end
+
+  describe "SEC-A08 — clear failure feedback on update" do
+    @tag action: "SEC-A08"
+    test "with the store forced :unavailable, an error is shown, the form stays open, and the entered value is still in the input",
+         %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+      row_id = row_id(view, "DATABASE_URL")
+
+      view |> element("#reveal-#{row_id}") |> render_click()
+      render_click(view, "edit", %{"key" => "DATABASE_URL"})
+
+      use_failing_update_secrets_store()
+
+      html =
+        view
+        |> form("#secret-edit-form", secret: %{"value" => "attempted-new-value"})
+        |> render_submit()
+
+      assert has_element?(view, "#secret-edit-error")
+      assert has_element?(view, "#secret-edit-form")
+      assert html =~ "attempted-new-value"
+    end
+
+    @tag action: "SEC-A08"
+    test "after a failure, retrying with the store restored succeeds without re-entering the value",
+         %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+      row_id = row_id(view, "DATABASE_URL")
+
+      view |> element("#reveal-#{row_id}") |> render_click()
+      render_click(view, "edit", %{"key" => "DATABASE_URL"})
+
+      use_failing_update_secrets_store()
+
+      form =
+        view
+        |> form("#secret-edit-form", secret: %{"value" => "attempted-new-value"})
+
+      render_submit(form)
+      assert has_element?(view, "#secret-edit-error")
+
+      restore_secrets_store()
+
+      html = render_submit(form)
+
+      refute html =~ "attempted-new-value"
+      refute has_element?(view, "#secret-edit-form")
+      assert has_element?(view, "#flash-info")
+    end
+
+    @tag action: "SEC-A08"
+    test "after a failure, cancel is still available and discards cleanly", %{conn: conn} do
+      assert {:ok, %{value: db_value}} = Secrets.Store.get_secret("prod", "DATABASE_URL")
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+      row_id = row_id(view, "DATABASE_URL")
+
+      view |> element("#reveal-#{row_id}") |> render_click()
+      render_click(view, "edit", %{"key" => "DATABASE_URL"})
+
+      use_failing_update_secrets_store()
+
+      view
+      |> form("#secret-edit-form", secret: %{"value" => "attempted-new-value"})
+      |> render_submit()
+
+      assert has_element?(view, "#secret-edit-error")
+
+      html = view |> element("#cancel-edit") |> render_click()
+
+      refute has_element?(view, "#secret-edit-form")
+      assert html =~ db_value
+      assert {:ok, %{value: ^db_value}} = Secrets.Store.get_secret("prod", "DATABASE_URL")
+    end
+
+    @tag action: "SEC-A08"
+    test "an over-length value shows an inline error and does not submit", %{conn: conn} do
+      assert {:ok, %{value: db_value}} = Secrets.Store.get_secret("prod", "DATABASE_URL")
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+      row_id = row_id(view, "DATABASE_URL")
+
+      view |> element("#reveal-#{row_id}") |> render_click()
+      render_click(view, "edit", %{"key" => "DATABASE_URL"})
+
+      too_long = String.duplicate("a", 4097)
+
+      html =
+        view
+        |> form("#secret-edit-form", secret: %{"value" => too_long})
+        |> render_change()
+
+      assert html =~ "exceeds 4096 characters"
+
+      view
+      |> form("#secret-edit-form", secret: %{"value" => too_long})
+      |> render_submit()
+
+      assert has_element?(view, "#secret-edit-form")
+      assert {:ok, %{value: ^db_value}} = Secrets.Store.get_secret("prod", "DATABASE_URL")
+      assert_no_audit_event(:secret_updated)
+    end
+  end
+
+  describe "SEC-S5 — editing does not disturb another row's state" do
+    test "revealing a second secret while editing the first discards the first's edit cleanly",
+         %{conn: conn} do
+      assert {:ok, %{value: stripe_value}} = Secrets.Store.get_secret("prod", "STRIPE_API_KEY")
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+
+      view |> element("#reveal-#{row_id(view, "DATABASE_URL")}") |> render_click()
+      render_click(view, "edit", %{"key" => "DATABASE_URL"})
+      assert has_element?(view, "#secret-edit-form")
+
+      html = view |> element("#reveal-#{row_id(view, "STRIPE_API_KEY")}") |> render_click()
+
+      assert html =~ stripe_value
+      refute has_element?(view, "#secret-edit-form")
+    end
+  end
+
   describe "SEC-S4 — reveal state is cleared on navigation" do
     test "navigating away and back closes the modal and drops the plaintext", %{conn: conn} do
       assert {:ok, %{value: db_value}} = Secrets.Store.get_secret("prod", "DATABASE_URL")

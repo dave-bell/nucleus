@@ -33,6 +33,15 @@ defmodule Nucleus.Secrets do
   that emits `:secret_viewed`. Keeping the two separate means `SEC-A01`'s
   "never included in the listing response" is not something a future change
   to `list/2` could quietly break by merging in a value.
+
+  ## `update/4` mirrors `reveal/3`'s validation ladder, but owns no gate (`SEC-S5`)
+
+  `update/4` re-validates the environment, the key shape, and — via
+  `Nucleus.Secrets.Value.validate/1` — the value shape, in that order, before
+  ever calling `Store.update_secret/3`. It deliberately does **not** enforce
+  `SEC-A06`'s "editing requires the value to have been revealed first" — that
+  precondition is UI session state this context module cannot see. See
+  `update/4`'s own doc for where the gate actually lives.
   """
 
   alias Nucleus.Audit
@@ -42,6 +51,7 @@ defmodule Nucleus.Secrets do
   alias Nucleus.Secrets.Secret
   alias Nucleus.Secrets.SecretRef
   alias Nucleus.Secrets.Store
+  alias Nucleus.Secrets.Value
 
   @doc """
   Every secret's metadata for `environment`, re-validating the environment
@@ -140,6 +150,75 @@ defmodule Nucleus.Secrets do
         )
 
       {:ok, secret}
+    end
+  end
+
+  @doc """
+  Updates `key`'s value in `environment` to `value`, re-validating the
+  environment, the key shape, and the value shape — in that order — before
+  any store call (`SEC-A06`).
+
+  Strict order, mirroring `reveal/3`:
+
+  1. `Nucleus.Environments.fetch/2` — the same gate every other function in
+     this module uses. Never trust an environment name arriving from a
+     client-originated event.
+  2. The **key** shape, via the same `validate_key/1` `reveal/3` already
+     uses — not a second copy. `key` comes from `phx-value-key`, forgeable
+     the same way it is for a reveal.
+  3. `Nucleus.Secrets.Value.validate/1` — the value shape (non-empty, at most
+     4096 characters), checked before the store is ever reached, so an
+     invalid value never becomes a `PutParameter` call.
+  4. `Nucleus.Secrets.Store.update_secret/3` — fails `{:error, kind:
+     :not_found}` on a missing key and **never creates one**; this function
+     adds no upsert behaviour on top.
+
+  On success **only**, emits `secret_updated` with `resource` set to the
+  full parameter path from the returned `SecretRef` — never the bare key,
+  and never the value: `SecretRef` has no `value` field, so there is nowhere
+  for one to leak into the audit record even by accident. `user` comes from
+  `Nucleus.Scope.audit_user/1`, matching `reveal/3` and ADR-0011's reasoning
+  for why a raw `scope.user.email` read is not enough.
+
+  Returns `SecretRef` (no value field), so the success path cannot
+  accidentally carry the new plaintext back into a caller's render.
+
+  ## This function does not enforce reveal-before-edit
+
+  `SEC-A06`'s "editing requires the value to have been revealed first" is UI
+  session state (`NucleusWeb.SecretsLive`'s `:revealed` assign) — this
+  context module has no view of a caller's session and cannot check it.
+  **The gate lives in the LiveView's `handle_event/3`, on both opening the
+  edit form and on save.** A future caller of this function — a future API
+  endpoint, a script — must add an equivalent check of its own; calling
+  `update/4` directly is not safe against a blind overwrite on its own.
+
+  The value must appear in no log line, on any branch, including a failure
+  — `Store.update_secret/3`'s underlying `PutParameter` call carries the
+  value in its request body, so any code that logged a failed request body
+  would leak it. This function never logs, and neither does anything it
+  calls.
+  """
+  @spec update(
+          environment :: String.t(),
+          key :: String.t(),
+          value :: String.t(),
+          scope :: Scope.t()
+        ) :: {:ok, SecretRef.t()} | {:error, Error.t()}
+  def update(environment, key, value, %Scope{token: token} = scope)
+      when is_binary(environment) and is_binary(key) and is_binary(value) do
+    with {:ok, _environment} <- Environments.fetch(environment, token),
+         :ok <- validate_key(key),
+         :ok <- Value.validate(value),
+         {:ok, ref} <- Store.update_secret(environment, key, value) do
+      :ok =
+        Audit.emit(:secret_updated,
+          user: Scope.audit_user(scope),
+          tenant: scope.tenant,
+          resource: ref.path
+        )
+
+      {:ok, ref}
     end
   end
 
