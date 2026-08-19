@@ -210,6 +210,7 @@ defmodule NucleusWeb.SecretsLive do
   alias Nucleus.Secrets
   alias Nucleus.Secrets.Secret
   alias Nucleus.Secrets.SecretRef
+  alias Nucleus.Secrets.Value
   alias NucleusWeb.SecretsLive.EditForm
 
   @modal_id "secret-modal"
@@ -536,7 +537,7 @@ defmodule NucleusWeb.SecretsLive do
                 class="font-mono text-sm"
               />
               <div id="secret-edit-count" class="text-xs text-base-content/70 text-right mt-1">
-                {edit_value_length(@edit_form)}/{Nucleus.Secrets.Value.max_length()} characters
+                {edit_value_length(@edit_form)}/{Value.max_length()} characters
               </div>
               <p
                 :if={@edit_error}
