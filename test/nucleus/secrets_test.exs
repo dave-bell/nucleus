@@ -488,4 +488,151 @@ defmodule Nucleus.SecretsTest do
       refute log =~ new_value
     end
   end
+
+  describe "create/4 — SEC-A09 success" do
+    @tag action: "SEC-A09"
+    test "creates the secret; list/2 then includes it; reveal/3 returns the value" do
+      assert {:ok, %SecretRef{key: "NEW_KEY"} = ref} =
+               Secrets.create("prod", "NEW_KEY", "new-secret-value", @scope)
+
+      assert {:ok, refs} = Secrets.list("prod", @scope)
+      assert Enum.any?(refs, &(&1.key == "NEW_KEY"))
+
+      assert {:ok, %Secret{value: "new-secret-value"}} =
+               Secrets.reveal("prod", "NEW_KEY", @scope)
+
+      refute Map.has_key?(ref, :value)
+    end
+
+    @tag action: "SEC-A09"
+    test "emits exactly one secret_created with the full path as resource" do
+      assert {:ok, ref} = Secrets.create("prod", "NEW_KEY", "new-secret-value", @scope)
+
+      assert_audit_event(:secret_created, tenant: "acme", resource: ref.path)
+
+      events = Enum.filter(audit_events(), &(&1.event == :secret_created))
+      assert length(events) == 1
+    end
+
+    @tag action: "SEC-A09"
+    test "resource is the full path, not the bare key" do
+      assert {:ok, ref} = Secrets.create("prod", "NEW_KEY", "new-secret-value", @scope)
+
+      record = assert_audit_event(:secret_created)
+      assert record.resource == ref.path
+      refute record.resource == "NEW_KEY"
+    end
+
+    @tag action: "SEC-A09"
+    test "user is Scope.audit_user/1's result, falling back to username when email is absent" do
+      scope = %Scope{tenant: "acme", user: %{email: nil, username: "auser"}}
+
+      Secrets.create("prod", "NEW_KEY", "new-secret-value", scope)
+
+      assert_audit_event(:secret_created, user: "auser")
+    end
+
+    @tag action: "SEC-A09"
+    test "the AUD-A02 guard — the value appears in no audit record" do
+      Secrets.create("prod", "NEW_KEY", "new-secret-value", @scope)
+
+      refute_audit_contains("new-secret-value")
+    end
+
+    @tag action: "SEC-A09"
+    test "no secret_viewed is emitted by creation" do
+      Secrets.create("prod", "NEW_KEY", "new-secret-value", @scope)
+
+      assert_no_audit_event(:secret_viewed)
+    end
+  end
+
+  describe "create/4 — SEC-A12 reject an existing key" do
+    @tag action: "SEC-A12"
+    test "creating an existing key returns :already_exists, leaves the value unchanged, emits no audit event" do
+      assert {:error, %Error{kind: :already_exists}} =
+               Secrets.create("prod", "DATABASE_URL", "attempted-overwrite", @scope)
+
+      assert {:ok, %Secret{value: @db_url_value}} =
+               Secrets.reveal("prod", "DATABASE_URL", @scope)
+
+      assert_no_audit_event(:secret_created)
+    end
+
+    @tag action: "SEC-A12"
+    test "the value never appears in logs on a rejected create" do
+      log =
+        capture_log(fn ->
+          Secrets.create("prod", "DATABASE_URL", "attempted-overwrite", @scope)
+        end)
+
+      refute log =~ "attempted-overwrite"
+    end
+  end
+
+  describe "create/4 — SEC-A10 invalid key" do
+    @tag action: "SEC-A10"
+    test "an invalid key returns :invalid, no store call, no audit event" do
+      use_exploding_secrets_store()
+
+      assert {:error, %Error{kind: :invalid}} =
+               Secrets.create("prod", "../../other-env/secret", "value", @scope)
+
+      assert_no_audit_event(:secret_created)
+    end
+
+    @tag action: "SEC-A10"
+    test "an empty key returns :invalid" do
+      use_exploding_secrets_store()
+
+      assert {:error, %Error{kind: :invalid}} = Secrets.create("prod", "", "value", @scope)
+
+      assert_no_audit_event(:secret_created)
+    end
+  end
+
+  describe "create/4 — SEC-A11 invalid value" do
+    @tag action: "SEC-A11"
+    test "an invalid value returns :invalid, no store call" do
+      use_exploding_secrets_store()
+      too_long = String.duplicate("a", 4097)
+
+      assert {:error, %Error{kind: :invalid}} =
+               Secrets.create("prod", "ANOTHER_NEW_KEY", too_long, @scope)
+
+      assert_no_audit_event(:secret_created)
+    end
+
+    @tag action: "SEC-A11"
+    test "an empty value returns :invalid" do
+      use_exploding_secrets_store()
+
+      assert {:error, %Error{kind: :invalid}} =
+               Secrets.create("prod", "ANOTHER_NEW_KEY", "", @scope)
+
+      assert_no_audit_event(:secret_created)
+    end
+  end
+
+  describe "create/4 — the environment gate holds through the context layer" do
+    @tag action: "SEC-A09"
+    test "an invalid environment name returns :invalid without calling the store" do
+      use_exploding_secrets_store()
+
+      assert {:error, %Error{kind: :invalid}} = Secrets.create("..", "NEW_KEY", "value", @scope)
+    end
+  end
+
+  describe "create/4 — no value in logs" do
+    test "the value appears in no captured log output, success or failure" do
+      log =
+        capture_log(fn ->
+          Secrets.create("prod", "NEW_KEY", "brand-new-value", @scope)
+          Secrets.create("prod", "DATABASE_URL", "brand-new-value", @scope)
+          Secrets.create("prod", "ANOTHER_NEW_KEY", "", @scope)
+        end)
+
+      refute log =~ "brand-new-value"
+    end
+  end
 end
