@@ -49,6 +49,7 @@ defmodule Nucleus.Secrets.KeyTest do
     test "contains a path-traversal sequence" do
       for key <- ["a..b", "..", "../x"] do
         assert {:error, %Error{kind: :invalid} = error} = Key.validate(key)
+
         assert error.details.reason == :path_traversal,
                "expected #{inspect(key)} to report :path_traversal, got #{inspect(error.details.reason)}"
       end

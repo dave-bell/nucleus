@@ -116,7 +116,11 @@ defmodule NucleusWeb.SecretsLive.CreateFormTest do
     @tag :unit
     test "produces a valid changeset with both fields readable via get_field/2" do
       changeset =
-        CreateForm.changeset(%CreateForm{}, %{"key" => "DATABASE_URL", "value" => "postgres://"}, [])
+        CreateForm.changeset(
+          %CreateForm{},
+          %{"key" => "DATABASE_URL", "value" => "postgres://"},
+          []
+        )
 
       assert changeset.valid?
       assert Changeset.get_field(changeset, :key) == "DATABASE_URL"
