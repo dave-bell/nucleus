@@ -210,6 +210,17 @@ the browser-gap list.
 - Reading a second secret is now two more clicks than before (dismiss, then
   reveal), where the old table allowed two values side by side. Nobody asked
   for side-by-side comparison, but it was possible and now is not.
+- **`SEC-S5`'s plan (issue #13) is now stale in a way that matters.** It
+  specifies the reveal-before-edit gate as `handle_event("edit", %{"key" =>
+  key})` rejecting when `key` is absent from "the `:revealed` map established
+  by SEC-S4". There is no map, and `:revealed` holds one secret keyed by
+  nothing. The gate itself is unaffected in substance — check
+  `socket.assigns.revealed` is a `%Secret{}` whose `key` matches, still
+  server-side, still re-checked on save — but the reveal state now lives only
+  as long as a dialog is open, so an edit affordance almost certainly belongs
+  *inside* the reveal modal rather than in the row. `SEC-A07`'s "the value is
+  re-masked, requiring another explicit reveal" becomes close to free under
+  that shape: dismissing the modal already does it.
 - `modal/1` has two legitimate usages — mounted-and-toggled, and
   conditionally-rendered — and picking the wrong one for secret material is a
   silent leak rather than a visible bug. Mitigated only by documentation.
