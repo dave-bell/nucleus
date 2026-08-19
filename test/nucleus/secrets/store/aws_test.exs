@@ -5,10 +5,10 @@ defmodule Nucleus.Secrets.Store.AwsTest do
 
   import ExUnit.CaptureLog
 
+  alias Nucleus.Aws.CredentialCache
   alias Nucleus.Backend.Error
   alias Nucleus.Secrets.Path
   alias Nucleus.Secrets.Store.Aws
-  alias Nucleus.Secrets.Store.Aws.CredentialCache
 
   @moduletag :capture_log
 
@@ -16,6 +16,7 @@ defmodule Nucleus.Secrets.Store.AwsTest do
   @role_arn "arn:aws:iam::123456789012:role/TenantRole"
   @account_id "123456789012"
   @region "us-east-1"
+  @cache_key {@role_arn, nil, "nucleus-secrets"}
 
   setup do
     original_aws = Application.get_env(:nucleus, Aws)
@@ -37,7 +38,7 @@ defmodule Nucleus.Secrets.Store.AwsTest do
 
     Application.put_env(:nucleus, Path, cluster_name: "acme", deployment_name: "main")
 
-    CredentialCache.clear()
+    CredentialCache.clear(@cache_key)
 
     on_exit(fn ->
       Application.put_env(:nucleus, Aws, original_aws)
@@ -45,7 +46,7 @@ defmodule Nucleus.Secrets.Store.AwsTest do
       restore_env("AWS_ACCESS_KEY_ID", original_access_key)
       restore_env("AWS_SECRET_ACCESS_KEY", original_secret_key)
       restore_env("AWS_SESSION_TOKEN", original_session_token)
-      CredentialCache.clear()
+      CredentialCache.clear(@cache_key)
     end)
 
     :ok
@@ -407,7 +408,7 @@ defmodule Nucleus.Secrets.Store.AwsTest do
         stub_with(%{"GetParameter" => fn conn, _body -> aws_error(conn, 400, unquote(code)) end})
 
         assert {:error, %Error{kind: :auth_expired}} = Aws.get_secret("prod", "X")
-        assert CredentialCache.get() == nil
+        assert CredentialCache.get(@cache_key) == nil
       end
     end
 
