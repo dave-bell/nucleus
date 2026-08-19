@@ -82,8 +82,8 @@ is measured the way a person reading `SEC-A11`'s "live running count of
 characters" would expect. It returns `Nucleus.Backend.Error.t()`, the same
 shape every other validation step in `Nucleus.Secrets` returns, so
 `Nucleus.Secrets.update/4`'s `with` chain needs no special case for a value
-error. `SEC-S6` (issue #14, still `needs-decision`) is expected to reuse this
-module unchanged for its own value field rather than writing a second copy.
+error. `SEC-S6` (issue #14) is expected to reuse this module unchanged for
+its own value field rather than writing a second copy.
 
 ### The edit form is an `embedded_schema` changeset, not a schemaless one
 
@@ -189,7 +189,7 @@ future reader would have to reverse-engineer the reason for.
   database; `to_form/2` and `<.form for={@form}>` conventions
 - `.opencode/context/project-intelligence/living-notes.md` — the Technical
   Debt entry this ADR resolves (SEC-S5's plan going stale under ADR-0012)
-- SEC-S6 (issue #14, `needs-decision`) — expected to reuse
+- SEC-S6 (issue #14) — expected to reuse
   `Nucleus.Secrets.Value` and the `embedded_schema` form pattern for its own
   key+value creation form
 </content>

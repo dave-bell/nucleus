@@ -110,9 +110,9 @@ bucket. This is deliberately **not** as strong as
 `Environments.validate_name/1`, which layers a positive charset allowlist
 and a length cap on the same denylist, for the reason that module's own doc
 gives: a denylist alone lets percent-encoded traversal and unicode
-lookalikes through. `SEC-S6` (issue #14, still `needs-decision`) owns the
-authoritative key rules for secret creation; this validator is provisional
-pending that ticket's consolidation, not a claim of equivalent strength.
+lookalikes through. `SEC-S6` (issue #14) owns the authoritative key rules
+for secret creation; this validator is provisional pending that ticket's
+consolidation, not a claim of equivalent strength.
 
 ## Consequences
 
