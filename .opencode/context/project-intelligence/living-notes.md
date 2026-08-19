@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/notes | Priority: high | Version: 1.11 | Updated: 2026-08-18 -->
+<!-- Context: project-intelligence/notes | Priority: high | Version: 1.12 | Updated: 2026-08-18 -->
 
 # Living Notes
 
@@ -133,6 +133,14 @@ deploys it.
   vacuous for exactly this reason until ADR-0012's change caught it. Use
   `refute Enum.empty?(LazyHTML.query(doc, sel))`. `LazyHTML.attribute/2` **does** return a plain
   list, so `== ["ignore"]` and `== []` on an attribute result are fine.
+- **A conditionally-rendered modal runs `JS.pop_focus/1` twice** on any dismissal route that
+  goes through `data-cancel` (the X, Escape, a backdrop click): once client-side from
+  `JS.exec("phx-remove")`, then again when the server removes the element and `phx-remove` fires
+  for real. Harmless while one modal is open — the second pop finds an empty `focusStack` and
+  no-ops — but `focusStack` is module-global, so **two modals open at once would have the inner
+  one consume the outer one's saved focus**. `SEC-S6`'s creation form must not open over the
+  reveal modal without revisiting this. See
+  `docs/adr/0012-secret-reveal-modal-and-icon-only-copy-affordances.md`.
 - **`CoreComponents.modal/1` has two legitimate usages, and the wrong one leaks.** Left mounted
   and toggled with `modal-open`, its inner block is in the DOM (and in view-source) while the
   dialog is closed — fine for a form, a leak for secret material. Anything sensitive wraps the

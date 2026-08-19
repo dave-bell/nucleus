@@ -97,6 +97,18 @@ span carrying both would clip the tooltip by the very rule that made it
 necessary. This replaces a plain `title` attribute — see the alternatives
 below.
 
+**These two are hover-only, unlike the copy buttons'.** daisyUI's reveal
+selector is `&.tooltip-open, &:hover, &:has(:focus-visible)`. For
+`copy_button/1` the `:has(:focus-visible)` arm fires, because the focusable
+`<button>` is a descendant of the `.tooltip` wrapper. A path or ARN wrapper
+contains only a `<span>`, so nothing inside it can take focus and that arm can
+never match. Making it match would mean a `tabindex="0"` on non-interactive
+text — two extra tab stops per row, so twenty on a twenty-secret environment,
+to reach content that is already fully present in the DOM and read in full by a
+screen reader (the truncation is CSS, not text). Not worth it. The keyboard
+route to the whole string is the adjacent copy button, which is a real focus
+stop and does carry a tooltip. Recorded rather than fixed.
+
 ### The Value column is deleted outright — plaintext *and* mask
 
 Not replaced with a narrower mask, or a truncated preview. Removed. A mask is
@@ -167,10 +179,13 @@ the browser-gap list.
 - The row fits: five columns, two icon-only buttons, a label-only reveal
   control, and no permanently reserved space for a value almost never on
   screen.
-- A truncated path or ARN is now readable on hover or keyboard focus, wrapped
-  to 20rem, instead of needing a copy-and-paste elsewhere to see.
+- A truncated path or ARN is now readable on hover, wrapped to 20rem, instead
+  of needing a copy-and-paste elsewhere to see.
 - A revealed value gets a modal's width and its own scroll region, instead of
-  a table cell's.
+  a table cell's. The region is a focus stop (`tabindex="0"`,
+  `role="region"`), so a value past `max-h-60`'s ~twelve lines — a PEM key, a
+  service-account JSON blob — can be scrolled without a mouse; `focus_wrap`
+  otherwise cycles only the three buttons.
 - Strictly less plaintext exposure than before. Previously a revealed value
   lived in a cell that stayed in the DOM until the user clicked Hide or
   navigated; now it exists only while a dialog is open, and at most one value
@@ -204,6 +219,22 @@ the browser-gap list.
 - Both a row's copy button and its path/ARN now carry tooltips, adjacent to
   each other. Nothing prevents a mouse path that shows two in quick
   succession; it is busier than the single `title` it replaced.
+- The path/ARN tooltips are hover-only (see above), so a keyboard-only or
+  touch user has no route to the full string beyond copying it. `title` was no
+  better on touch, but this is not the strict improvement the change looks
+  like.
+- **Dismissing via the X, Escape, or the backdrop runs `JS.pop_focus/1`
+  twice.** `data-cancel` is `JS.push("hide") |> JS.exec("phx-remove")`, so
+  those three routes run `hide_modal/2` on the client immediately, and then the
+  server-driven *removal* of the element runs `phx-remove` a second time —
+  which is only possible because the modal is conditionally rendered, so this
+  is a cost of the decision above, not of `modal/1`. It is correct today: one
+  `push_focus`, the first pop restores the View button, the second finds an
+  empty stack and no-ops. `focusStack` is module-global and shared by every
+  modal in the app, so it stays correct only while no two modals are open at
+  once. `SEC-S6`'s creation form must not open over this one without revisiting
+  it — an unpaired second pop would consume the outer modal's saved focus. The
+  Close button does not have this problem, since it never runs `data-cancel`.
 
 ## Alternatives considered
 

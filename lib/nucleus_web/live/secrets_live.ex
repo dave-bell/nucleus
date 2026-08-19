@@ -346,8 +346,19 @@ defmodule NucleusWeb.SecretsLive do
         --%>
         <.modal :if={@revealed} id={modal_id()} show on_cancel={JS.push("hide")}>
           <:title>{@revealed.key}</:title>
+          <%!--
+          `tabindex="0"` is not decoration: `max-h-60` is about twelve lines
+          of `font-mono text-sm`, and a PEM key or a service-account JSON blob
+          runs past that. Without it the region scrolls for a mouse and is
+          unreachable for a keyboard, since `focus_wrap` cycles only the three
+          buttons. `role="region"` + a name is what makes a focus stop on
+          non-interactive content announce as something rather than nothing.
+          --%>
           <div
             id="secret-modal-value"
+            tabindex="0"
+            role="region"
+            aria-label="Secret value"
             class="font-mono text-sm break-all select-all rounded-box bg-base-200 p-3 max-h-60 overflow-y-auto"
           >
             {@revealed.value}

@@ -597,6 +597,39 @@ defmodule NucleusWeb.SecretsLiveTest do
       assert doc |> LazyHTML.query("#secret-modal-close") |> LazyHTML.attribute("phx-click") != []
     end
 
+    # A modal that only exists while open is inserted already-open, which is
+    # `show={true}` compiling to `phx-mounted`. Drop it and every other test
+    # here still passes — they assert the plaintext is in the payload, not that
+    # anything is painted — while the user clicks View and sees nothing.
+    test "the modal is inserted already-open, via phx-mounted", %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+      row_id = row_id(view, "DATABASE_URL")
+
+      view |> element("#reveal-#{row_id}") |> render_click()
+      doc = view |> render() |> LazyHTML.from_fragment()
+
+      assert [mounted] =
+               doc |> LazyHTML.query("#secret-modal") |> LazyHTML.attribute("phx-mounted")
+
+      assert mounted =~ "modal-open"
+    end
+
+    test "the value region is focusable, so a value taller than the modal can be scrolled", %{
+      conn: conn
+    } do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+      row_id = row_id(view, "DATABASE_URL")
+
+      view |> element("#reveal-#{row_id}") |> render_click()
+
+      region =
+        view |> render() |> LazyHTML.from_fragment() |> LazyHTML.query("#secret-modal-value")
+
+      assert LazyHTML.attribute(region, "tabindex") == ["0"]
+      assert LazyHTML.attribute(region, "role") == ["region"]
+      assert LazyHTML.attribute(region, "aria-label") != []
+    end
+
     test "the hide event is idempotent — a second dismissal cannot crash the view", %{conn: conn} do
       assert {:ok, view, _html} = live_secrets(conn, "prod")
 
