@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.6 | Updated: 2026-08-18 -->
+<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.7 | Updated: 2026-08-18 -->
 
 # Business ↔ Tech Bridge
 
@@ -54,16 +54,18 @@ to cite from test names and bug reports.
 sidebar) and `test/nucleus_web/live/shell_test.exs` now exist (EN-7) — a deliberate subset only,
 with no `@tag action:` claimed, so `NAV-A01`–`A12` coverage is still zero until the dedicated
 `NAV-*` ticket lands. `NucleusWeb.SecretsLive` and `test/nucleus_web/live/secrets_live_test.exs`
-also now exist (SEC-S1/#9, SEC-S2/#10, SEC-S3/#11, SEC-S4/#12) — `SEC-A01`–`A05`, `SEC-A14`–`A17`
-are claimed and covered; the module validates and resolves the environment, lists a
-`Nucleus.Secrets` boundary's secrets **with no value column at all** (no plaintext and no mask —
-ADR-0012), copies a row's path/ARN to the clipboard from icon-only buttons whose label is a
+also now exist (SEC-S1/#9, SEC-S2/#10, SEC-S3/#11, SEC-S4/#12, SEC-S5/#13) — `SEC-A01`–`A08`,
+`SEC-A14`–`A17` are claimed and covered; the module validates and resolves the environment, lists
+a `Nucleus.Secrets` boundary's secrets **with no value column at all** (no plaintext and no mask
+— ADR-0012), copies a row's path/ARN to the clipboard from icon-only buttons whose label is a
 tooltip (`SEC-A02` — wiring only; the clipboard write itself is a recorded browser gap,
 `docs/adr/0008-test-strategy.md`), reveals a value into a modal that is only in the DOM while it
-is open, with a fresh audited fetch on every reveal, and renders every
-fail-closed/empty/failed-reveal state (`SEC-A06`–`A13`, `A18` are SEC-S5–S7 and later). Every
-other row is unimplemented. These names are the agreed target so that work lands consistently —
-treat them as the convention to follow, and correct this table if a better structure emerges.
+is open, with a fresh audited fetch on every reveal, lets that same modal swap into an edit form
+gated on the revealed secret matching by key (`SEC-A06`–`A08`, `docs/adr/0013-secret-edit-in-modal-and-value-form.md`),
+and renders every fail-closed/empty/failed-reveal/failed-save state (`SEC-A09`–`A13`, `A18` are
+SEC-S6/S7 and later). Every other row is unimplemented. These names are the agreed target so that
+work lands consistently — treat them as the convention to follow, and correct this table if a
+better structure emerges.
 
 Two conformance notes worth carrying forward, both recorded in
 `docs/adr/0012-secret-reveal-modal-and-icon-only-copy-affordances.md`:
@@ -148,7 +150,10 @@ Each wiki action has an `Actor` / `Given` / `When` / `Then`, and often an `API:`
 - Architecture: values fetched live per reveal; nothing cached (stateless constraint), and a
   revealed value exists in the DOM only while its modal is drawn
 - Trade-offs: `SEC-A06` requires a value be *revealed before it can be edited*, deliberately
-  trading a slower edit path for protection against blind overwrites
+  trading a slower edit path for protection against blind overwrites. The edit control lives
+  inside the reveal modal itself, not a row — reveal state exists only while that modal is open,
+  so a row-level control would dead-end against the gate almost every time
+  (`docs/adr/0013-secret-edit-in-modal-and-value-form.md`).
 
 **Connection**:
 Secrets is where the read+update-only boundary earns its keep. There is no delete, so a
