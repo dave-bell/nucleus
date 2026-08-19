@@ -15,9 +15,9 @@ defmodule Nucleus.Secrets.Store.ContractTest do
   """
   use ExUnit.Case, async: false
 
+  alias Nucleus.Aws.CredentialCache
   alias Nucleus.Backend.Seed
   alias Nucleus.Secrets.Store.Aws
-  alias Nucleus.Secrets.Store.Aws.CredentialCache
   alias Nucleus.Secrets.Store.Local
   alias NucleusTest.SecretsStoreContract, as: Contract
 
@@ -87,6 +87,7 @@ defmodule Nucleus.Secrets.Store.ContractTest do
           flunk("TEST_TENANT_ROLE_ARN must be set to run the external contract tests")
 
       region = System.get_env("AWS_REGION") || "us-east-1"
+      cache_key = {role_arn, nil, "nucleus-secrets"}
 
       original_aws = Application.get_env(:nucleus, Aws)
       original_path = Application.get_env(:nucleus, Nucleus.Secrets.Path)
@@ -98,12 +99,12 @@ defmodule Nucleus.Secrets.Store.ContractTest do
         deployment_name: System.get_env("TEST_DEPLOYMENT_NAME", "nucleus-test")
       )
 
-      CredentialCache.clear()
+      CredentialCache.clear(cache_key)
 
       on_exit(fn ->
         Application.put_env(:nucleus, Aws, original_aws)
         Application.put_env(:nucleus, Nucleus.Secrets.Path, original_path)
-        CredentialCache.clear()
+        CredentialCache.clear(cache_key)
       end)
 
       :ok
