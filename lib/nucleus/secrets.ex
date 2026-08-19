@@ -42,12 +42,33 @@ defmodule Nucleus.Secrets do
   `SEC-A06`'s "editing requires the value to have been revealed first" — that
   precondition is UI session state this context module cannot see. See
   `update/4`'s own doc for where the gate actually lives.
+
+  ## One key validator, shared by every function that touches a key (`SEC-S6`)
+
+  `reveal/3`, `update/4`, and `create/4` all validate the key shape through
+  `Nucleus.Secrets.Key.validate/1` — not a private copy each. Before this
+  ticket, `reveal/3` and `update/4` shared a weaker, inline denylist (see
+  `docs/adr/0011-secret-reveal-stream-reinsertion-and-audit-test-fallback.md`);
+  `Key.validate/1` replaces it, applying the same rules and the same
+  256-character cap to a read, a write, and a create alike (`Key`'s own
+  moduledoc explains why that cap is deliberately not create-only).
+
+  ## `create/4` validates before any store call, and relies on the store's atomic refusal (`SEC-A09`, `SEC-A12`)
+
+  `create/4` does **not** implement `SEC-A12`'s "reject an existing key" as a
+  read-then-write — that would be racy: another operator, or a process
+  outside Nucleus, could create the key between a pre-check and the write.
+  `Store.create_secret/3` already refuses atomically with
+  `{:error, %Error{kind: :already_exists}}` (`Overwrite: false` on the
+  underlying `PutParameter` call), so `create/4` calls it directly and lets
+  that refusal propagate. See `create/4`'s own doc.
   """
 
   alias Nucleus.Audit
   alias Nucleus.Backend.Error
   alias Nucleus.Environments
   alias Nucleus.Scope
+  alias Nucleus.Secrets.Key
   alias Nucleus.Secrets.Secret
   alias Nucleus.Secrets.SecretRef
   alias Nucleus.Secrets.Store
@@ -97,23 +118,16 @@ defmodule Nucleus.Secrets do
   1. `Nucleus.Environments.fetch/2` — re-validate the environment, the same
      gate `list/2` uses. Never trust an environment name arriving from a
      client-originated event.
-  2. The **key** shape, validated here. `key` comes from `phx-value-key`,
-     which a client can forge — an attacker-supplied key such as
-     `"../../other-env/secret"` must never reach
-     `Nucleus.Secrets.Path.build/2`, which concatenates its arguments
-     verbatim. `SEC-S6` (key creation) owns the authoritative key rules;
-     until it lands, this rejects only `..`, `/`, `\`, and a null byte as
-     `{:error, kind: :invalid}`, **before** the store is ever called. This
-     is deliberately **not** as strong as
-     `Nucleus.Environments.validate_name/1`, which layers a positive
-     charset allowlist and a length cap on top of the same denylist for
-     exactly the reason its own moduledoc gives — a denylist alone lets
-     percent-encoded traversal, unicode lookalikes, and other control
-     characters through. Blocking `/`, `..`, and `\` is enough to stop a
-     forged key from reaching another environment's Parameter Store path,
-     which is the concrete risk this function guards against, but `SEC-S6`
-     should not assume this validator is a drop-in replacement for
-     `validate_name/1`'s stronger guarantee when it consolidates the two.
+  2. The **key** shape, via `Nucleus.Secrets.Key.validate/1` — the single
+     shared validator `update/4` and `create/4` also use, not a private
+     copy. `key` comes from `phx-value-key`, which a client can forge — an
+     attacker-supplied key such as `"../../other-env/secret"` must never
+     reach `Nucleus.Secrets.Path.build/2`, which concatenates its arguments
+     verbatim. `Key.validate/1`'s denylist (`..`, `/`, `\`, a null byte,
+     empty, over 256 characters) is enough to stop a forged key from
+     reaching another environment's Parameter Store path, which is the
+     concrete risk this function guards against — see `Key`'s own moduledoc
+     for why it is a denylist rather than `validate_name/1`'s allowlist.
   3. `Nucleus.Secrets.Store.get_secret/2` — the one place in this module a
      value is fetched.
 
@@ -140,7 +154,7 @@ defmodule Nucleus.Secrets do
   def reveal(environment, key, %Scope{token: token} = scope)
       when is_binary(environment) and is_binary(key) do
     with {:ok, _environment} <- Environments.fetch(environment, token),
-         :ok <- validate_key(key),
+         :ok <- Key.validate(key),
          {:ok, secret} <- Store.get_secret(environment, key) do
       :ok =
         Audit.emit(:secret_viewed,
@@ -163,9 +177,9 @@ defmodule Nucleus.Secrets do
   1. `Nucleus.Environments.fetch/2` — the same gate every other function in
      this module uses. Never trust an environment name arriving from a
      client-originated event.
-  2. The **key** shape, via the same `validate_key/1` `reveal/3` already
-     uses — not a second copy. `key` comes from `phx-value-key`, forgeable
-     the same way it is for a reveal.
+  2. The **key** shape, via the same `Nucleus.Secrets.Key.validate/1`
+     `reveal/3` already uses — not a second copy. `key` comes from
+     `phx-value-key`, forgeable the same way it is for a reveal.
   3. `Nucleus.Secrets.Value.validate/1` — the value shape (non-empty, at most
      4096 characters), checked before the store is ever reached, so an
      invalid value never becomes a `PutParameter` call.
@@ -208,7 +222,7 @@ defmodule Nucleus.Secrets do
   def update(environment, key, value, %Scope{token: token} = scope)
       when is_binary(environment) and is_binary(key) and is_binary(value) do
     with {:ok, _environment} <- Environments.fetch(environment, token),
-         :ok <- validate_key(key),
+         :ok <- Key.validate(key),
          :ok <- Value.validate(value),
          {:ok, ref} <- Store.update_secret(environment, key, value) do
       :ok =
@@ -222,34 +236,77 @@ defmodule Nucleus.Secrets do
     end
   end
 
-  defp sort(refs) do
-    Enum.sort_by(refs, &{String.downcase(&1.key), &1.key})
-  end
+  @doc """
+  Creates a new secret in `environment` with `key` and `value`,
+  re-validating the environment, the key shape, and the value shape — in
+  that order — before any store call (`SEC-A09`).
 
-  # Minimal deny checks, pending `SEC-S6`'s consolidated key validator — see
-  # `reveal/3`'s doc for why this is weaker than
-  # `Nucleus.Environments.validate_name/1` and why that gap is acceptable
-  # for now.
-  defp validate_key(key) do
-    cond do
-      key == "" ->
-        invalid_key(key)
+  Strict order, matching `reveal/3` and `update/4`:
 
-      String.contains?(key, "..") ->
-        invalid_key(key)
+  1. `Nucleus.Environments.fetch/2` — the same gate every other function in
+     this module uses. Never trust an environment name arriving from a
+     client-originated event.
+  2. `Nucleus.Secrets.Key.validate/1` — the same validator `reveal/3` and
+     `update/4` use, not a create-specific copy. `key` comes from a
+     client-submitted form and is validated here regardless of whatever the
+     form layer (`NucleusWeb.SecretsLive.CreateForm`) already checked —
+     `SEC-A10`'s form-side check is advisory, this is authoritative.
+  3. `Nucleus.Secrets.Value.validate/1` — the value shape (non-empty, at
+     most 4096 characters), checked before the store is ever reached.
+  4. `Nucleus.Secrets.Store.create_secret/3` — fails
+     `{:error, %Error{kind: :already_exists}}` (`SEC-A12`) when `key`
+     already exists in `environment`, via the store's own atomic
+     `Overwrite: false` refusal. **Not** a read-then-write: this function
+     never calls `Store.get_secret/2` or `list_secrets/1` first, so a
+     concurrent create racing this one is still rejected correctly by
+     whichever `PutParameter` call the store's implementation processes
+     second — see the moduledoc's "`create/4` validates before any store
+     call" section.
 
-      String.contains?(key, "/") or String.contains?(key, "\\") ->
-        invalid_key(key)
+  On success **only**, emits `secret_created` with `resource` set to the
+  full parameter path from the returned `SecretRef` — never the bare key,
+  and never the value: `SecretRef` has no `value` field. `user` comes from
+  `Nucleus.Scope.audit_user/1`, matching `reveal/3` and `update/4`.
 
-      String.contains?(key, <<0>>) ->
-        invalid_key(key)
+  A rejected create — an invalid key, an invalid value, or an
+  `:already_exists` conflict — reaches no store call that could mutate
+  anything, so the existing value behind a duplicate key is guaranteed
+  untouched; `SEC-A12`'s rejection is a pure read from the store's
+  perspective.
 
-      true ->
-        :ok
+  Returns `SecretRef` (no value field), so the success path cannot
+  accidentally carry the new plaintext back into a caller's render. The
+  new secret is **not** revealed by creating it — no `secret_viewed` event
+  is emitted here, and no plaintext round-trips back through this
+  function's return value.
+
+  The value must appear in no log line, on any branch, including a failure
+  — the same guarantee `update/4` makes, for the same reason.
+  """
+  @spec create(
+          environment :: String.t(),
+          key :: String.t(),
+          value :: String.t(),
+          scope :: Scope.t()
+        ) :: {:ok, SecretRef.t()} | {:error, Error.t()}
+  def create(environment, key, value, %Scope{token: token} = scope)
+      when is_binary(environment) and is_binary(key) and is_binary(value) do
+    with {:ok, _environment} <- Environments.fetch(environment, token),
+         :ok <- Key.validate(key),
+         :ok <- Value.validate(value),
+         {:ok, ref} <- Store.create_secret(environment, key, value) do
+      :ok =
+        Audit.emit(:secret_created,
+          user: Scope.audit_user(scope),
+          tenant: scope.tenant,
+          resource: ref.path
+        )
+
+      {:ok, ref}
     end
   end
 
-  defp invalid_key(key) do
-    {:error, Error.new(:invalid, Store.boundary(), "invalid secret key", %{key: inspect(key)})}
+  defp sort(refs) do
+    Enum.sort_by(refs, &{String.downcase(&1.key), &1.key})
   end
 end

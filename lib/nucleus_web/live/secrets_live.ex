@@ -66,9 +66,7 @@ defmodule NucleusWeb.SecretsLive do
   all: not a plaintext one, and not a masked one either. A mask is only ever
   a promise that nothing was leaked, and it still has to be careful not to
   encode the real length; a column that does not exist makes no promise to
-  break. Creating a secret is `SEC-S6`'s modal; this module still only
-  renders a placeholder handler for the create button so a click cannot crash
-  the LiveView before that ticket replaces it.
+  break.
 
   ## Row DOM ids are a hash of the ARN, not the key (`SEC-S2` decision 2)
 
@@ -202,6 +200,62 @@ defmodule NucleusWeb.SecretsLive do
     untouched — `SEC-A06`'s "cancel to discard the change" is not
     `SEC-A04`'s hide, and the value stays revealed exactly as it does today
     when a user dismisses nothing at all.
+
+  ## Creating a secret is its own conditionally-rendered modal, mutually exclusive with reveal (`SEC-S6`)
+
+  `:creating` (boolean) and `:create_form` follow the same `:if`-wrapped
+  shape ADR-0012 established for `:revealed` — the modal (`#new-secret-modal`)
+  only exists in the DOM while `:creating` is true, and `handle_event/3`
+  drives it in and out exactly as `edit`/`hide` drive the reveal modal, not a
+  client-side `show_modal/2`/`hide_modal/2` pair. This was a deliberate
+  choice over the "mounted and toggled" usage ADR-0012 calls acceptable for
+  this form (a key and a not-yet-created value are not the same risk as an
+  already-stored plaintext secret) — using the same conditional shape as the
+  reveal modal means `on_cancel={JS.push("cancel_new")}` closes it the same
+  way `on_cancel={JS.push("hide")}` closes the reveal modal (removal fires
+  the component's own `phx-remove`), with no second client-side code path to
+  keep in sync.
+
+  **Opening either modal closes the other.** `"new_secret"` resets
+  `:revealed`/`:editing`/`:edit_form`/`:edit_error` to their closed state in
+  the same assign that opens the create modal, and `"reveal"` does the
+  mirror on `:creating`/`:create_form`/`:create_error`. Nothing renders two
+  `<.modal>`s at once as a structural guarantee, not merely as an unlikely
+  sequence of clicks — a client can dispatch `phx-click` events directly
+  regardless of which button is visually reachable behind a backdrop, the
+  same reasoning every other gate in this module already relies on. This is
+  the concrete fix for the `focusStack`/`JS.pop_focus/1` double-pop risk
+  ADR-0012 and `living-notes.md` both flag by name against this ticket: two
+  conditionally-rendered modals stacked would have the inner one's dismissal
+  consume the outer one's saved focus, so this module never lets both exist
+  at once rather than fixing the interaction after the fact.
+
+  **`:secret_keys` is kept in lock-step with the stream, not fetched separately
+  for the duplicate check.** `fetch_secrets/2` — already the one place
+  `:secret_count` and the stream are set — also assigns `:secret_keys` (the
+  plain list of keys from the same `Nucleus.Secrets.list/2` call) so
+  `NucleusWeb.SecretsLive.CreateForm.changeset/3`'s `SEC-A10` duplicate check
+  always compares against what is actually currently rendered, with no
+  second store call and no risk of the two drifting apart.
+
+  **A successful create re-lists rather than computing a stream insertion
+  position.** `Nucleus.Secrets.list/2` already sorts
+  case-insensitively — recomputing that ordering here to call
+  `stream_insert/3` at the right index would duplicate logic that already
+  exists and risks getting the tiebreak wrong. `save_new_secret/3` calls
+  `fetch_secrets/2` again on success, which re-streams with `reset: true`;
+  this also means a first-secret creation flips `:secret_count` from `0` and
+  swaps `#secrets-empty` for `#secrets-table` for free, the same way
+  `SEC-A07`'s re-masking falls out of `:revealed` going to `nil` rather than
+  being a separate step.
+
+  **`Nucleus.Secrets.Key.validate/1` and `Nucleus.Secrets.Value.validate/1`
+  run twice, deliberately.** `CreateForm.changeset/3` runs both — the same
+  functions `Nucleus.Secrets.create/4` runs again before ever reaching the
+  store. The first run is `SEC-A10`/`SEC-A11`'s fast, advisory feedback while
+  typing; the second is what actually stops an invalid `save_new` dispatched
+  directly, bypassing the disabled submit button the same way `save_edit`'s
+  reveal-before-edit gate cannot be satisfied by hiding a button alone.
   """
 
   use NucleusWeb, :live_view
@@ -211,9 +265,11 @@ defmodule NucleusWeb.SecretsLive do
   alias Nucleus.Secrets.Secret
   alias Nucleus.Secrets.SecretRef
   alias Nucleus.Secrets.Value
+  alias NucleusWeb.SecretsLive.CreateForm
   alias NucleusWeb.SecretsLive.EditForm
 
   @modal_id "secret-modal"
+  @create_modal_id "new-secret-modal"
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
@@ -234,6 +290,9 @@ defmodule NucleusWeb.SecretsLive do
       |> assign(:editing, false)
       |> assign(:edit_form, nil)
       |> assign(:edit_error, nil)
+      |> assign(:creating, false)
+      |> assign(:create_form, nil)
+      |> assign(:create_error, nil)
       |> fetch_secrets(environment)
 
     {:noreply, socket}
@@ -249,6 +308,13 @@ defmodule NucleusWeb.SecretsLive do
           |> assign(:editing, false)
           |> assign(:edit_form, nil)
           |> assign(:edit_error, nil)
+          # Mutual exclusion with the create modal — see the moduledoc's
+          # "Creating a secret" section for why this side structurally
+          # avoids ADR-0012's focusStack double-pop risk rather than fixing
+          # it after the fact.
+          |> assign(:creating, false)
+          |> assign(:create_form, nil)
+          |> assign(:create_error, nil)
 
         {:noreply, socket}
 
@@ -345,8 +411,64 @@ defmodule NucleusWeb.SecretsLive do
   end
 
   @impl Phoenix.LiveView
-  def handle_event("create_secret", _params, socket) do
-    {:noreply, put_flash(socket, :info, "Creating a secret is not yet implemented.")}
+  def handle_event("new_secret", _params, socket) do
+    socket =
+      socket
+      # Mutual exclusion with the reveal modal — see the moduledoc.
+      |> assign(:revealed, nil)
+      |> assign(:editing, false)
+      |> assign(:edit_form, nil)
+      |> assign(:edit_error, nil)
+      |> assign(:creating, true)
+      |> assign(:create_form, build_create_form(socket.assigns.secret_keys))
+      |> assign(:create_error, nil)
+
+    {:noreply, socket}
+  end
+
+  @impl Phoenix.LiveView
+  def handle_event("validate_new", %{"new_secret" => params}, socket) do
+    changeset =
+      %CreateForm{}
+      |> CreateForm.changeset(params, socket.assigns.secret_keys)
+      |> Map.put(:action, :validate)
+
+    {:noreply, assign(socket, :create_form, to_form(changeset, as: :new_secret))}
+  end
+
+  # Re-validated here, not only via `phx-change` — `SEC-A10`/`SEC-A11`
+  # require server-side enforcement, since a disabled submit button is UI
+  # convenience only: `save_new` can be dispatched directly, bypassing
+  # whatever `validate_new` already rejected client-side.
+  @impl Phoenix.LiveView
+  def handle_event("save_new", %{"new_secret" => params}, socket) do
+    changeset =
+      %CreateForm{}
+      |> CreateForm.changeset(params, socket.assigns.secret_keys)
+      |> Map.put(:action, :validate)
+
+    if changeset.valid? do
+      save_new_secret(
+        socket,
+        Ecto.Changeset.get_field(changeset, :key),
+        Ecto.Changeset.get_field(changeset, :value)
+      )
+    else
+      {:noreply, assign(socket, :create_form, to_form(changeset, as: :new_secret))}
+    end
+  end
+
+  # Every dismissal route the modal offers — Cancel, Escape, backdrop —
+  # arrives here, carrying no params, mirroring `"hide"` above.
+  @impl Phoenix.LiveView
+  def handle_event("cancel_new", _params, socket) do
+    socket =
+      socket
+      |> assign(:creating, false)
+      |> assign(:create_form, nil)
+      |> assign(:create_error, nil)
+
+    {:noreply, socket}
   end
 
   @impl Phoenix.LiveView
@@ -389,30 +511,83 @@ defmodule NucleusWeb.SecretsLive do
     end
   end
 
+  # `SEC-A12`'s rejection and any other failure both leave `:creating` and
+  # the entered `key`/`value` untouched (rebuilt into a fresh changeset
+  # below so they survive) — never a silent discard, matching `save_edit/3`'s
+  # `SEC-A08` reasoning above.
+  defp save_new_secret(socket, key, value) do
+    case Secrets.create(socket.assigns.environment, key, value, socket.assigns.current_scope) do
+      {:ok, _ref} ->
+        socket =
+          socket
+          |> assign(:creating, false)
+          |> assign(:create_form, nil)
+          |> assign(:create_error, nil)
+          |> put_flash(:info, "#{key} was created.")
+          # `SEC-A09`: re-lists rather than computing a stream insertion
+          # position — see the moduledoc's "Creating a secret" section.
+          # This also updates `:secret_count`/`:secret_keys`, which is what
+          # flips `#secrets-empty` to `#secrets-table` on a first secret.
+          |> fetch_secrets(socket.assigns.environment)
+
+        {:noreply, socket}
+
+      {:error, %Error{kind: :already_exists}} ->
+        changeset =
+          %CreateForm{}
+          |> CreateForm.changeset(%{"key" => key, "value" => value}, socket.assigns.secret_keys)
+          |> Ecto.Changeset.add_error(:key, "already exists in this environment")
+          |> Map.put(:action, :validate)
+
+        {:noreply, assign(socket, :create_form, to_form(changeset, as: :new_secret))}
+
+      {:error, %Error{} = error} ->
+        changeset =
+          %CreateForm{}
+          |> CreateForm.changeset(%{"key" => key, "value" => value}, socket.assigns.secret_keys)
+          |> Map.put(:action, :validate)
+
+        socket =
+          socket
+          |> assign(:create_form, to_form(changeset, as: :new_secret))
+          |> assign(:create_error, create_error_message(error))
+
+        {:noreply, socket}
+    end
+  end
+
   defp fetch_secrets(socket, environment) do
     case Secrets.list(environment, socket.assigns.current_scope) do
       {:ok, refs} ->
         socket
-        |> assign(environment_status: :ok, secret_count: length(refs))
+        |> assign(
+          environment_status: :ok,
+          secret_count: length(refs),
+          secret_keys: Enum.map(refs, & &1.key)
+        )
         |> stream(:secrets, refs, reset: true)
 
       {:error, %Error{kind: :invalid, boundary: :tenant_api}} ->
-        assign(socket, environment_status: :invalid, secret_count: 0)
+        assign(socket, environment_status: :invalid, secret_count: 0, secret_keys: [])
 
       {:error, %Error{kind: :not_found, boundary: :tenant_api}} ->
-        assign(socket, environment_status: :not_found, secret_count: 0)
+        assign(socket, environment_status: :not_found, secret_count: 0, secret_keys: [])
 
       {:error, %Error{kind: :unavailable, boundary: :tenant_api}} ->
-        assign(socket, environment_status: :validation_unavailable, secret_count: 0)
+        assign(socket,
+          environment_status: :validation_unavailable,
+          secret_count: 0,
+          secret_keys: []
+        )
 
       {:error, %Error{kind: :unavailable, boundary: :secrets}} ->
-        assign(socket, environment_status: :secrets_unavailable, secret_count: 0)
+        assign(socket, environment_status: :secrets_unavailable, secret_count: 0, secret_keys: [])
 
       {:error, %Error{kind: :auth_expired}} ->
-        assign(socket, environment_status: :auth_expired, secret_count: 0)
+        assign(socket, environment_status: :auth_expired, secret_count: 0, secret_keys: [])
 
       {:error, %Error{}} ->
-        assign(socket, environment_status: :secrets_unavailable, secret_count: 0)
+        assign(socket, environment_status: :secrets_unavailable, secret_count: 0, secret_keys: [])
     end
   end
 
@@ -457,7 +632,7 @@ defmodule NucleusWeb.SecretsLive do
       <div :if={@environment_status == :ok}>
         <div class="flex items-center justify-between gap-4 pb-4">
           <h1 class="text-lg font-semibold">Secrets</h1>
-          <.button id="secrets-create-button" phx-click="create_secret">New secret</.button>
+          <.button id="secrets-create-button" phx-click="new_secret">New secret</.button>
         </div>
 
         <.empty_state
@@ -600,6 +775,80 @@ defmodule NucleusWeb.SecretsLive do
             </div>
           <% end %>
         </.modal>
+
+        <%!--
+        Only in the DOM while it is open, mirroring the reveal modal above —
+        see the moduledoc's "Creating a secret" section for why the same
+        `:if`-wrapped shape was chosen over leaving this mounted and toggled.
+        --%>
+        <.modal
+          :if={@creating}
+          id={create_modal_id()}
+          show
+          on_cancel={JS.push("cancel_new")}
+        >
+          <:title>New secret</:title>
+          <.form
+            for={@create_form}
+            id="new-secret-form"
+            phx-change="validate_new"
+            phx-submit="save_new"
+          >
+            <.input
+              field={@create_form[:key]}
+              id="new-secret-key"
+              type="text"
+              label="Key"
+              placeholder="DATABASE_URL"
+              class="w-full input font-mono text-sm"
+            />
+            <p class="text-xs text-base-content/70 -mt-1 mb-2">
+              Convention: <code>UPPER_SNAKE_CASE</code>, e.g. <code>DATABASE_URL</code>. Not enforced.
+            </p>
+            <.input
+              field={@create_form[:value]}
+              id="new-secret-value"
+              type="textarea"
+              label="Value"
+              rows="6"
+              class="w-full textarea font-mono text-sm"
+            />
+            <div
+              id="new-secret-value-count"
+              class={[
+                "text-xs text-right mt-1",
+                if(create_value_length(@create_form) > Value.max_length(),
+                  do: "text-error font-semibold",
+                  else: "text-base-content/70"
+                )
+              ]}
+            >
+              {create_value_length(@create_form)}/{Value.max_length()} characters
+            </div>
+            <p
+              :if={@create_error}
+              id="new-secret-error"
+              role="alert"
+              class="text-error text-sm mt-2"
+            >
+              {@create_error}
+            </p>
+            <div class="modal-action">
+              <.button id="new-secret-cancel" type="button" phx-click="cancel_new">
+                Cancel
+              </.button>
+              <.button
+                id="new-secret-submit"
+                type="submit"
+                variant="primary"
+                disabled={not @create_form.source.valid?}
+                phx-disable-with="Creating..."
+              >
+                Create
+              </.button>
+            </div>
+          </.form>
+        </.modal>
       </div>
     </Layouts.app>
     """
@@ -608,6 +857,8 @@ defmodule NucleusWeb.SecretsLive do
   # A module attribute, not an assign — `@modal_id` inside `~H` would mean
   # `assigns.modal_id`.
   defp modal_id, do: @modal_id
+
+  defp create_modal_id, do: @create_modal_id
 
   defp dom_id(%SecretRef{arn: arn}) do
     "secret-" <> (:crypto.hash(:sha256, arn) |> Base.url_encode64(padding: false))
@@ -682,6 +933,41 @@ defmodule NucleusWeb.SecretsLive do
   # attribute.
   defp edit_dirty?(form, original_value) do
     to_string(form[:value].value) != to_string(original_value)
+  end
+
+  # `SEC-A12`/`SEC-A10`/`SEC-A11`'s kind-specific copy for a failed create —
+  # mirrors `edit_error_message/1`'s shape. `:already_exists` (`SEC-A12`) is
+  # handled separately, as a field-level error attached directly to `:key`
+  # rather than through this function — see `save_new_secret/3`.
+  defp create_error_message(%Error{kind: :auth_expired}) do
+    "This environment's secrets can't be reached right now."
+  end
+
+  defp create_error_message(%Error{kind: :unavailable}) do
+    "Can't create this secret right now. Try again shortly."
+  end
+
+  defp create_error_message(%Error{kind: :invalid}) do
+    "That key or value isn't valid."
+  end
+
+  defp create_error_message(%Error{}) do
+    "Can't create this secret right now. Try again shortly."
+  end
+
+  # Fresh each time, never reused across an open/cancel cycle — an unvalidated
+  # (`action: nil`) empty `%CreateForm{}` so opening the form shows no errors
+  # before the user has typed anything, mirroring `build_edit_form/1`.
+  defp build_create_form(existing_keys) do
+    %CreateForm{}
+    |> CreateForm.changeset(%{}, existing_keys)
+    |> to_form(as: :new_secret)
+  end
+
+  defp create_value_length(form) do
+    form[:value].value
+    |> to_string()
+    |> String.length()
   end
 
   defp format_last_modified(nil), do: "—"

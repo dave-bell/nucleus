@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.14 | Updated: 2026-08-18 -->
+<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.15 | Updated: 2026-08-19 -->
 
 # Decisions Log
 
@@ -38,6 +38,7 @@ job and the row should point rather than paraphrase.
 | 11 | Secret reveal — re-stream a converted `SecretRef` (never the value-bearing `Secret`), audit `user:` via `Scope.audit_user/1`, `Nucleus.Audit.Sink.Test` falls back to `$callers` for LiveView-emitted audit events | 2026-08-18 | Decided | `docs/adr/0011-secret-reveal-stream-reinsertion-and-audit-test-fallback.md` |
 | 12 | Secret reveal moves into a conditionally-rendered modal (plaintext never in the DOM while closed), Value column deleted outright, copy buttons icon-only with the label as a daisyUI tooltip; partially supersedes #11's map/re-stream mechanics | 2026-08-18 | Decided | `docs/adr/0012-secret-reveal-modal-and-icon-only-copy-affordances.md` |
 | 13 | Secret edit lives inside the reveal modal via content-swap-in-place (no second `<.modal>`), gated on `socket.assigns.revealed` matching `%Secret{key: ^key}`; `Nucleus.Secrets.Value` and an `embedded_schema` edit form set the pattern `SEC-S6` reuses | 2026-08-18 | Decided | `docs/adr/0013-secret-edit-in-modal-and-value-form.md` |
+| 14 | Secret creation — one consolidated `Nucleus.Secrets.Key.validate/1` (denylist, no casing rule, `Error.t()` shape matching `Value`), `create/4` relies on the store's atomic `:already_exists` refusal, and the creation modal is mutually exclusive with the reveal modal to structurally avoid ADR-0012's `focusStack` double-pop | 2026-08-19 | Decided | `docs/adr/0014-secret-creation-key-consolidation-and-modal-exclusion.md` |
 
 No **"re-platform" decision** (fresh start) and no **inherited ADRs** — the wiki's `ADR-0001`–
 `ADR-0007` are reference only; adopting one is a decision made on its own merits.
@@ -59,7 +60,7 @@ the ADR it points at stays findable.
 
 ## Onboarding Checklist
 
-- [ ] Read the Decision Index above; `adr/0001`–`0013` are binding
+- [ ] Read the Decision Index above; `adr/0001`–`0014` are binding
 - [ ] New formal ADRs belong in `docs/adr/`, with only an index row mirrored here — the wiki's
       ADR-0001–0007 are reference only, not adopted
 - [ ] Know which decisions are pending (see `living-notes.md`)

@@ -404,13 +404,459 @@ defmodule NucleusWeb.SecretsLiveTest do
     end
   end
 
-  describe "placeholder handlers do not crash the LiveView" do
-    test "clicking the create button does not crash", %{conn: conn} do
+  defmodule FailingCreateSecretsStore do
+    @moduledoc """
+    A `Nucleus.Secrets.Store` implementation whose `create_secret/3` always
+    fails `:unavailable`, mirroring `FailingUpdateSecretsStore` below —
+    `list_secrets/1` and `get_secret/2` delegate to the real
+    `Nucleus.Secrets.Store.Local`, so the table (and a subsequent retry)
+    still renders correctly and only the create call itself fails.
+    """
+    @behaviour Nucleus.Secrets.Store
+
+    @impl Nucleus.Secrets.Store
+    def list_secrets(environment), do: Nucleus.Secrets.Store.Local.list_secrets(environment)
+
+    @impl Nucleus.Secrets.Store
+    def get_secret(environment, key), do: Nucleus.Secrets.Store.Local.get_secret(environment, key)
+
+    @impl Nucleus.Secrets.Store
+    def create_secret(_environment, _key, _value) do
+      {:error, Error.new(:unavailable, :secrets, "forced for test", %{})}
+    end
+
+    @impl Nucleus.Secrets.Store
+    def update_secret(_environment, _key, _value), do: raise("should not be called")
+
+    @impl Nucleus.Secrets.Store
+    def locate_secret(_environment, _key), do: raise("should not be called")
+
+    @impl Nucleus.Secrets.Store
+    def list_environments, do: raise("should not be called")
+
+    @impl Nucleus.Secrets.Store
+    def list_all_secrets, do: raise("should not be called")
+
+    @impl Nucleus.Secrets.Store
+    def health_check, do: raise("should not be called")
+  end
+
+  defp use_failing_create_secrets_store do
+    original = Application.get_env(:nucleus, :backends, [])
+    on_exit(fn -> Application.put_env(:nucleus, :backends, original) end)
+
+    Application.put_env(
+      :nucleus,
+      :backends,
+      Keyword.put(original, :secrets, FailingCreateSecretsStore)
+    )
+  end
+
+  defp restore_secrets_store_for_create do
+    original = Application.get_env(:nucleus, :backends, [])
+
+    Application.put_env(
+      :nucleus,
+      :backends,
+      Keyword.put(original, :secrets, Secrets.Store.Local)
+    )
+  end
+
+  describe "SEC-A09 — create a new secret" do
+    @tag action: "SEC-A09"
+    test "opens the modal, submits valid key/value: modal closes, confirmation, row appears in the list",
+         %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+      refute has_element?(view, "#new-secret-modal")
+
+      view |> element("#secrets-create-button") |> render_click()
+      assert has_element?(view, "#new-secret-modal")
+
+      view
+      |> form("#new-secret-form", new_secret: %{"key" => "NEW_KEY", "value" => "new-value"})
+      |> render_submit()
+
+      refute has_element?(view, "#new-secret-modal")
+      assert has_element?(view, "#flash-info")
+      assert view |> element("#flash-info") |> render() =~ "NEW_KEY"
+      assert has_element?(view, "[data-key=\"NEW_KEY\"]")
+    end
+
+    @tag action: "SEC-A09"
+    test "the new row lands in the same case-insensitive sort position list/2 would put it in",
+         %{conn: conn} do
       assert {:ok, view, _html} = live_secrets(conn, "prod")
 
       view |> element("#secrets-create-button") |> render_click()
 
+      html =
+        view
+        |> form("#new-secret-form", new_secret: %{"key" => "AAA_FIRST_KEY", "value" => "v"})
+        |> render_submit()
+
+      assert {:ok, refs} = Secrets.list("prod", %Nucleus.Scope{})
+      keys = Enum.map(refs, & &1.key)
+
+      assert "AAA_FIRST_KEY" in keys
+      positions = Enum.map(keys, &key_position(html, &1))
+      assert positions == Enum.sort(positions)
+    end
+
+    @tag action: "SEC-A09"
+    test "creating the first secret in the empty sandbox environment replaces #secrets-empty with #secrets-table",
+         %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "sandbox")
+      assert has_element?(view, "#secrets-empty")
+      refute has_element?(view, "#secrets-table")
+
+      view |> element("#secrets-create-button") |> render_click()
+
+      view
+      |> form("#new-secret-form", new_secret: %{"key" => "FIRST_KEY", "value" => "v"})
+      |> render_submit()
+
+      refute has_element?(view, "#secrets-empty")
       assert has_element?(view, "#secrets-table")
+      assert has_element?(view, "[data-key=\"FIRST_KEY\"]")
+    end
+
+    @tag action: "SEC-A09"
+    test "the new secret is not revealed after creation — no secret_viewed, no plaintext in the payload",
+         %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+
+      view |> element("#secrets-create-button") |> render_click()
+
+      html =
+        view
+        |> form("#new-secret-form",
+          new_secret: %{"key" => "NEW_KEY", "value" => "brand-new-value"}
+        )
+        |> render_submit()
+
+      refute html =~ "brand-new-value"
+      refute has_element?(view, "#secret-modal")
+      assert_no_audit_event(:secret_viewed)
+      assert_audit_event(:secret_created)
+    end
+  end
+
+  describe "SEC-A10 — validate the secret key on creation" do
+    @tag action: "SEC-A10"
+    test "each invalid key shows a specific, distinct message", %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+      view |> element("#secrets-create-button") |> render_click()
+
+      slash_html =
+        view
+        |> form("#new-secret-form", new_secret: %{"key" => "a/b", "value" => "v"})
+        |> render_change()
+
+      too_long_html =
+        view
+        |> form("#new-secret-form",
+          new_secret: %{"key" => String.duplicate("a", 257), "value" => "v"}
+        )
+        |> render_change()
+
+      assert slash_html =~ "forward slash"
+      assert too_long_html =~ "256 characters"
+      refute slash_html =~ "256 characters"
+      refute too_long_html =~ "forward slash"
+    end
+
+    @tag action: "SEC-A10"
+    test "a duplicate key shows an error and disables #new-secret-submit", %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+      view |> element("#secrets-create-button") |> render_click()
+
+      html =
+        view
+        |> form("#new-secret-form", new_secret: %{"key" => "DATABASE_URL", "value" => "v"})
+        |> render_change()
+
+      assert html =~ "already exists in this environment"
+      assert has_element?(view, "#new-secret-submit[disabled]")
+    end
+
+    @tag action: "SEC-A10"
+    test "the submit button starts disabled on the freshly-opened, empty form", %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+      view |> element("#secrets-create-button") |> render_click()
+
+      assert has_element?(view, "#new-secret-submit[disabled]")
+    end
+  end
+
+  describe "SEC-A11 — validate the secret value on creation" do
+    @tag action: "SEC-A11"
+    test "#new-secret-value-count is present and updates as the value changes", %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+      view |> element("#secrets-create-button") |> render_click()
+
+      assert has_element?(view, "#new-secret-value-count")
+
+      html_one =
+        view
+        |> form("#new-secret-form", new_secret: %{"key" => "K", "value" => "abc"})
+        |> render_change()
+
+      html_two =
+        view
+        |> form("#new-secret-form", new_secret: %{"key" => "K", "value" => "abcdefghij"})
+        |> render_change()
+
+      assert html_one =~ "3/4096 characters"
+      assert html_two =~ "10/4096 characters"
+      refute html_one == html_two
+    end
+
+    @tag action: "SEC-A11"
+    test "over-limit shows the limit and blocks submission", %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+      view |> element("#secrets-create-button") |> render_click()
+
+      too_long = String.duplicate("a", 4097)
+
+      html =
+        view
+        |> form("#new-secret-form", new_secret: %{"key" => "K", "value" => too_long})
+        |> render_change()
+
+      assert html =~ "exceeds 4096 characters"
+      assert has_element?(view, "#new-secret-submit[disabled]")
+
+      view
+      |> form("#new-secret-form", new_secret: %{"key" => "K", "value" => too_long})
+      |> render_submit()
+
+      assert has_element?(view, "#new-secret-modal")
+      refute has_element?(view, "[data-key=\"K\"]")
+    end
+  end
+
+  describe "SEC-A10/SEC-A11 — server-side enforcement, bypassing the disabled button" do
+    @tag action: "SEC-A10"
+    test "dispatching save_new directly with an invalid key creates nothing", %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+
+      render_click(view, "save_new", %{"new_secret" => %{"key" => "a/b", "value" => "v"}})
+
+      refute has_element?(view, "[data-key=\"a/b\"]")
+      assert_no_audit_event(:secret_created)
+    end
+
+    @tag action: "SEC-A11"
+    test "dispatching save_new directly with an invalid value creates nothing", %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+      too_long = String.duplicate("a", 4097)
+
+      render_click(view, "save_new", %{
+        "new_secret" => %{"key" => "SOME_KEY", "value" => too_long}
+      })
+
+      refute has_element?(view, "[data-key=\"SOME_KEY\"]")
+      assert_no_audit_event(:secret_created)
+    end
+  end
+
+  describe "SEC-A12 — reject creating a secret that already exists" do
+    @tag action: "SEC-A12"
+    test "shows \"already exists in this environment\", modal stays open, existing value unchanged",
+         %{conn: conn} do
+      assert {:ok, %{value: db_value}} = Secrets.Store.get_secret("prod", "DATABASE_URL")
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+
+      view |> element("#secrets-create-button") |> render_click()
+
+      html =
+        view
+        |> form("#new-secret-form",
+          new_secret: %{"key" => "DATABASE_URL", "value" => "attempted-overwrite"}
+        )
+        |> render_submit()
+
+      assert html =~ "already exists in this environment"
+      assert has_element?(view, "#new-secret-modal")
+
+      assert {:ok, %{value: ^db_value}} = Secrets.Store.get_secret("prod", "DATABASE_URL")
+      assert_no_audit_event(:secret_created)
+    end
+  end
+
+  describe "SEC-A13 — dismiss the creation form without saving" do
+    @tag action: "SEC-A13"
+    test "cancel closes and creates nothing", %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+
+      view |> element("#secrets-create-button") |> render_click()
+      assert has_element?(view, "#new-secret-modal")
+
+      view
+      |> form("#new-secret-form", new_secret: %{"key" => "NOT_SAVED", "value" => "v"})
+      |> render_change()
+
+      view |> element("#new-secret-cancel") |> render_click()
+
+      refute has_element?(view, "#new-secret-modal")
+      refute has_element?(view, "[data-key=\"NOT_SAVED\"]")
+      assert_no_audit_event(:secret_created)
+    end
+
+    @tag action: "SEC-A13"
+    test "the modal's Escape wiring is present and reaches cancel_new", %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+
+      view |> element("#secrets-create-button") |> render_click()
+      doc = view |> render() |> LazyHTML.from_fragment()
+
+      assert [cancel] =
+               doc |> LazyHTML.query("#new-secret-modal") |> LazyHTML.attribute("data-cancel")
+
+      assert cancel =~ "cancel_new"
+
+      container = LazyHTML.query(doc, "#new-secret-modal-container")
+      assert LazyHTML.attribute(container, "phx-key") == ["escape"]
+      assert LazyHTML.attribute(container, "phx-window-keydown") != []
+    end
+
+    @tag action: "SEC-A13"
+    test "backdrop dismissal reaches cancel_new", %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+
+      view |> element("#secrets-create-button") |> render_click()
+      doc = view |> render() |> LazyHTML.from_fragment()
+
+      container = LazyHTML.query(doc, "#new-secret-modal-container")
+      assert LazyHTML.attribute(container, "phx-click-away") != []
+
+      assert [cancel] =
+               doc |> LazyHTML.query("#new-secret-modal") |> LazyHTML.attribute("data-cancel")
+
+      assert cancel =~ "cancel_new"
+    end
+
+    @tag action: "SEC-A13"
+    test "reopening after a cancelled attempt shows an empty form", %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+
+      view |> element("#secrets-create-button") |> render_click()
+
+      view
+      |> form("#new-secret-form",
+        new_secret: %{"key" => "DISCARDED", "value" => "discarded-value"}
+      )
+      |> render_change()
+
+      view |> element("#new-secret-cancel") |> render_click()
+
+      html = view |> element("#secrets-create-button") |> render_click()
+
+      refute html =~ "DISCARDED"
+      refute html =~ "discarded-value"
+      assert html =~ "0/4096 characters"
+    end
+
+    @tag action: "SEC-A13"
+    test "opening the create modal closes an open reveal modal, and vice versa", %{conn: conn} do
+      assert {:ok, %{value: db_value}} = Secrets.Store.get_secret("prod", "DATABASE_URL")
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+      row_id = row_id(view, "DATABASE_URL")
+
+      html = view |> element("#reveal-#{row_id}") |> render_click()
+      assert html =~ db_value
+
+      html = view |> element("#secrets-create-button") |> render_click()
+      refute html =~ db_value
+      refute has_element?(view, "#secret-modal")
+      assert has_element?(view, "#new-secret-modal")
+
+      html = render_click(view, "reveal", %{"key" => "DATABASE_URL"})
+      assert html =~ db_value
+      refute has_element?(view, "#new-secret-modal")
+    end
+  end
+
+  describe "SEC-A09 — store forced :unavailable" do
+    @tag action: "SEC-A09"
+    test "error shown, modal open, entered values preserved, retry succeeds without re-entry",
+         %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+      view |> element("#secrets-create-button") |> render_click()
+
+      use_failing_create_secrets_store()
+
+      form_input = %{"key" => "RETRY_KEY", "value" => "retry-value"}
+
+      html =
+        view
+        |> form("#new-secret-form", new_secret: form_input)
+        |> render_submit()
+
+      assert has_element?(view, "#new-secret-error")
+      assert has_element?(view, "#new-secret-modal")
+      assert html =~ "RETRY_KEY"
+      assert html =~ "retry-value"
+      refute has_element?(view, "[data-key=\"RETRY_KEY\"]")
+
+      restore_secrets_store_for_create()
+
+      html =
+        view
+        |> form("#new-secret-form", new_secret: form_input)
+        |> render_submit()
+
+      refute has_element?(view, "#new-secret-modal")
+      assert has_element?(view, "[data-key=\"RETRY_KEY\"]")
+      refute html =~ "retry-value"
+    end
+  end
+
+  defmodule NewSecretModalBrowserGaps do
+    @moduledoc """
+    `SEC-A13` dismissal behaviour `Phoenix.LiveViewTest` structurally cannot
+    execute, for exactly the reason `SecretRevealModalBrowserGaps` (below)
+    cannot: Escape and a backdrop click reach the server only by running the
+    `Phoenix.LiveView.JS` chain in `data-cancel`, which needs a real key
+    event, a real click outside the `.modal-box`, and a client to interpret
+    the command list (`docs/adr/0008-test-strategy.md`). Focus restoration —
+    "focus returns to a sensible place" — is the same story:
+    `JS.push_focus/1`/`JS.pop_focus/1` are client-side.
+
+    The describe block above (`"SEC-A13 — ..."`) proves the wiring these
+    gaps depend on (`data-cancel` present and pushing `cancel_new`,
+    `phx-key="escape"`, `phx-window-keydown`, `phx-click-away` all present)
+    and proves the one route a `render_click/1` can actually drive (the
+    Cancel button) discards cleanly. What remains unverified here is the
+    same as the reveal modal's own gap, carried in `living-notes.md`
+    alongside `SEC-A02`'s and `SEC-A04`'s.
+
+    Skipped unconditionally rather than by default-exclude tag, so `mix test`
+    always reports them as skipped instead of silently passing zero
+    assertions, and so the gap is discoverable in the suite itself and not
+    only in `living-notes.md`, once a driver (Wallaby, deferred to `EN-8`) is
+    adopted. None carry `@tag action:` — the describe block above records
+    what is actually proven.
+    """
+
+    use ExUnit.Case, async: true
+
+    @moduletag :browser
+    @moduletag skip: "no browser driver in this repo — see docs/adr/0008-test-strategy.md"
+
+    test "pressing Escape while the modal is open closes it and creates nothing" do
+    end
+
+    test "clicking the backdrop outside the modal box closes it and creates nothing" do
+    end
+
+    test "focus moves into the modal on open and returns to #secrets-create-button on dismissal" do
+    end
+
+    test "Tab is trapped inside the modal while it is open" do
+    end
+
+    test "the character counter updates smoothly on a long paste" do
     end
   end
 

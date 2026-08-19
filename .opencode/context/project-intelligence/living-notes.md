@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/notes | Priority: high | Version: 1.14 | Updated: 2026-08-18 -->
+<!-- Context: project-intelligence/notes | Priority: high | Version: 1.15 | Updated: 2026-08-19 -->
 
 # Living Notes
 
@@ -17,9 +17,8 @@
 | `docs/adr/` had no ADRs while 7 prototype ADRs sit in the wiki | ADR-shaped questions get answered in chat and lost | Medium | Write this project's own ADRs as decisions land — `0001` now exists |
 | LiveDashboard at `/dev/dashboard` unauthenticated | Fine in dev; a leak if ever exposed in prod | Medium | Gate behind auth before any production deploy |
 | Nucleus's own AWS identity (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_SESSION_TOKEN`) is read ambiently by the `aws` package, with no boot-time check or ops-facing doc — unlike `TENANT_ROLE_ARN`/`AWS_REGION`/`CLUSTER_NAME`/`DEPLOYMENT_NAME`, which all raise at boot | A misconfigured deployment fails per-request as `:not_configured` on first `AssumeRole` call, not at boot | Low | `CLUSTER_NAME`/`DEPLOYMENT_NAME` are now correctly documented in the wiki's `Platform-Operations.md` config reference (issue #22). The ambient `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_SESSION_TOKEN` doc gap remains open — was out of scope for #22 |
-| No browser-driven test coverage for `SEC-A02` (the `navigator.clipboard.writeText` call itself, the confirmation face swap/revert — an icon in a row, the word "Copied" in the modal — the non-secure-context `execCommand` fallback, the failure indication, and the hover/`:focus-visible` reveal of any tooltip, now on path and ARN values as well as the copy buttons) or for modal dismissal — `SEC-A13`'s focus trap and focus restoration, plus `SEC-A04`'s Escape and backdrop-click routes, which reach the server only by running the `JS` chain in `data-cancel` | Tests assert wiring only (hook attached, `data-value` full/untruncated, `phx-update="ignore"` present, `data-tip` set, `on_cancel`/`phx-key`/`phx-click-away` present), and claim `@tag action:` for `SEC-A04` **only** via the Close button, whose plain `phx-click="hide"` a `render_click/1` can actually drive | Medium | Add Wallaby once sign-in exists (deferred, EN-8); see `docs/adr/0008-test-strategy.md`. Both gap sets are skipped `:browser`-tagged placeholder modules in `secrets_live_test.exs` — `CopyButtonBrowserGaps` (4) and `SecretRevealModalBrowserGaps` (5) |
+| No browser-driven test coverage for `SEC-A02` (the `navigator.clipboard.writeText` call itself, the confirmation face swap/revert — an icon in a row, the word "Copied" in the modal — the non-secure-context `execCommand` fallback, the failure indication, and the hover/`:focus-visible` reveal of any tooltip, now on path and ARN values as well as the copy buttons) or for modal dismissal — `SEC-A13`'s focus trap and focus restoration (both the reveal modal's and the create modal's), plus `SEC-A04`'s Escape and backdrop-click routes, which reach the server only by running the `JS` chain in `data-cancel` | Tests assert wiring only (hook attached, `data-value` full/untruncated, `phx-update="ignore"` present, `data-tip` set, `on_cancel`/`phx-key`/`phx-click-away` present), and claim `@tag action:` for `SEC-A04`/`SEC-A13` **only** via each modal's plain-`phx-click` dismiss control (Close, Cancel), which `render_click/1` can actually drive | Medium | Add Wallaby once sign-in exists (deferred, EN-8); see `docs/adr/0008-test-strategy.md`. Three gap sets are skipped `:browser`-tagged placeholder modules in `secrets_live_test.exs` — `CopyButtonBrowserGaps` (4), `SecretRevealModalBrowserGaps` (5), and `NewSecretModalBrowserGaps` (5) |
 | `LOCAL_FORCE_ERROR` (`Nucleus.Backend.Faults`) is node-global, not per-boundary — a fault set for one boundary is seen by every local implementation's next call | A test targeting the `:secrets` boundary's error path is actually caught by whichever boundary is called first; SEC-S2 found this when `Nucleus.Secrets.list/2`'s `Environments.fetch/2` gate always intercepted the fault before `Store.list_secrets/1` ran | Low | Swap in a real/failing module via `Application.put_env(:nucleus, :backends, ...)` instead of `force_error/2` for a specific-boundary test — see `SecretsLiveTest.FailingSecretsStore` |
-| `Nucleus.Secrets.reveal/3`'s key validator is a second, weaker copy of `Environments.validate_name/1`'s deny-list (`..`, `/`, `\`, null byte only — no charset allowlist, no length cap) | A forged key using percent-double-encoding or a control character other than a null byte could still reach `Store.get_secret/2`/`Path.build/2`; cross-environment traversal is still blocked since `/`, `..`, `\` are denied | Low | `SEC-S6` (issue #14) should replace this with one shared validator, not add a third — see `docs/adr/0011-secret-reveal-stream-reinsertion-and-audit-test-fallback.md` |
 
 ### Technical Debt Details
 
@@ -131,6 +130,13 @@ deploys it.
   renders inside one already-open `<.modal>`) rather than stacking a second `<.modal>` over the
   first — sidesteps ADR-0012's `focusStack`/`JS.pop_focus/1` double-pop risk entirely instead of
   needing a fix for it. See `docs/adr/0013-secret-edit-in-modal-and-value-form.md`.
+- A denylist validator returning `Nucleus.Backend.Error.t()` with the specific reason carried in
+  `error.details.reason` (`Nucleus.Secrets.Key`), matching a sibling shape validator
+  (`Nucleus.Secrets.Value`) that returns the same struct — two validators feeding the same
+  `with` chain (`Nucleus.Secrets.create/4`) need no special case for either one's failure, and a
+  form layer that needs distinct per-rule copy (`SEC-A10`) reads `error.message` directly rather
+  than pattern-matching a bare atom. See `docs/adr/0013-secret-edit-in-modal-and-value-form.md`'s
+  addendum.
 
 ### Gotchas for Maintainers
 - **Requirements are a submodule.** Fresh clones need
@@ -149,8 +155,13 @@ deploys it.
   `JS.exec("phx-remove")`, then again when the server removes the element and `phx-remove` fires
   for real. Harmless while one modal is open — the second pop finds an empty `focusStack` and
   no-ops — but `focusStack` is module-global, so **two modals open at once would have the inner
-  one consume the outer one's saved focus**. `SEC-S6`'s creation form must not open over the
-  reveal modal without revisiting this. See
+  one consume the outer one's saved focus**. `NucleusWeb.SecretsLive` now has two independently
+  conditionally-rendered modals (reveal, `SEC-S4`/ADR-0012; create, `SEC-S6`) and resolves this by
+  **mutual exclusion, not a fix to the interaction itself**: opening either one
+  (`"reveal"`/`"new_secret"`) resets the other's assigns to its closed state in the same step, so
+  the two are never both mounted at once as a structural guarantee. Reaching for a third
+  conditionally-rendered modal in this LiveView means extending that mutual-exclusion set, not
+  assuming the existing pair already covers it. See
   `docs/adr/0012-secret-reveal-modal-and-icon-only-copy-affordances.md`.
 - **`CoreComponents.modal/1` has two legitimate usages, and the wrong one leaks.** Left mounted
   and toggled with `modal-open`, its inner block is in the DOM (and in view-source) while the
@@ -165,6 +176,19 @@ deploys it.
 ## Archive (Resolved Items)
 
 Moved here for historical reference.
+
+**`Nucleus.Secrets.reveal/3`'s key validator was a second, weaker copy of `Environments.validate_name/1`'s deny-list** — *was: Technical Debt, Low*
+*Resolved*: 2026-08-19 by SEC-S6 (issue #14).
+*Outcome*: Consolidated into `Nucleus.Secrets.Key.validate/1` — the one key validator in the
+application, shared by `reveal/3`, `update/4`, and the new `create/4` (`SEC-A09`). Same denylist
+(`..`, `/`, `\`, null byte, empty, over 256 characters), now with a distinct reason atom per rule
+in `error.details.reason` (`SEC-A10`'s "the form indicates the specific problem"), and a
+deliberate decision to add **no casing rule** — considered and rejected, since a create-only
+casing constraint would route a rejected legitimate key around Nucleus entirely rather than
+through its audit trail. The 256-character cap now applies to the read path too, documented as a
+deliberate consequence rather than left to be discovered.
+*See*: `docs/adr/0011-secret-reveal-stream-reinsertion-and-audit-test-fallback.md`,
+`docs/adr/0013-secret-edit-in-modal-and-value-form.md`'s addendum, and SEC-S6's own ADR.
 
 **`SEC-S5`'s plan (issue #13) was stale under ADR-0012** — *was: Technical Debt, Medium*
 *Resolved*: 2026-08-18 by SEC-S5 (issue #13).

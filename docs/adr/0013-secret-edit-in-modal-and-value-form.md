@@ -85,6 +85,24 @@ shape every other validation step in `Nucleus.Secrets` returns, so
 error. `SEC-S6` (issue #14) is expected to reuse this module unchanged for
 its own value field rather than writing a second copy.
 
+### `SEC-S6`'s sibling key validator returns the same `Error.t()` shape, not a bare atom
+
+`SEC-S6`'s own plan (issue #14) originally specified
+`Nucleus.Secrets.Key.validate/1 :: :ok | {:error, atom()}` — a bare reason
+atom per rule. Settled during that ticket's implementation, against this
+ADR's own precedent: `Key.validate/1` returns `:ok | {:error,
+Nucleus.Backend.Error.t()}`, matching `Value.validate/1` exactly, with the
+distinct per-rule reason atom carried in `error.details.reason` (e.g.
+`%{reason: :too_long}`) rather than as the return value itself. Two
+sibling validators in one namespace, feeding the same `create/4` `with`
+chain `update/4` already established, returning different shapes on
+success would have been an accident of authorship order, not a deliberate
+choice — `create/4` needs no special case for either validator's failure,
+the same reason `update/4` needs none for `Value`'s. `SEC-A10`'s "the form
+indicates the specific problem" is still satisfied: the reason atom in
+`details` is what a test or the changeset layer matches on, and
+`error.message` still carries the distinct human-readable copy per rule.
+
 ### The edit form is an `embedded_schema` changeset, not a schemaless one
 
 `NucleusWeb.SecretsLive.EditForm` is a tiny `embedded_schema` with one
@@ -191,5 +209,7 @@ future reader would have to reverse-engineer the reason for.
   Debt entry this ADR resolves (SEC-S5's plan going stale under ADR-0012)
 - SEC-S6 (issue #14) — expected to reuse
   `Nucleus.Secrets.Value` and the `embedded_schema` form pattern for its own
-  key+value creation form
+  key+value creation form; settled its own `Key.validate/1`'s return shape
+  against this ADR's `Value.validate/1` precedent rather than the bare atom
+  its original plan specified
 </content>
