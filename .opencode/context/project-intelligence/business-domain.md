@@ -28,7 +28,7 @@ Solution: A single per-tenant web application that reads and updates that config
 wiki, checked out at `docs/requirements/`. Every action has a stable ID (e.g. `SEC-A03`)
 that is never reused or renumbered, so it can be cited from a test name or bug report.
 
-113 actions across 10 pages. See `business-tech-bridge.md` for the ID → codebase map.
+114 actions across 10 pages. See `business-tech-bridge.md` for the ID → codebase map.
 
 **Scope note**: the wiki's *architecture* sections (its diagram, its `API:` contract lines,
 and `ADR-0001`–`ADR-0007`) describe an earlier prototype built with a Python API and a React

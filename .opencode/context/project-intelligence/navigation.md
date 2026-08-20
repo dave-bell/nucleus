@@ -29,7 +29,7 @@
 
 ## Requirements Live Elsewhere
 
-The 113 numbered requirements ("actions") for Nucleus are held in the wiki submodule at
+The 114 numbered requirements ("actions") for Nucleus are held in the wiki submodule at
 `docs/requirements/`, **not** in these files. `business-tech-bridge.md` is the index into
 them. Do not copy requirement text into this folder — it will drift.
 

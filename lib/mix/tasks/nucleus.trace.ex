@@ -41,8 +41,8 @@ defmodule Mix.Tasks.Nucleus.Trace do
 
   `docs/requirements/Home.md` contains a worked example of action formatting
   (`### SEC-A03 — Reveal a secret value`, in a "how to read an action"
-  section) that is documentation, not a 114th requirement. Excluding it is
-  what makes the defined count land on 113, not 114 — see
+  section) that is documentation, not a 115th requirement. Excluding it is
+  what makes the defined count land on 114, not 115 — see
   `business-tech-bridge.md`.
   """
 

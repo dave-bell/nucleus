@@ -34,7 +34,7 @@ Then re-check the table below for new or renamed action IDs.
 
 ## Core Mapping
 
-**113 actions across 10 pages.** Action IDs are stable and never renumbered, so they are safe
+**114 actions across 10 pages.** Action IDs are stable and never renumbered, so they are safe
 to cite from test names and bug reports.
 
 | Requirement page | Action IDs | Count | Planned Phoenix surface | Planned test file |
@@ -45,7 +45,7 @@ to cite from test names and bug reports.
 | `Environments.md` | `ENV-A01`–`A07` | 7 | `NucleusWeb.EnvironmentsLive` | `test/nucleus_web/live/environments_live_test.exs` |
 | `Data-Export-Configuration.md` | `DEX-A01`–`A14` | 14 | `NucleusWeb.DataExportLive` + Nomad Variables client | `test/nucleus_web/live/data_export_live_test.exs` |
 | `Secrets.md` | `SEC-A01`–`A18` | 18 | `NucleusWeb.SecretsLive` + SSM Parameter Store client | `test/nucleus_web/live/secrets_live_test.exs` |
-| `M2M-Clients.md` | `M2M-A01`–`A17`, minus `A09` | 16 | `NucleusWeb.M2MClientsLive` + Cognito client | `test/nucleus_web/live/m2m_clients_live_test.exs` |
+| `M2M-Clients.md` | `M2M-A01`–`A18`, minus `A09` | 17 | `NucleusWeb.M2MClientsLive` + Cognito client | `test/nucleus_web/live/m2m_clients_live_test.exs` |
 | `Audit-and-Compliance.md` | `AUD-A01`–`A07` | 7 | `Nucleus.Audit` (emit-only; no local store — stateless constraint) | `test/nucleus/audit_test.exs` |
 | `API-Proxy.md` | `PRX-A01`–`A07` | 7 | Backing-API forwarding layer | `test/nucleus_web/proxy_test.exs` |
 | `Platform-Operations.md` | `OPS-A01`–`A13` | 13 | Health/readiness endpoints, config reference | `test/nucleus_web/ops_test.exs` |
@@ -99,7 +99,7 @@ Run a single requirement's tests:
 mix test --only action:SEC-A03
 ```
 
-List every action ID defined in the requirements (yields 113):
+List every action ID defined in the requirements (yields 114):
 
 ```sh
 rg -o --no-filename '^### ([A-Z0-9]+-A[0-9]+)' -r '$1' docs/requirements/ -g '!Home.md' | sort -u
