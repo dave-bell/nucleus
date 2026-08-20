@@ -232,6 +232,45 @@ defmodule Nucleus.M2M.Clients.CognitoTest do
       assert %{created_date: nil, created_date_error: :unavailable} = by_id["throttled-id"]
     end
 
+    test "an unexpected DescribeUserPoolClient response shape degrades that row, not the whole list" do
+      stub_with(%{
+        "ListUserPoolClients" => fn conn, _body ->
+          respond_json(conn, 200, %{
+            "UserPoolClients" => [
+              user_pool_client_description("good-id", "good-client"),
+              user_pool_client_description("malformed-id", "malformed-client")
+            ]
+          })
+        end,
+        "DescribeUserPoolClient" => fn conn, raw_body ->
+          case Jason.decode!(raw_body) do
+            %{"ClientId" => "good-id"} ->
+              respond_json(conn, 200, %{
+                "UserPoolClient" => user_pool_client(%{"ClientId" => "good-id"})
+              })
+
+            %{"ClientId" => "malformed-id"} ->
+              # A response missing "UserPoolClient" entirely — something no
+              # documented Cognito behaviour produces, but the per-row
+              # fan-out must survive it without taking the whole list down.
+              respond_json(conn, 200, %{})
+          end
+        end
+      })
+
+      log =
+        capture_log(fn ->
+          assert {:ok, clients} = Cognito.list_clients()
+          by_id = Map.new(clients, &{&1.client_id, &1})
+
+          assert %{created_date: %DateTime{}, created_date_error: nil} = by_id["good-id"]
+          assert %{created_date: nil, created_date_error: :unavailable} = by_id["malformed-id"]
+        end)
+
+      refute log =~ "ClientSecret"
+      refute log =~ "super-secret-value"
+    end
+
     test "a failing ListUserPoolClients call fails the whole list" do
       stub_with(%{
         "ListUserPoolClients" => fn conn, _body ->

@@ -191,6 +191,29 @@ defmodule Nucleus.M2M.Clients.Cognito do
           created_date_error: kind
         }
     end
+  rescue
+    # Only a failure of ListUserPoolClients itself should fail list_clients/0
+    # — an unexpected response shape from one client's describe (a future
+    # Cognito API change, say) must degrade that row exactly like a
+    # classified AWS error does, not crash this Task and its caller.
+    #
+    # Logs the exception's module only, never its message: a MatchError from
+    # to_detail/1's pattern match carries the *full* Cognito response —
+    # ClientSecret included — in its `term` field, and Exception.message/1
+    # would print that verbatim. The logging-discipline rule above forbids
+    # that on every branch, including this one.
+    error ->
+      Logger.warning(
+        "m2m aws describe_user_pool_client unexpected failure client_id=#{client_id} " <>
+          "exception=#{inspect(error.__struct__)}"
+      )
+
+      %Client{
+        client_id: client_id,
+        client_name: client_name,
+        created_date: nil,
+        created_date_error: :unavailable
+      }
   end
 
   # -- describe_client/1, and list_clients/0's per-row describe ------------
