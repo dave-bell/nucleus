@@ -41,6 +41,9 @@ defmodule NucleusWeb.Router do
     # environments to, per this ticket's own plan.
     live_session :authenticated,
       on_mount: [{NucleusWeb.ScopeHook, :assign}, {NucleusWeb.EnvironmentsHook, :assign}] do
+      # No conflict with the detail route below — Phoenix disambiguates on
+      # the trailing `/secrets` segment.
+      live "/environments/:environment", EnvironmentsLive, :show
       live "/environments/:environment/secrets", SecretsLive, :index
 
       # Two modules, not one switching on `handle_params/3` — M2M-S2

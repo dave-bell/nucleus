@@ -54,4 +54,16 @@ defmodule NucleusWeb.LiveCase do
       Phoenix.LiveViewTest.live(unquote(conn), "/environments/#{unquote(environment)}/secrets")
     end
   end
+
+  @doc """
+  Mounts `NucleusWeb.EnvironmentsLive` for `environment`, the
+  `/environments/:environment` detail route the sidebar now links to.
+
+  A macro for the same reason as `live_secrets/2` above.
+  """
+  defmacro live_environment(conn, environment) do
+    quote do
+      Phoenix.LiveViewTest.live(unquote(conn), "/environments/#{unquote(environment)}")
+    end
+  end
 end

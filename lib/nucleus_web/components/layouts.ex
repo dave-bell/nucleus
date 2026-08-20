@@ -133,7 +133,7 @@ defmodule NucleusWeb.Layouts do
                   <% else %>
                     <ul id="environments-list" class="menu menu-sm p-0">
                       <li :for={env <- environments}>
-                        <.link navigate={~p"/environments/#{env.short_name}/secrets"}>
+                        <.link navigate={~p"/environments/#{env.short_name}"}>
                           {env.label || env.short_name}
                         </.link>
                       </li>
