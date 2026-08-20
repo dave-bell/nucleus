@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.9 | Updated: 2026-08-19 -->
+<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.10 | Updated: 2026-08-19 -->
 
 # Business ↔ Tech Bridge
 
@@ -65,8 +65,14 @@ gated on the revealed secret matching by key (`SEC-A06`–`A08`, `docs/adr/0013-
 creates a new secret through a second, independently conditionally-rendered modal
 (`Nucleus.Secrets.Key`/`Nucleus.Secrets.create/4`, `SEC-A09`–`A13`) that closes whichever of the
 two modals is open before opening the other, and renders every fail-closed/empty/failed-reveal/
-failed-save/failed-create state. `SEC-A18` is `SEC-S7` and later. Every other row is
-unimplemented. These names are the agreed target so that
+failed-save/failed-create state. `SEC-A18` is `SEC-S7` and later. `M2M-A13`/`A14` are also now
+claimed and covered (M2M-S1/#34) — ahead of `NucleusWeb.M2MClientsLive`, which does not exist
+yet. `Nucleus.M2M.fetch/2` (`test/nucleus/m2m_test.exs`) is the context-layer gate every M2M
+action will mount through once that LiveView lands, the same relationship
+`Nucleus.Environments.fetch/2` has to `NucleusWeb.SecretsLive`; `M2M-S1` also delivers the pure
+naming/shape validators (`Nucleus.M2M.TicketId`/`Purpose`/`ClientId`/`ClientName`) and the
+`Nucleus.M2M.DenyList` boundary M2M-S2 onward reads, but claims no action beyond `A13`/`A14`
+itself. Every other row is unimplemented. These names are the agreed target so that
 work lands consistently — treat them as the convention to follow, and correct this table if a
 better structure emerges.
 

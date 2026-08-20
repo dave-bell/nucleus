@@ -61,6 +61,13 @@ config :nucleus, Nucleus.Secrets.Path,
   cluster_name: "local-cluster",
   deployment_name: "local-deployment"
 
+# The M2M deny-list's default suffix set, hardcoded rather than sourced from
+# M2M_DENY_SUFFIXES — same TENANT_NAMESPACE precedent as above. This is the
+# prototype's actual Terraform value (M2M-S1 Decision 2), not a placeholder,
+# so a fresh clone exercises the deny-list against real values.
+config :nucleus, Nucleus.M2M.DenyList,
+  suffixes: ~w(-labops-ui -faas-api -faas-ui -device_grant -orange -nucleus)
+
 # Human-readable audit records for local development. AUD-A05 requires the
 # set of recorded events to be unchanged by the format — only the encoding
 # differs here, not which events are audited.
