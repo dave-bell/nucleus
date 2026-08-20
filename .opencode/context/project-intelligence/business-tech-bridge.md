@@ -45,7 +45,7 @@ to cite from test names and bug reports.
 | `Environments.md` | `ENV-A01`–`A07` | 7 | `NucleusWeb.EnvironmentsLive` | `test/nucleus_web/live/environments_live_test.exs` |
 | `Data-Export-Configuration.md` | `DEX-A01`–`A14` | 14 | `NucleusWeb.DataExportLive` + Nomad Variables client | `test/nucleus_web/live/data_export_live_test.exs` |
 | `Secrets.md` | `SEC-A01`–`A18` | 18 | `NucleusWeb.SecretsLive` + SSM Parameter Store client | `test/nucleus_web/live/secrets_live_test.exs` |
-| `M2M-Clients.md` | `M2M-A01`–`A16` | 16 | `NucleusWeb.M2MClientsLive` + Cognito client | `test/nucleus_web/live/m2m_clients_live_test.exs` |
+| `M2M-Clients.md` | `M2M-A01`–`A17` | 17 | `NucleusWeb.M2MClientsLive` + Cognito client | `test/nucleus_web/live/m2m_clients_live_test.exs` |
 | `Audit-and-Compliance.md` | `AUD-A01`–`A07` | 7 | `Nucleus.Audit` (emit-only; no local store — stateless constraint) | `test/nucleus/audit_test.exs` |
 | `API-Proxy.md` | `PRX-A01`–`A07` | 7 | Backing-API forwarding layer | `test/nucleus_web/proxy_test.exs` |
 | `Platform-Operations.md` | `OPS-A01`–`A13` | 13 | Health/readiness endpoints, config reference | `test/nucleus_web/ops_test.exs` |
