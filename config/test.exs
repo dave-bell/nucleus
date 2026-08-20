@@ -23,6 +23,12 @@ config :nucleus, Nucleus.Secrets.Path,
   cluster_name: "local-cluster",
   deployment_name: "local-deployment"
 
+# The M2M deny-list's default suffix set — see config/dev.exs. Tests that
+# need to exercise the `:not_configured` fail-closed path override this
+# directly with `Application.put_env/3`.
+config :nucleus, Nucleus.M2M.DenyList,
+  suffixes: ~w(-labops-ui -faas-api -faas-ui -device_grant -orange -nucleus)
+
 # Tests assert on emitted audit records via Nucleus.Audit.Sink.Test's
 # registered process, rather than parsing :stderr.
 config :nucleus, Nucleus.Audit, sink: Nucleus.Audit.Sink.Test

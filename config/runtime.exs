@@ -201,6 +201,19 @@ if tenant_namespace = System.get_env("TENANT_NAMESPACE") do
   config :nucleus, Nucleus.Scope, tenant_namespace: tenant_namespace
 end
 
+# The M2M deny-list's reserved client-name suffixes (M2M-S1 Decision 2).
+# `Nucleus.M2M.DenyList.parse/1` is pure and already handles unset/blank
+# (`:unset`) and the `none` sentinel — only an `{:ok, suffixes}` result sets
+# the app-env key here. An absent key, not a raised boot error, is
+# `Nucleus.M2M.DenyList.suffixes/0`'s own `:not_configured` signal
+# (Nucleus.Secrets.Path's fail-closed-at-call-time precedent) — config/dev.exs
+# and config/test.exs hardcode the parsed default so neither ever reaches
+# this branch.
+case Nucleus.M2M.DenyList.parse(System.get_env("M2M_DENY_SUFFIXES")) do
+  {:ok, suffixes} -> config :nucleus, Nucleus.M2M.DenyList, suffixes: suffixes
+  :unset -> :ok
+end
+
 if config_env() == :dev do
   # Reload browser tabs when matching files change.
   config :nucleus, NucleusWeb.Endpoint,
