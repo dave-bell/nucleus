@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.10 | Updated: 2026-08-19 -->
+<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.11 | Updated: 2026-08-20 -->
 
 # Business ↔ Tech Bridge
 
@@ -45,7 +45,7 @@ to cite from test names and bug reports.
 | `Environments.md` | `ENV-A01`–`A07` | 7 | `NucleusWeb.EnvironmentsLive` | `test/nucleus_web/live/environments_live_test.exs` |
 | `Data-Export-Configuration.md` | `DEX-A01`–`A14` | 14 | `NucleusWeb.DataExportLive` + Nomad Variables client | `test/nucleus_web/live/data_export_live_test.exs` |
 | `Secrets.md` | `SEC-A01`–`A18` | 18 | `NucleusWeb.SecretsLive` + SSM Parameter Store client | `test/nucleus_web/live/secrets_live_test.exs` |
-| `M2M-Clients.md` | `M2M-A01`–`A18`, minus `A09` | 17 | `NucleusWeb.M2MClientsLive` + Cognito client | `test/nucleus_web/live/m2m_clients_live_test.exs` |
+| `M2M-Clients.md` | `M2M-A01`–`A18`, minus `A09` | 17 | `NucleusWeb.M2MClientsLive.Index` + `.Show` + Cognito client | `test/nucleus_web/live/m2m_clients_live_test.exs` |
 | `Audit-and-Compliance.md` | `AUD-A01`–`A07` | 7 | `Nucleus.Audit` (emit-only; no local store — stateless constraint) | `test/nucleus/audit_test.exs` |
 | `API-Proxy.md` | `PRX-A01`–`A07` | 7 | Backing-API forwarding layer | `test/nucleus_web/proxy_test.exs` |
 | `Platform-Operations.md` | `OPS-A01`–`A13` | 13 | Health/readiness endpoints, config reference | `test/nucleus_web/ops_test.exs` |
@@ -66,15 +66,22 @@ creates a new secret through a second, independently conditionally-rendered moda
 (`Nucleus.Secrets.Key`/`Nucleus.Secrets.create/4`, `SEC-A09`–`A13`) that closes whichever of the
 two modals is open before opening the other, and renders every fail-closed/empty/failed-reveal/
 failed-save/failed-create state. `SEC-A18` is `SEC-S7` and later. `M2M-A13`/`A14` are also now
-claimed and covered (M2M-S1/#34) — ahead of `NucleusWeb.M2MClientsLive`, which does not exist
-yet. `Nucleus.M2M.fetch/2` (`test/nucleus/m2m_test.exs`) is the context-layer gate every M2M
-action will mount through once that LiveView lands, the same relationship
-`Nucleus.Environments.fetch/2` has to `NucleusWeb.SecretsLive`; `M2M-S1` also delivers the pure
-naming/shape validators (`Nucleus.M2M.TicketId`/`Purpose`/`ClientId`/`ClientName`) and the
-`Nucleus.M2M.DenyList` boundary M2M-S2 onward reads, but claims no action beyond `A13`/`A14`
-itself. Every other row is unimplemented. These names are the agreed target so that
-work lands consistently — treat them as the convention to follow, and correct this table if a
-better structure emerges.
+claimed and covered (M2M-S1/#34), and `M2M-A01`/`A02` join them (M2M-S2/#35):
+`NucleusWeb.M2MClientsLive.Index` (per Decision 7, two modules — `docs/adr/0018-m2m-clients-listing-module-split-and-dom-ids.md`
+— not one module switching on `handle_params/3`) lists every visible client via
+`Nucleus.M2M.list/1`, streamed with `phx-update="stream"` and a separate `:client_count` assign,
+renders a `created_date_error` row as an explicit "unavailable" date rather than dropping it, and
+shows a create affordance outside the empty-state conditional so it stays visible in both states.
+`NucleusWeb.M2MClientsLive.Show` ships as a stub in this same ticket — route registered, shell
+only, no gate — so M2M-S3 replaces its body without touching the router or `Index`.
+`Nucleus.M2M.fetch/2` (`test/nucleus/m2m_test.exs`) is the context-layer gate every per-client M2M
+action mounts through, the same relationship `Nucleus.Environments.fetch/2` has to
+`NucleusWeb.SecretsLive`; `Nucleus.M2M.list/1` reuses its `visible?/1` predicate rather than a
+second copy, pinned by a test that a client hidden from the list also 404s via `fetch/2`. `M2M-S1`
+also delivers the pure naming/shape validators (`Nucleus.M2M.TicketId`/`Purpose`/`ClientId`/`ClientName`)
+and the `Nucleus.M2M.DenyList` boundary `list/1` reads. Every other row is unimplemented. These
+names are the agreed target so that work lands consistently — treat them as the convention to
+follow, and correct this table if a better structure emerges.
 
 
 Two conformance notes worth carrying forward, both recorded in

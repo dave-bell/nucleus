@@ -58,6 +58,19 @@ defmodule NucleusWeb.ShellTest do
   end
 
   @tag :unit
+  test "the sidebar M2M Clients item is a real link and navigates to this view", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/environments/prod/secrets")
+
+    assert {:ok, m2m_view, _html} =
+             view
+             |> element("a", "M2M Clients")
+             |> render_click()
+             |> follow_redirect(conn, ~p"/m2m/clients")
+
+    assert has_element?(m2m_view, "#tenant-identifier")
+  end
+
+  @tag :unit
   test "shows the identity control with the dev email, and no sign-out control", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/environments/prod/secrets")
 

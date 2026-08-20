@@ -42,6 +42,16 @@ defmodule NucleusWeb.Router do
     live_session :authenticated,
       on_mount: [{NucleusWeb.ScopeHook, :assign}, {NucleusWeb.EnvironmentsHook, :assign}] do
       live "/environments/:environment/secrets", SecretsLive, :index
+
+      # Two modules, not one switching on `handle_params/3` — M2M-S2
+      # (#35) Decision 7, the `phx.gen.live` module split
+      # (`deps/phoenix/priv/templates/phx.gen.live/{index,show}.ex.eex`):
+      # `Index` and `Show` are reached only by `navigate`, never a `patch`
+      # between each other, so there is nothing for a shared module to
+      # re-validate. `Show` ships as a stub in this ticket — M2M-S3 (#36)
+      # replaces its body without touching this route or `Index`.
+      live "/m2m/clients", M2MClientsLive.Index, :index
+      live "/m2m/clients/:client_id", M2MClientsLive.Show, :show
     end
   end
 

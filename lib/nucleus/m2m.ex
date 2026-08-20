@@ -4,7 +4,7 @@ defmodule Nucleus.M2M do
   (`M2M-A13`, `M2M-A14`) — the same structure `Nucleus.Environments.fetch/2`
   gives `SEC-S1`, one boundary over.
 
-  `NucleusWeb.M2MClientsLive` talks to this module, never to
+  `NucleusWeb.M2MClientsLive.Index` and `.Show` talk to this module, never to
   `Nucleus.M2M.Clients` directly, so the gate cannot be bypassed — the same
   rule `Nucleus.Secrets` states about `Nucleus.Secrets.Store`.
 
@@ -108,6 +108,48 @@ defmodule Nucleus.M2M do
   @spec visible?(Client.t() | ClientDetail.t()) :: boolean()
   def visible?(%{client_name: client_name}) when is_binary(client_name) do
     ClientName.in_tenant?(client_name) and not DenyList.denied?(client_name)
+  end
+
+  @doc """
+  Every M2M client visible to this tenant — `M2M-A01`, `M2M-A02` (`M2M-S2`).
+
+  Same strict order as `fetch/2`, minus the per-ID steps that don't apply to
+  a list: deny-list config first (fail closed, no adapter call on
+  `:not_configured`), then the adapter call, then the shared `visible?/1`
+  filter — the same predicate `fetch/2` gates a single client through, so a
+  client hidden here cannot remain resolvable by URL (see the module doc).
+
+  A `Client` with `created_date_error` set (its per-row describe failed
+  while listing) is filtered and sorted like any other — it is
+  `Nucleus.M2M.Clients.list_clients/0`'s job to degrade that one row, not
+  this function's job to drop it.
+
+  Sorted case-insensitively by `client_name`, with the raw name as a
+  tiebreak so the order is total: `ListUserPoolClients` paginates with no
+  cross-page ordering guarantee, and the local implementation reads a
+  JSON-decoded map whose iteration order is not insertion order past 32
+  keys. Sorting here, not in the template, keeps the LiveView and its tests
+  free of that concern. Same construction as `Nucleus.Secrets.list/2`.
+
+  `scope` is accepted for call-site symmetry, unread — see the module doc's
+  "Note the asymmetry with Secrets".
+
+  **Emits no audit event.** The wiki's audit table has exactly three M2M
+  events and listing is not among them — unlike Data Export's
+  `nomad_vars_listed`, listing here exposes no secrets, so there is nothing
+  sensitive to attribute.
+  """
+  @spec list(scope :: Scope.t()) :: {:ok, [Client.t()]} | {:error, Error.t()}
+  def list(%Scope{} = _scope) do
+    with {:ok, _suffixes} <- DenyList.suffixes(),
+         {:ok, clients} <- Clients.list_clients() do
+      visible =
+        clients
+        |> Enum.filter(&visible?/1)
+        |> Enum.sort_by(&{String.downcase(&1.client_name), &1.client_name})
+
+      {:ok, visible}
+    end
   end
 
   defp not_found(client_id) do

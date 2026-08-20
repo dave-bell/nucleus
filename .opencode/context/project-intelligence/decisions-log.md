@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.18 | Updated: 2026-08-19 -->
+<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.19 | Updated: 2026-08-20 -->
 
 # Decisions Log
 
@@ -42,6 +42,7 @@ job and the row should point rather than paraphrase.
 | 15 | Shared AWS identity seam — two independent role ARNs (`TENANT_ROLE_ARN`, EN-10's `COGNITO_ROLE_ARN`), credential cache keyed on `{role_arn, external_id, session_name}` not the caller, region parameterised now with the second variable and its wiki amendment deferred to EN-10 | 2026-08-19 | Decided | `docs/adr/0015-shared-aws-identity-seam.md` |
 | 16 | M2M client adapter — derived OAuth scope (no new config var), operator-chosen token validity (5–60 min, stored in seconds), bounded fan-out with degrade-not-fail listing; `M2M-A09` removed mid-implementation — Cognito does not enforce client-name uniqueness | 2026-08-19 | Decided | `docs/adr/0016-m2m-client-adapter.md` |
 | 17 | M2M naming, deny-list, and resolution gate — `M2M_DENY_SUFFIXES` defaults to the prototype's Terraform value (fail-closed, `none` sentinel), `ClientId` uses AWS's own `[\w+]+` pattern not a tighter one, tenancy is the full `{tenant}-control-plane-` prefix (pool shared across tenants), deny-list enforced at creation too — new wiki action `M2M-A18` | 2026-08-19 | Decided | `docs/adr/0017-m2m-naming-deny-list-and-resolution-gate.md` |
+| 18 | M2M clients listing — two `Phoenix.LiveView` modules (`Index`/`Show`, the `phx.gen.live` split) not one switching on `handle_params/3`; `Nucleus.M2M.list/1` collapses the deny-list gate to one call, reusing `visible?/1`; row DOM ids are the plain `client_id` (already allowlist-safe, unlike Secrets' ARN hash); create button sits outside the empty-state conditional | 2026-08-20 | Decided | `docs/adr/0018-m2m-clients-listing-module-split-and-dom-ids.md` |
 
 No **"re-platform" decision** (fresh start) and no **inherited ADRs** — the wiki's `ADR-0001`–
 `ADR-0007` are reference only; adopting one is a decision made on its own merits.
@@ -63,7 +64,7 @@ the ADR it points at stays findable.
 
 ## Onboarding Checklist
 
-- [ ] Read the Decision Index above; `adr/0001`–`0016` are binding
+- [ ] Read the Decision Index above; `adr/0001`–`0018` are binding
 - [ ] New formal ADRs belong in `docs/adr/`, with only an index row mirrored here — the wiki's
       ADR-0001–0007 are reference only, not adopted
 - [ ] Know which decisions are pending (see `living-notes.md`)
