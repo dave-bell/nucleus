@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.12 | Updated: 2026-08-20 -->
+<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.13 | Updated: 2026-08-20 -->
 
 # Business ↔ Tech Bridge
 
@@ -89,6 +89,16 @@ and the `Nucleus.M2M.DenyList` boundary `list/1` reads. Every other row is unimp
 names are the agreed target so that work lands consistently — treat them as the convention to
 follow, and correct this table if a better structure emerges.
 
+`NucleusWeb.EnvironmentsLive` and `test/nucleus_web/live/environments_live_test.exs` also now
+exist (ENV-S1/#52): `ENV-A02`–`A07` are claimed and covered. `ENV-A01` (sidebar category
+grouping/expand) remains unclaimed — `NAV-S1`'s job. The module mirrors `NucleusWeb.SecretsLive`'s
+`handle_params/3`/kind→DOM-id pattern one boundary narrower (`Nucleus.Environments.fetch/2` only,
+no `Nucleus.Secrets` boundary to also match on), renders the IRI as escaped text with a
+`<.copy_button>` rather than an `href`, and validates `accent_color` against a hex allowlist
+before it ever reaches a `style=` attribute — a non-conforming value falls back to a neutral
+swatch, with the raw string still shown as text. The sidebar's `#environments-list` link
+(`lib/nucleus_web/components/layouts.ex`) now points at this route instead of straight to
+`.../secrets`; `Manage Secrets` on the detail page is what reaches `NucleusWeb.SecretsLive` now.
 
 Two conformance notes worth carrying forward, both recorded in
 `docs/adr/0012-secret-reveal-modal-and-icon-only-copy-affordances.md`:
