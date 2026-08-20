@@ -66,6 +66,8 @@ defmodule NucleusWeb.Layouts do
               NAV-A03 (active-section highlighting) is out of scope: these
               tenant-wide features don't exist yet, so they render as
               visibly disabled placeholders rather than dead links.
+              M2M Clients (M2M-S2, #35) is the first of these three to ship
+              a real view — replaced with a working link, not a placeholder.
             --%>
             <ul class="menu menu-sm p-0 group-data-[collapsed=true]:hidden">
               <li>
@@ -79,9 +81,9 @@ defmodule NucleusWeb.Layouts do
                 </span>
               </li>
               <li>
-                <span class="opacity-40 cursor-not-allowed" aria-disabled="true">
+                <.link navigate={~p"/m2m/clients"}>
                   M2M Clients
-                </span>
+                </.link>
               </li>
             </ul>
             <%!--
