@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.17 | Updated: 2026-08-19 -->
+<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.18 | Updated: 2026-08-19 -->
 
 # Decisions Log
 
@@ -41,6 +41,7 @@ job and the row should point rather than paraphrase.
 | 14 | Secret creation — one consolidated `Nucleus.Secrets.Key.validate/1` (denylist, no casing rule, `Error.t()` shape matching `Value`), `create/4` relies on the store's atomic `:already_exists` refusal, and the creation modal is mutually exclusive with the reveal modal to structurally avoid ADR-0012's `focusStack` double-pop | 2026-08-19 | Decided | `docs/adr/0014-secret-creation-key-consolidation-and-modal-exclusion.md` |
 | 15 | Shared AWS identity seam — two independent role ARNs (`TENANT_ROLE_ARN`, EN-10's `COGNITO_ROLE_ARN`), credential cache keyed on `{role_arn, external_id, session_name}` not the caller, region parameterised now with the second variable and its wiki amendment deferred to EN-10 | 2026-08-19 | Decided | `docs/adr/0015-shared-aws-identity-seam.md` |
 | 16 | M2M client adapter — derived OAuth scope (no new config var), operator-chosen token validity (5–60 min, stored in seconds), bounded fan-out with degrade-not-fail listing; `M2M-A09` removed mid-implementation — Cognito does not enforce client-name uniqueness | 2026-08-19 | Decided | `docs/adr/0016-m2m-client-adapter.md` |
+| 17 | M2M naming, deny-list, and resolution gate — `M2M_DENY_SUFFIXES` defaults to the prototype's Terraform value (fail-closed, `none` sentinel), `ClientId` uses AWS's own `[\w+]+` pattern not a tighter one, tenancy is the full `{tenant}-control-plane-` prefix (pool shared across tenants), deny-list enforced at creation too — new wiki action `M2M-A18` | 2026-08-19 | Decided | `docs/adr/0017-m2m-naming-deny-list-and-resolution-gate.md` |
 
 No **"re-platform" decision** (fresh start) and no **inherited ADRs** — the wiki's `ADR-0001`–
 `ADR-0007` are reference only; adopting one is a decision made on its own merits.
