@@ -14,7 +14,8 @@ config :nucleus, Nucleus.Mailer, adapter: Swoosh.Adapters.Test
 # different implementation set it themselves with Application.put_env/3.
 config :nucleus, :backends,
   secrets: Nucleus.Secrets.Store.Local,
-  tenant_api: Nucleus.TenantApi.Local
+  tenant_api: Nucleus.TenantApi.Local,
+  m2m: Nucleus.M2M.Clients.Local
 
 # Deploy-time cluster/deployment segments of the Parameter Store path — see
 # config/dev.exs and lib/nucleus/secrets/path.ex.

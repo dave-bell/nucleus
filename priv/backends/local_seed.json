@@ -69,5 +69,79 @@
         "last_modified": "2026-05-20T08:00:00Z"
       }
     }
+  },
+  "m2m": {
+    "4f2a9c1e7b3d8f0a1c2e3f4a5b6c7d8e": {
+      "client_name": "local-control-plane-OPS-1001-billing-sync",
+      "scope": "local/api",
+      "token_validity_seconds": 900,
+      "created_date": "2026-05-01T09:00:00Z",
+      "secrets": [
+        {
+          "value": "b1c2d3e4f5a67890b1c2d3e4f5a67890b1c2d3e4f5a67890b1c2d3e4f5a6789",
+          "created_date": "2026-05-01T09:00:00Z"
+        }
+      ]
+    },
+    "7a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d": {
+      "client_name": "local-control-plane-OPS-1002-inventory-export",
+      "scope": "local/api",
+      "token_validity_seconds": 1800,
+      "created_date": "2026-06-15T14:30:00Z",
+      "secrets": [
+        {
+          "value": "c2d3e4f5a67890b1c2d3e4f5a67890b1c2d3e4f5a67890b1c2d3e4f5a67890b",
+          "created_date": "2026-06-15T14:30:00Z"
+        }
+      ]
+    },
+    "9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a": {
+      "client_name": "local-control-plane-OPS-1003-reporting",
+      "scope": "local/api",
+      "token_validity_seconds": 3600,
+      "created_date": "2026-07-01T00:00:00Z",
+      "secrets": [
+        {
+          "value": "d3e4f5a67890b1c2d3e4f5a67890b1c2d3e4f5a67890b1c2d3e4f5a67890b1c",
+          "created_date": "2026-07-01T00:00:00Z"
+        }
+      ]
+    },
+    "1c2d3e4f5a67890b1c2d3e4f5a67890b": {
+      "client_name": "local-control-plane-OPS-1004-webhook-relay",
+      "scope": "local/api",
+      "token_validity_seconds": 450,
+      "created_date": "2026-07-10T08:15:00Z",
+      "secrets": [
+        {
+          "value": "e4f5a67890b1c2d3e4f5a67890b1c2d3e4f5a67890b1c2d3e4f5a67890b1c2d",
+          "created_date": "2026-07-10T08:15:00Z"
+        }
+      ]
+    },
+    "2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b": {
+      "client_name": "local-control-plane-OPS-1005-legacy-sync-internal",
+      "scope": "local/api",
+      "token_validity_seconds": 900,
+      "created_date": "2026-04-20T10:00:00Z",
+      "secrets": [
+        {
+          "value": "f5a67890b1c2d3e4f5a67890b1c2d3e4f5a67890b1c2d3e4f5a67890b1c2d3e",
+          "created_date": "2026-04-20T10:00:00Z"
+        }
+      ]
+    },
+    "3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c": {
+      "client_name": "other-tenant-control-plane-OPS-2001-partner-feed",
+      "scope": "other-tenant/api",
+      "token_validity_seconds": 1800,
+      "created_date": "2026-03-11T11:00:00Z",
+      "secrets": [
+        {
+          "value": "a67890b1c2d3e4f5a67890b1c2d3e4f5a67890b1c2d3e4f5a67890b1c2d3e4f",
+          "created_date": "2026-03-11T11:00:00Z"
+        }
+      ]
+    }
   }
 }
