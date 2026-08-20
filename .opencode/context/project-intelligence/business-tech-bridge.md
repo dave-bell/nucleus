@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.12 | Updated: 2026-08-20 -->
+<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.13 | Updated: 2026-08-20 -->
 
 # Business ↔ Tech Bridge
 
@@ -78,8 +78,18 @@ claimed and covered (M2M-S1/#34), and `M2M-A01`/`A02` join them (M2M-S2/#35):
 `Nucleus.M2M.list/1`, streamed with `phx-update="stream"` and a separate `:client_count` assign,
 renders a `created_date_error` row as an explicit "unavailable" date rather than dropping it, and
 shows a create affordance outside the empty-state conditional so it stays visible in both states.
-`NucleusWeb.M2MClientsLive.Show` ships as a stub in this same ticket — route registered, shell
-only, no gate — so M2M-S3 replaces its body without touching the router or `Index`.
+`M2M-A03`/`A15`/`A16` join the claimed set too (M2M-S3/#36):
+`NucleusWeb.M2MClientsLive.Show` replaces its M2M-S2 stub — `mount/3` (not `handle_params/3`,
+since every navigation to a different `client_id` is a fresh remount, never a patch) resolves via
+`Nucleus.M2M.fetch/2` on the disconnected render and `Nucleus.M2M.view/2` (`fetch/2` plus the
+`m2m_client_viewed` audit emission) only once `connected?(socket)`, so the audit fires exactly
+once per open with no disconnected-render flicker (`docs/adr/0019-m2m-client-detail-mount-audit-guard-and-token-validity.md`).
+Renders client ID, name, scope, `Nucleus.M2M.TokenValidity.humanize/1`'s display of
+`token_validity_seconds` (hours, else minutes, else seconds, singular at exactly one), and
+creation date, plus an explicit secret-unavailable note; renders no rename/edit/delete control at
+all (`M2M-A15`), and collapses every `Nucleus.Backend.Error` kind either to `States`' three shared
+states or its own `#m2m-client-invalid-id`/`#m2m-client-not-found`, identically for a deny-listed
+and a genuinely nonexistent ID.
 `Nucleus.M2M.fetch/2` (`test/nucleus/m2m_test.exs`) is the context-layer gate every per-client M2M
 action mounts through, the same relationship `Nucleus.Environments.fetch/2` has to
 `NucleusWeb.SecretsLive`; `Nucleus.M2M.list/1` reuses its `visible?/1` predicate rather than a
