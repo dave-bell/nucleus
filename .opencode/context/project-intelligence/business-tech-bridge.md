@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.11 | Updated: 2026-08-20 -->
+<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.12 | Updated: 2026-08-20 -->
 
 # Business ↔ Tech Bridge
 
@@ -49,6 +49,12 @@ to cite from test names and bug reports.
 | `Audit-and-Compliance.md` | `AUD-A01`–`A07` | 7 | `Nucleus.Audit` (emit-only; no local store — stateless constraint) | `test/nucleus/audit_test.exs` |
 | `API-Proxy.md` | `PRX-A01`–`A07` | 7 | Backing-API forwarding layer | `test/nucleus_web/proxy_test.exs` |
 | `Platform-Operations.md` | `OPS-A01`–`A13` | 13 | Health/readiness endpoints, config reference | `test/nucleus_web/ops_test.exs` |
+
+`ENV-A05`'s wording changed (ENV-D1) — the error matrix no longer collapses "environment list
+cannot be loaded" into the same "not found" case; it is now a distinct "temporarily unavailable"
+state, matching `SEC-A17` and `Nucleus.Environments.fetch/2`'s `:unavailable` kind. No action ID
+was added or removed, so the `ENV-A01`–`A07` / `7` count above is unchanged — a reader diffing
+against an older commit should read this as a wording fix, not a coverage change.
 
 **Most "Planned" columns are still unimplemented.** `NucleusWeb.Layouts` (app shell, header,
 sidebar) and `test/nucleus_web/live/shell_test.exs` now exist (EN-7) — a deliberate subset only,
