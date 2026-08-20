@@ -14,23 +14,25 @@ defmodule Nucleus.Backend do
   |---|---|---|---|
   | `:secrets` | AWS SSM Parameter Store, in the tenant's account | `Nucleus.Secrets.Store.Aws` | `Nucleus.Secrets.Store.Local` |
   | `:tenant_api` | Tenant backing API (authoritative environment list) | `Nucleus.TenantApi.Http` | `Nucleus.TenantApi.Local` |
+  | `:m2m` | Cognito App Clients, in this tenant's user pool | `Nucleus.M2M.Clients.Cognito` | `Nucleus.M2M.Clients.Local` |
 
-  The behaviours and both implementations are delivered by EN-3 (`:tenant_api`)
-  and EN-4 (`:secrets`). This module is the shared scaffolding they plug into,
-  so the module names above are registered here before the modules exist.
+  The behaviours and both implementations are delivered by EN-3 (`:tenant_api`),
+  EN-4 (`:secrets`), and EN-10 (`:m2m`). This module is the shared scaffolding
+  they plug into, so the module names above are registered here before the
+  modules exist.
 
   Authentication is deliberately absent. There is no `:auth` boundary and no
   `AUTH_BACKEND` — auth is the actual security boundary and is never swappable.
 
   ## Selection
 
-      config :nucleus, :backends, secrets: Nucleus.Secrets.Store.Aws, tenant_api: Nucleus.TenantApi.Http
+      config :nucleus, :backends, secrets: Nucleus.Secrets.Store.Aws, tenant_api: Nucleus.TenantApi.Http, m2m: Nucleus.M2M.Clients.Cognito
 
-  `config/dev.exs` and `config/test.exs` override both to the local
-  implementations, so a fresh clone runs and its tests pass with no credentials
-  at all. `config/runtime.exs` allows a per-boundary override through
-  `SECRETS_BACKEND` and `TENANT_API_BACKEND`, each `"real"` (the default) or
-  `"local"`.
+  `config/dev.exs` and `config/test.exs` override all three to the local
+  implementations, so a fresh clone runs and its tests pass with no
+  credentials at all. `config/runtime.exs` allows a per-boundary override
+  through `SECRETS_BACKEND`, `TENANT_API_BACKEND`, and `M2M_BACKEND`, each
+  `"real"` (the default) or `"local"`.
 
   Selection is per boundary rather than one global switch because the pain it
   solves is per boundary: Parameter Store access needs a Terraform-provisioned
@@ -55,19 +57,20 @@ defmodule Nucleus.Backend do
 
   @impls %{
     secrets: %{real: Nucleus.Secrets.Store.Aws, local: Nucleus.Secrets.Store.Local},
-    tenant_api: %{real: Nucleus.TenantApi.Http, local: Nucleus.TenantApi.Local}
+    tenant_api: %{real: Nucleus.TenantApi.Http, local: Nucleus.TenantApi.Local},
+    m2m: %{real: Nucleus.M2M.Clients.Cognito, local: Nucleus.M2M.Clients.Local}
   }
 
   @boundaries Enum.sort(Map.keys(@impls))
 
-  @type boundary :: :secrets | :tenant_api
+  @type boundary :: :secrets | :tenant_api | :m2m
   @type mode :: :real | :local
 
   @doc """
   Every known boundary.
 
       iex> Nucleus.Backend.boundaries()
-      [:secrets, :tenant_api]
+      [:m2m, :secrets, :tenant_api]
   """
   @spec boundaries() :: [boundary()]
   def boundaries, do: @boundaries

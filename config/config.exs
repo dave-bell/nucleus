@@ -22,15 +22,16 @@ config :nucleus, NucleusWeb.Endpoint,
 # independently — see lib/nucleus/backend.ex and
 # docs/adr/0002-backend-adapter-boundaries.md.
 #
-# These are the `real` implementations, delivered by EN-3 and EN-4. dev and test
-# override both to the `.Local` implementations so a fresh clone needs no
-# credentials; runtime.exs allows a per-boundary override via SECRETS_BACKEND
-# and TENANT_API_BACKEND.
+# These are the `real` implementations, delivered by EN-3, EN-4, and EN-10.
+# dev and test override all three to the `.Local` implementations so a fresh
+# clone needs no credentials; runtime.exs allows a per-boundary override via
+# SECRETS_BACKEND, TENANT_API_BACKEND, and M2M_BACKEND.
 #
 # There is deliberately no `auth` boundary. Authentication is never swappable.
 config :nucleus, :backends,
   secrets: Nucleus.Secrets.Store.Aws,
-  tenant_api: Nucleus.TenantApi.Http
+  tenant_api: Nucleus.TenantApi.Http,
+  m2m: Nucleus.M2M.Clients.Cognito
 
 # The tenant's backing API — the authority on environments. `base_url` has no
 # default on purpose: there is no sensible host to fall back to, and a boundary
@@ -58,6 +59,18 @@ config :nucleus, Nucleus.Secrets.Path,
 # assume by default, and runtime.exs requires this only when the :secrets
 # boundary is running its real implementation.
 config :nucleus, Nucleus.Secrets.Store.Aws,
+  role_arn: nil,
+  region: nil,
+  external_id: nil
+
+# The tenant's cross-account role for Cognito App Client operations — see
+# lib/nucleus/m2m/clients/cognito.ex. No default, matching
+# Nucleus.Secrets.Store.Aws above: runtime.exs requires COGNITO_ROLE_ARN and
+# COGNITO_REGION only when the :m2m boundary is running its real
+# implementation. COGNITO_USER_POOL_ID carries no such boot check (out of
+# scope for EN-10) — a nil value is :not_configured, never a crash.
+config :nucleus, Nucleus.M2M.Clients.Cognito,
+  user_pool_id: nil,
   role_arn: nil,
   region: nil,
   external_id: nil

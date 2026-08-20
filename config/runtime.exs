@@ -23,9 +23,9 @@ end
 config :nucleus, NucleusWeb.Endpoint,
   http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
-# Per-boundary backend override: SECRETS_BACKEND / TENANT_API_BACKEND, each
-# "real" or "local". Unset boundaries keep whatever the compile-time config
-# chose — "real" in prod, "local" in dev and test.
+# Per-boundary backend override: SECRETS_BACKEND / TENANT_API_BACKEND /
+# M2M_BACKEND, each "real" or "local". Unset boundaries keep whatever the
+# compile-time config chose — "real" in prod, "local" in dev and test.
 #
 # Selection is per boundary, not one global switch: Parameter Store needs a
 # Terraform-provisioned cross-account IAM role, and a developer working only on
@@ -114,6 +114,35 @@ if Application.get_env(:nucleus, :backends, [])[:secrets] ==
     role_arn: role_arn,
     region: region,
     external_id: System.get_env("AWS_STS_EXTERNAL_ID")
+end
+
+# Cognito App Client operations for the :m2m boundary's real implementation —
+# read only when that implementation is actually selected, same reasoning as
+# the :secrets block above. COGNITO_USER_POOL_ID is read unconditionally,
+# below, with no boot check (out of scope for EN-10 — see issue #33); a nil
+# value is %Nucleus.Backend.Error{kind: :not_configured} at call time, never a
+# crash. COGNITO_REGION has **no fallback to AWS_REGION** — the two boundaries'
+# regions are independently configured, deliberately
+# (docs/adr/0015-shared-aws-identity-seam.md). COGNITO_STS_EXTERNAL_ID is
+# optional, mirroring AWS_STS_EXTERNAL_ID.
+if Application.get_env(:nucleus, :backends, [])[:m2m] ==
+     Nucleus.Backend.impl_for_mode!(:m2m, :real) do
+  cognito_role_arn =
+    System.get_env("COGNITO_ROLE_ARN") ||
+      raise "environment variable COGNITO_ROLE_ARN is missing (required when the :m2m boundary runs its real implementation)"
+
+  cognito_region =
+    System.get_env("COGNITO_REGION") ||
+      raise "environment variable COGNITO_REGION is missing (required when the :m2m boundary runs its real implementation)"
+
+  config :nucleus, Nucleus.M2M.Clients.Cognito,
+    role_arn: cognito_role_arn,
+    region: cognito_region,
+    external_id: System.get_env("COGNITO_STS_EXTERNAL_ID")
+end
+
+if user_pool_id = System.get_env("COGNITO_USER_POOL_ID") do
+  config :nucleus, Nucleus.M2M.Clients.Cognito, user_pool_id: user_pool_id
 end
 
 # Audit sink overrides. AUDIT_FORMAT is "json" or "text" (see
