@@ -56,14 +56,17 @@ defmodule Nucleus.M2M do
   not-yet-created client has no `Client.t()`/`ClientDetail.t()` for
   `visible?/1` to take.
 
-  ## No audit event
+  ## `fetch/2` and `list/1` emit no audit event; `view/2` does
 
-  The wiki's audit table has three M2M events and none of them is a lookup
-  or a rejection. `m2m_client_viewed` belongs to M2M-S3, on the detail view,
-  not here — this function is also called by the rotation path, and
-  emitting here would log a spurious "viewed" on every rotation.
+  `fetch/2` is also called by the rotation path (M2M-S6), so emitting
+  `m2m_client_viewed` there would log a spurious "viewed" on every rotation
+  nobody performed as a view. `m2m_client_viewed` instead lives on `view/2`,
+  the resolve-plus-audit wrapper `NucleusWeb.M2MClientsLive.Show` calls —
+  see `view/2`'s own doc. `list/1` emits nothing either: the wiki's audit
+  table has three M2M events and listing is not one of them.
   """
 
+  alias Nucleus.Audit
   alias Nucleus.Backend.Error
   alias Nucleus.M2M.Client
   alias Nucleus.M2M.ClientDetail
@@ -93,6 +96,53 @@ defmodule Nucleus.M2M do
       else
         not_found(client_id)
       end
+    end
+  end
+
+  @doc """
+  `fetch/2` plus the `m2m_client_viewed` audit emission (`M2M-A03`) — a
+  distinct function, deliberately not folded into `fetch/2` itself.
+
+  M2M-S6's rotation path also resolves the client through `fetch/2`;
+  emitting the audit event there would record a spurious "viewed" on every
+  rotation nobody performed as a view. Keeping `fetch/2` audit-free is
+  M2M-S1 / #34's own guarantee, re-asserted by that ticket's test — this
+  function must not weaken it.
+
+  Emits **once per call, on success only**. A failed lookup — `:invalid`,
+  `:not_found`, `:unavailable`, or any other kind `fetch/2` passes through —
+  is not a view that happened and produces no audit record. Callers control
+  "once per open, not per render" themselves: `NucleusWeb.M2MClientsLive.Show`
+  calls this from `mount/3`, guarded by `connected?(socket)`, so one human
+  open of the page produces exactly one call, not one per disconnected and
+  connected render.
+
+  `details` carries exactly `client_name` — the only key
+  `Nucleus.Audit.Event`'s catalogue allowlists for this event
+  (`lib/nucleus/audit/event.ex:110-115`); passing anything else is rejected
+  by `Audit.emit/2` by design, not an obstacle to work around. `user` comes
+  from `Nucleus.Scope.audit_user/1`, not a raw `scope.user.email` read —
+  matching `Nucleus.Secrets.reveal/3` and ADR-0011's reasoning: a Cognito
+  access token can carry no `email` claim, and `audit_user/1` already falls
+  back to `username`, then `"anonymous"`, so a signed-in view is never
+  misattributed just because `email` happened to be `nil` or blank.
+  """
+  @spec view(client_id :: term(), scope :: Scope.t()) ::
+          {:ok, ClientDetail.t()} | {:error, Error.t()}
+  def view(client_id, %Scope{} = scope) do
+    case fetch(client_id, scope) do
+      {:ok, detail} = ok ->
+        :ok =
+          Audit.emit(:m2m_client_viewed,
+            user: Scope.audit_user(scope),
+            tenant: scope.tenant,
+            details: %{client_name: detail.client_name}
+          )
+
+        ok
+
+      error ->
+        error
     end
   end
 
