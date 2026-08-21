@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.13 | Updated: 2026-08-20 -->
+<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.14 | Updated: 2026-08-20 -->
 
 # Business ↔ Tech Bridge
 
@@ -94,9 +94,12 @@ exist (ENV-S1/#52): `ENV-A02`–`A07` are claimed and covered. `ENV-A01` (sideba
 grouping/expand) remains unclaimed — `NAV-S1`'s job. The module mirrors `NucleusWeb.SecretsLive`'s
 `handle_params/3`/kind→DOM-id pattern one boundary narrower (`Nucleus.Environments.fetch/2` only,
 no `Nucleus.Secrets` boundary to also match on), renders the IRI as escaped text with a
-`<.copy_button>` rather than an `href`, and validates `accent_color` against a hex allowlist
-before it ever reaches a `style=` attribute — a non-conforming value falls back to a neutral
-swatch, with the raw string still shown as text. The sidebar's `#environments-list` link
+`<.copy_button>` alongside an `#open-iri` "open in new tab" link — `iri_href/1` only allows the
+link when the IRI's scheme is `http`/`https` with a host, so an unsafe scheme (e.g.
+`javascript:`) never reaches an `href`, only the raw text — and validates `accent_color` against
+a hex allowlist before it ever reaches a `style=` attribute — a non-conforming value falls back
+to a neutral swatch, with the raw string still shown as text. The sidebar's `#environments-list`
+link
 (`lib/nucleus_web/components/layouts.ex`) now points at this route instead of straight to
 `.../secrets`; `Manage Secrets` on the detail page is what reaches `NucleusWeb.SecretsLive` now.
 
