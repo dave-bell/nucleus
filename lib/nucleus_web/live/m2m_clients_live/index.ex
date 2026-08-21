@@ -83,15 +83,23 @@ defmodule NucleusWeb.M2MClientsLive.Index do
   visually distinct from "there was no date to begin with" (there is always
   a date; only reading it can fail).
 
-  ## Placeholder create handler; the row control is a plain link
+  ## Creation is a modal, `save_new_client` is M2M-S5's
 
-  This ticket renders `#new-m2m-client-button`; M2M-S4 (#37) implements it.
-  `handle_event("new_client", ...)` just flashes "not yet implemented" so
-  the button cannot crash the view in the meantime. The row's view control
-  is `<.link navigate={~p"/m2m/clients/\#{client.client_id}"}>` — explicit
-  `client_id` interpolation, not `~p"...\#{client}"`, since `Nucleus.M2M.Client`
-  implements no `Phoenix.Param` — and needs no `handle_event` clause at all,
-  since a `navigate` link has nothing to placeholder.
+  `M2M-S4` (#37) replaces M2M-S2's placeholder `handle_event("new_client",
+  ...)` — it now opens `#new-m2m-client-modal` instead of flashing. The
+  form (`Nucleus.M2M.NewClient`) validates `:ticket_id`/`:purpose` via
+  `phx-change` and previews the exact name `Nucleus.M2M.ClientName.build/2`
+  would produce, but this module makes no backend write: `save_new_client`
+  only flashes "not yet implemented", the same pattern the create button
+  itself used before this ticket, so the form can be submitted (directly,
+  bypassing the disabled submit button) without ever crashing the
+  LiveView. M2M-S5 (#38) replaces that flash with the real create call.
+
+  The row's view control is `<.link navigate={~p"/m2m/clients/\#{client.client_id}"}>` —
+  explicit `client_id` interpolation, not `~p"...\#{client}"`, since
+  `Nucleus.M2M.Client` implements no `Phoenix.Param` — and needs no
+  `handle_event` clause at all, since a `navigate` link has nothing to
+  placeholder.
 
   `current_scope` and `environments` come from the `:authenticated`
   `live_session`'s `on_mount` hooks (`NucleusWeb.ScopeHook`,
@@ -104,6 +112,8 @@ defmodule NucleusWeb.M2MClientsLive.Index do
   alias Nucleus.Backend.Error
   alias Nucleus.M2M
   alias Nucleus.M2M.Client
+  alias Nucleus.M2M.ClientName
+  alias Nucleus.M2M.NewClient
   alias NucleusWeb.M2MClientsLive.States
 
   @impl Phoenix.LiveView
@@ -112,6 +122,9 @@ defmodule NucleusWeb.M2MClientsLive.Index do
       socket
       |> stream_configure(:clients, dom_id: &dom_id/1)
       |> stream(:clients, [])
+      |> assign(:creating, false)
+      |> assign(:create_form, nil)
+      |> assign(:name_preview, nil)
       |> fetch_clients()
 
     {:ok, socket}
@@ -119,7 +132,52 @@ defmodule NucleusWeb.M2MClientsLive.Index do
 
   @impl Phoenix.LiveView
   def handle_event("new_client", _params, socket) do
+    form = build_create_form()
+
+    socket =
+      socket
+      |> assign(:creating, true)
+      |> assign(:create_form, form)
+      |> assign(:name_preview, preview_name(form.source))
+
+    {:noreply, socket}
+  end
+
+  @impl Phoenix.LiveView
+  def handle_event("validate_new_client", %{"new_client" => params}, socket) do
+    changeset =
+      %NewClient{}
+      |> NewClient.changeset(params)
+      |> Map.put(:action, :validate)
+
+    socket =
+      socket
+      |> assign(:create_form, to_form(changeset, as: :new_client))
+      |> assign(:name_preview, preview_name(changeset))
+
+    {:noreply, socket}
+  end
+
+  # `save_new_client` is M2M-S5's — this clause exists only so a form
+  # submitted directly (bypassing the disabled submit button, which is UI
+  # convenience only) cannot dispatch an unmatched event and crash the
+  # LiveView. See the moduledoc's "Creation is a modal" section.
+  @impl Phoenix.LiveView
+  def handle_event("save_new_client", _params, socket) do
     {:noreply, put_flash(socket, :info, "Creating a client is not yet implemented.")}
+  end
+
+  # Every dismissal route the modal offers — X, Escape, backdrop, and the
+  # Cancel button — arrives here, carrying no params.
+  @impl Phoenix.LiveView
+  def handle_event("cancel_new_client", _params, socket) do
+    socket =
+      socket
+      |> assign(:creating, false)
+      |> assign(:create_form, nil)
+      |> assign(:name_preview, nil)
+
+    {:noreply, socket}
   end
 
   @impl Phoenix.LiveView
@@ -209,6 +267,90 @@ defmodule NucleusWeb.M2MClientsLive.Index do
             </tbody>
           </table>
         </div>
+
+        <%!--
+        Only in the DOM while it is open, mirroring `NucleusWeb.SecretsLive`'s
+        create modal — see the moduledoc's "Creation is a modal" section.
+        --%>
+        <.modal
+          :if={@creating}
+          id="new-m2m-client-modal"
+          show
+          on_cancel={JS.push("cancel_new_client")}
+        >
+          <:title>New M2M client</:title>
+          <.form
+            for={@create_form}
+            id="new-m2m-client-form"
+            phx-change="validate_new_client"
+            phx-submit="save_new_client"
+          >
+            <.input
+              field={@create_form[:ticket_id]}
+              id="new-m2m-client-ticket-id"
+              type="text"
+              label="Ticket ID"
+              placeholder="OPS-1234"
+              class="w-full input font-mono text-sm"
+            />
+            <p class="text-xs text-base-content/70 -mt-1 mb-2">
+              Jira ticket ID, e.g. <code>OPS-1234</code>.
+            </p>
+
+            <.input
+              field={@create_form[:purpose]}
+              id="new-m2m-client-purpose"
+              type="text"
+              label="Purpose"
+              placeholder="nightly-sync"
+              class="w-full input font-mono text-sm"
+            />
+            <p class="text-xs text-base-content/70 -mt-1 mb-2">
+              Short, dash-separated description, e.g. <code>nightly-sync</code>.
+            </p>
+
+            <.input
+              field={@create_form[:access_token_validity_minutes]}
+              id="new-m2m-client-token-validity"
+              type="number"
+              label="Access token validity (minutes)"
+              class="w-full input font-mono text-sm"
+            />
+            <p class="text-xs text-base-content/70 -mt-1 mb-2">
+              Whole minutes, 5–60. Defaults to 15.
+            </p>
+
+            <div class="mt-3">
+              <div class="text-sm font-medium mb-1">Client name preview</div>
+              <div
+                id="new-m2m-client-name-preview"
+                class="rounded-box bg-base-200 p-2 font-mono text-sm"
+              >
+                <%= if @name_preview do %>
+                  <span class="select-all">{@name_preview}</span>
+                <% else %>
+                  <span class="text-base-content/60">
+                    Enter a ticket ID and purpose to preview the client name.
+                  </span>
+                <% end %>
+              </div>
+            </div>
+
+            <div class="modal-action">
+              <.button id="new-m2m-client-cancel" type="button" phx-click="cancel_new_client">
+                Cancel
+              </.button>
+              <.button
+                id="new-m2m-client-submit"
+                type="submit"
+                variant="primary"
+                disabled={not @create_form.source.valid?}
+              >
+                Create
+              </.button>
+            </div>
+          </.form>
+        </.modal>
       </div>
     </Layouts.app>
     """
@@ -223,4 +365,47 @@ defmodule NucleusWeb.M2MClientsLive.Index do
   defp format_created_date(%DateTime{} = datetime) do
     Calendar.strftime(datetime, "%Y-%m-%d %H:%M UTC")
   end
+
+  # Fresh each time, never reused across an open/cancel cycle — an
+  # unvalidated (`action: nil`) empty `%NewClient{}` so opening the form
+  # shows no errors before the user has typed anything, matching
+  # `NucleusWeb.SecretsLive`'s `build_create_form/1` precedent.
+  defp build_create_form do
+    %NewClient{}
+    |> NewClient.changeset(%{})
+    |> to_form(as: :new_client)
+  end
+
+  # `M2M-A07`: the exact name `Nucleus.M2M.ClientName.build/2` would produce
+  # — never a template-side reconstruction of the naming convention. `nil`
+  # when either field is blank (a half-built name like
+  # `acme-control-plane--nightly-sync` teaches the wrong convention) or
+  # either field has failed `Nucleus.M2M.NewClient.changeset/2`'s validation
+  # (a preview of a name that cannot be created is worse than none).
+  #
+  # Computed here, in the event handler, into its own `:name_preview`
+  # assign — never as a function call reading `@create_form` directly in
+  # the template. `ClientName.build/2` reads `Nucleus.Scope.tenant_namespace/0`
+  # at call time (not baked in), but LiveView's change tracking only
+  # re-evaluates a template expression when the *assign* it closes over
+  # changes; two `validate_new_client` events carrying identical
+  # `ticket_id`/`purpose` produce a structurally identical changeset even
+  # if `TENANT_NAMESPACE` changed between them, which would leave a
+  # template-side call to this function rendering a stale name. Assigning
+  # the computed string itself sidesteps that: the value assigned genuinely
+  # differs when the tenant does, so the diff always carries it.
+  defp preview_name(changeset) do
+    ticket_id = Ecto.Changeset.get_field(changeset, :ticket_id)
+    purpose = Ecto.Changeset.get_field(changeset, :purpose)
+
+    cond do
+      blank?(ticket_id) or blank?(purpose) -> nil
+      Keyword.has_key?(changeset.errors, :ticket_id) -> nil
+      Keyword.has_key?(changeset.errors, :purpose) -> nil
+      true -> ClientName.build(ticket_id, purpose)
+    end
+  end
+
+  defp blank?(nil), do: true
+  defp blank?(value), do: String.trim(value) == ""
 end
