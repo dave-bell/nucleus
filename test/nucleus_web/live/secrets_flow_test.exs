@@ -6,7 +6,9 @@ defmodule NucleusWeb.SecretsFlowTest do
   through `Nucleus.Environments` (`SEC-S1`), but renders no secrets UI of
   its own yet (`SEC-S2` builds the list). The shell's environment-picker
   navigation is real (EN-7) and worth exercising end to end: load one
-  environment's secrets page, then follow a sidebar link to another.
+  environment's secrets page, follow a sidebar link to another environment's
+  detail view (`ENV-S1` repointed the sidebar there), then on to its secrets
+  via "Manage Secrets" (`ENV-A04`).
 
   Unlike `Phoenix.LiveViewTest`'s `live/2`, `PhoenixTest.visit/2` returns a
   session that also seamlessly follows a *static* page — nothing here
@@ -29,7 +31,7 @@ defmodule NucleusWeb.SecretsFlowTest do
   import PhoenixTest
 
   @tag :unit
-  test "an ops user follows the sidebar from one environment's secrets page to another", %{
+  test "an ops user follows the sidebar to an environment's detail, then to its secrets", %{
     conn: conn
   } do
     conn
@@ -37,6 +39,9 @@ defmodule NucleusWeb.SecretsFlowTest do
     |> assert_has("#tenant-identifier")
     |> assert_has("#environments-list", text: "Staging", timeout: 100)
     |> click_link("Staging")
+    |> assert_path(~p"/environments/staging")
+    |> assert_has("#environment-detail")
+    |> click_link("Manage Secrets")
     |> assert_path(~p"/environments/staging/secrets")
     |> assert_has("#tenant-identifier")
   end

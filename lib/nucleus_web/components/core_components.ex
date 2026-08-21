@@ -426,6 +426,39 @@ defmodule NucleusWeb.CoreComponents do
   end
 
   @doc """
+  Renders a description list — label/value rows, each split into a muted,
+  fixed-width label and its value on the same line, separated by a thin
+  divider. Unlike `list/1`, label and value sit side by side instead of
+  being stacked, which reads less like a table for record attributes.
+
+  ## Examples
+
+      <.description_list>
+        <:item title="Title">{@post.title}</:item>
+        <:item title="Views">{@post.views}</:item>
+      </.description_list>
+  """
+  slot :item, required: true do
+    attr :title, :string, required: true
+  end
+
+  def description_list(assigns) do
+    ~H"""
+    <dl class="divide-y divide-base-300">
+      <div
+        :for={item <- @item}
+        class="flex flex-col gap-1 py-3 sm:flex-row sm:items-baseline sm:gap-4"
+      >
+        <dt class="w-full shrink-0 text-sm font-medium text-base-content/60 sm:w-40">
+          {item.title}
+        </dt>
+        <dd class="flex-1 text-sm">{render_slot(item)}</dd>
+      </div>
+    </dl>
+    """
+  end
+
+  @doc """
   Renders a [Heroicon](https://heroicons.com).
 
   Heroicons come in three styles – outline, solid, and mini.
