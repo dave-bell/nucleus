@@ -41,9 +41,10 @@ defmodule NucleusWeb.M2MClientsLiveTest do
 
   defmodule FailingM2MClients do
     @moduledoc """
-    A controllable `list_clients/0` failure — a swapped module, not
-    `LOCAL_FORCE_ERROR`, for the same node-global reason `Nucleus.M2MTest`'s
-    twin documents.
+    A controllable `list_clients/0`/`describe_client/1` failure — a swapped
+    module, not `LOCAL_FORCE_ERROR`, for the same node-global reason
+    `Nucleus.M2MTest`'s twin documents. `describe_client/1` is `Show`'s call
+    path (M2M-S3); `list_clients/0` remains `Index`'s.
     """
     @behaviour Nucleus.M2M.Clients
 
@@ -54,7 +55,10 @@ defmodule NucleusWeb.M2MClientsLiveTest do
     end
 
     @impl Nucleus.M2M.Clients
-    def describe_client(_client_id), do: raise("should not be called")
+    def describe_client(_client_id) do
+      kind = Application.get_env(:nucleus, __MODULE__, :unavailable)
+      {:error, Error.new(kind, :m2m, "forced for test", %{})}
+    end
 
     @impl Nucleus.M2M.Clients
     def create_client(_client_name, _settings), do: raise("should not be called")
@@ -621,7 +625,7 @@ defmodule NucleusWeb.M2MClientsLiveTest do
   end
 
   describe "navigation to Show" do
-    test "a row's view link navigates to /m2m/clients/:client_id and Show's stub mounts without crashing",
+    test "a row's view link navigates to /m2m/clients/:client_id and Show renders the client's detail",
          %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/m2m/clients")
 
@@ -631,7 +635,225 @@ defmodule NucleusWeb.M2MClientsLiveTest do
                |> render_click()
                |> follow_redirect(conn, ~p"/m2m/clients/#{@valid_client_id}")
 
-      assert has_element?(show_view, "#m2m-client-detail-placeholder")
+      assert has_element?(show_view, "#m2m-client-detail")
+      assert has_element?(show_view, "#m2m-client-id", @valid_client_id)
+    end
+  end
+
+  describe "M2M-A03 — view a client's details" do
+    @tag action: "M2M-A03"
+    test "shows ID, name, scope, validity and creation date, and never the secret", %{conn: conn} do
+      {:ok, view, html} = live(conn, ~p"/m2m/clients/#{@valid_client_id}")
+
+      assert has_element?(view, "#m2m-client-detail")
+      assert has_element?(view, "#m2m-client-secret-note")
+      refute html =~ @valid_client_secret
+    end
+
+    @tag action: "M2M-A03"
+    test "all five fields render with their DOM ids", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients/#{@valid_client_id}")
+
+      assert has_element?(view, "#m2m-client-id", @valid_client_id)
+      assert has_element?(view, "#m2m-client-name", @valid_client_name)
+      assert has_element?(view, "#m2m-client-scope")
+      assert has_element?(view, "#m2m-client-token-validity")
+      assert has_element?(view, "#m2m-client-created")
+    end
+
+    @tag action: "M2M-A03"
+    test "#m2m-client-secret-note is present and each seeded client's secret appears nowhere in its own rendered HTML",
+         %{conn: conn} do
+      # Every seeded, in-tenant, non-denied client — not just @valid_client_id —
+      # per the acceptance criterion "for every seeded client", not just one.
+      visible_fixtures = [
+        {@valid_client_id, @valid_client_secret},
+        {"7a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d",
+         "c2d3e4f5a67890b1c2d3e4f5a67890b1c2d3e4f5a67890b1c2d3e4f5a67890b"},
+        {"9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a",
+         "d3e4f5a67890b1c2d3e4f5a67890b1c2d3e4f5a67890b1c2d3e4f5a67890b1c"},
+        {"1c2d3e4f5a67890b1c2d3e4f5a67890b",
+         "e4f5a67890b1c2d3e4f5a67890b1c2d3e4f5a67890b1c2d3e4f5a67890b1c2d"},
+        {"2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b",
+         "f5a67890b1c2d3e4f5a67890b1c2d3e4f5a67890b1c2d3e4f5a67890b1c2d3e"}
+      ]
+
+      for {client_id, secret} <- visible_fixtures do
+        {:ok, view, html} = live(conn, ~p"/m2m/clients/#{client_id}")
+
+        assert has_element?(view, "#m2m-client-detail")
+        assert has_element?(view, "#m2m-client-secret-note")
+        refute html =~ secret
+      end
+    end
+
+    @tag action: "M2M-A03"
+    test "one m2m_client_viewed per open; a subsequent unrelated event on the same view emits no second one",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients/#{@valid_client_id}")
+
+      assert_audit_event(:m2m_client_viewed, details: %{client_name: @valid_client_name})
+
+      # `Show` defines no `handle_event/3` or `handle_info/2` of its own (only
+      # secret rotation, M2M-S6, will add one) — there is no genuine
+      # "unrelated event" to dispatch at this LiveView yet. `render/1` is the
+      # closest available proxy: forcing a re-render without a fresh mount
+      # must not re-invoke `view/2`, since the audit call lives in `mount/3`,
+      # not `render/1`.
+      render(view)
+
+      count_viewed = fn -> audit_events() |> Enum.count(&(&1.event == :m2m_client_viewed)) end
+      assert count_viewed.() == 1
+
+      # The stronger, concretely testable half of "once per open": a second,
+      # independent open of the *same* client — a reload, or a second tab —
+      # is its own event, not folded into or blocked by the first. Proves
+      # `view/2` neither under- nor over-counts across separate mounts.
+      {:ok, _second_view, _html} = live(conn, ~p"/m2m/clients/#{@valid_client_id}")
+      assert count_viewed.() == 2
+    end
+  end
+
+  describe "M2M-A13 — invalid client ID" do
+    @tag action: "M2M-A13"
+    test "a malformed ID in the URL renders #m2m-client-invalid-id, no #m2m-client-detail", %{
+      conn: conn
+    } do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients/not a valid id")
+
+      assert has_element?(view, "#m2m-client-invalid-id")
+      refute has_element?(view, "#m2m-client-detail")
+    end
+  end
+
+  describe "M2M-A14 — not found, identical for deny-listed and nonexistent" do
+    @tag action: "M2M-A14"
+    test "the seeded deny-listed client's ID renders #m2m-client-not-found, identical to a genuinely nonexistent ID",
+         %{conn: conn} do
+      {:ok, denied_view, _html} = live(conn, ~p"/m2m/clients/#{@denied_client_id}")
+      {:ok, nonexistent_view, _html} = live(conn, ~p"/m2m/clients/#{String.duplicate("f", 32)}")
+
+      assert has_element?(denied_view, "#m2m-client-not-found")
+      refute has_element?(denied_view, "#m2m-client-detail")
+
+      assert has_element?(nonexistent_view, "#m2m-client-not-found")
+      refute has_element?(nonexistent_view, "#m2m-client-detail")
+    end
+
+    @tag action: "M2M-A14"
+    test "the out-of-tenant client's ID also renders #m2m-client-not-found", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients/#{@out_of_tenant_client_id}")
+
+      assert has_element?(view, "#m2m-client-not-found")
+      refute has_element?(view, "#m2m-client-detail")
+    end
+  end
+
+  describe "M2M-A15 — no update or delete affordance" do
+    @tag action: "M2M-A15"
+    test "no rename, edit, reconfigure or delete control exists in #m2m-client-detail", %{
+      conn: conn
+    } do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients/#{@valid_client_id}")
+
+      refute has_element?(view, "#m2m-client-detail form")
+      refute has_element?(view, "#m2m-client-detail [phx-click=\"delete\"]")
+      refute has_element?(view, "#m2m-client-detail [phx-click=\"edit\"]")
+      refute has_element?(view, "#m2m-client-detail [phx-click=\"rename\"]")
+
+      detail_html =
+        view
+        |> element("#m2m-client-detail")
+        |> render()
+
+      refute detail_html =~ "Delete"
+      refute detail_html =~ "Remove"
+      refute detail_html =~ "Rename"
+      refute detail_html =~ "Edit"
+    end
+  end
+
+  describe "M2M-A16 — token validity display" do
+    @tag action: "M2M-A16"
+    test "the fixture with exactly one hour renders \"1 hour\"", %{conn: conn} do
+      one_hour_client_id = "9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a"
+
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients/#{one_hour_client_id}")
+
+      assert has_element?(view, "#m2m-client-token-validity", "1 hour")
+    end
+
+    @tag action: "M2M-A16"
+    test "the fixture with a different value pluralises", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients/#{@valid_client_id}")
+
+      assert has_element?(view, "#m2m-client-token-validity", "15 minutes")
+    end
+
+    @tag action: "M2M-A16"
+    test "the fixture whose underlying unit is not hours (nor whole minutes) still renders correctly",
+         %{conn: conn} do
+      seconds_tier_client_id = "1c2d3e4f5a67890b1c2d3e4f5a67890b"
+
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients/#{seconds_tier_client_id}")
+
+      assert has_element?(view, "#m2m-client-token-validity", "450 seconds")
+    end
+  end
+
+  describe "Show — error states" do
+    @error_state_ids %{
+      not_configured: "m2m-clients-misconfigured",
+      unavailable: "m2m-clients-unavailable",
+      auth_expired: "m2m-clients-auth-expired"
+    }
+
+    for {kind, expected_id} <- @error_state_ids do
+      @tag kind: kind
+      @tag expected_id: expected_id
+      test "#{kind} renders its own state, shell intact, no detail fields, no crash", %{
+        conn: conn,
+        kind: kind,
+        expected_id: expected_id
+      } do
+        use_backend(FailingM2MClients)
+        Application.put_env(:nucleus, FailingM2MClients, kind)
+
+        assert {:ok, view, _html} = live(conn, ~p"/m2m/clients/#{@valid_client_id}")
+
+        assert has_element?(view, "##{expected_id}")
+        refute has_element?(view, "#m2m-client-detail")
+        refute has_element?(view, "#m2m-client-invalid-id")
+        refute has_element?(view, "#m2m-client-not-found")
+        assert has_element?(view, "#tenant-identifier")
+      end
+    end
+
+    test "live/2 returns {:ok, ...} for every Nucleus.Backend.Error kind — never crashes", %{
+      conn: conn
+    } do
+      for kind <- Error.kinds() do
+        use_backend(FailingM2MClients)
+        Application.put_env(:nucleus, FailingM2MClients, kind)
+
+        assert {:ok, _view, _html} = live(conn, ~p"/m2m/clients/#{@valid_client_id}")
+      end
+    end
+  end
+
+  describe "Show — mount/3 re-validates on every navigation, not just the first" do
+    test "patching from the list to a client, then to a second client, re-validates each time",
+         %{conn: conn} do
+      second_client_id = "7a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d"
+
+      {:ok, first_view, _html} = live(conn, ~p"/m2m/clients/#{@valid_client_id}")
+      assert has_element?(first_view, "#m2m-client-id", @valid_client_id)
+
+      {:ok, second_view, _html} = live(conn, ~p"/m2m/clients/#{second_client_id}")
+      assert has_element?(second_view, "#m2m-client-id", second_client_id)
+
+      {:ok, denied_view, _html} = live(conn, ~p"/m2m/clients/#{@denied_client_id}")
+      assert has_element?(denied_view, "#m2m-client-not-found")
     end
   end
 end

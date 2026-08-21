@@ -114,6 +114,7 @@ defmodule NucleusWeb.M2MClientsLive.Index do
   alias Nucleus.M2M.Client
   alias Nucleus.M2M.ClientName
   alias Nucleus.M2M.NewClient
+  alias NucleusWeb.M2MClientsLive.Format
   alias NucleusWeb.M2MClientsLive.States
 
   @impl Phoenix.LiveView
@@ -244,7 +245,7 @@ defmodule NucleusWeb.M2MClientsLive.Index do
                 <td class="font-mono text-sm">{client.client_id}</td>
                 <td class="whitespace-nowrap">
                   <%= if client.created_date do %>
-                    {format_created_date(client.created_date)}
+                    {Format.created_date(client.created_date)}
                   <% else %>
                     <span
                       id={date_unavailable_id(client.client_id)}
@@ -361,10 +362,6 @@ defmodule NucleusWeb.M2MClientsLive.Index do
   defp date_unavailable_id(client_id), do: "m2m-client-date-unavailable-" <> client_id
 
   defp view_link_id(client_id), do: "view-client-" <> client_id
-
-  defp format_created_date(%DateTime{} = datetime) do
-    Calendar.strftime(datetime, "%Y-%m-%d %H:%M UTC")
-  end
 
   # Fresh each time, never reused across an open/cancel cycle — an
   # unvalidated (`action: nil`) empty `%NewClient{}` so opening the form

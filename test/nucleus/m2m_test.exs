@@ -17,6 +17,7 @@ defmodule Nucleus.M2MTest do
 
   # Seeded in priv/backends/local_seed.json under TENANT_NAMESPACE = "local".
   @valid_client_id "4f2a9c1e7b3d8f0a1c2e3f4a5b6c7d8e"
+  @valid_client_secret "b1c2d3e4f5a67890b1c2d3e4f5a67890b1c2d3e4f5a67890b1c2d3e4f5a6789"
   @denied_client_id "5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e"
   @out_of_tenant_client_id "6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f"
   @nonexistent_client_id String.duplicate("f", 32)
@@ -388,6 +389,70 @@ defmodule Nucleus.M2MTest do
 
         assert {:error, %Error{kind: ^kind}} = M2M.list(@scope)
       end
+    end
+  end
+
+  describe "view/2 — M2M-A03 resolves and audits a client view" do
+    @tag action: "M2M-A03"
+    test "returns a ClientDetail with client_id, client_name, scope, token_validity_seconds, and created_date populated" do
+      assert {:ok, %ClientDetail{} = detail} = M2M.view(@valid_client_id, @scope)
+
+      assert detail.client_id == @valid_client_id
+      assert is_binary(detail.client_name)
+      assert is_binary(detail.scope)
+      assert is_integer(detail.token_validity_seconds)
+      assert %DateTime{} = detail.created_date
+    end
+
+    @tag action: "M2M-A03"
+    test "the resolved struct has no :client_secret key" do
+      assert {:ok, detail} = M2M.view(@valid_client_id, @scope)
+      refute Map.has_key?(detail, :client_secret)
+    end
+
+    @tag action: "M2M-A03"
+    test "emits exactly one m2m_client_viewed, with client_name in details and the tenant set" do
+      assert {:ok, detail} = M2M.view(@valid_client_id, @scope)
+
+      assert_audit_event(:m2m_client_viewed,
+        tenant: "local",
+        details: %{client_name: detail.client_name}
+      )
+
+      assert audit_events() |> Enum.filter(&(&1.event == :m2m_client_viewed)) |> length() == 1
+    end
+
+    @tag action: "M2M-A03"
+    test "a view that did not happen is not recorded: :invalid emits no audit event" do
+      assert {:error, %Error{kind: :invalid}} = M2M.view("../etc", @scope)
+      assert_no_audit_event(:m2m_client_viewed)
+    end
+
+    @tag action: "M2M-A03"
+    test "a view that did not happen is not recorded: :not_found (deny-listed) emits no audit event" do
+      assert {:error, %Error{kind: :not_found}} = M2M.view(@denied_client_id, @scope)
+      assert_no_audit_event(:m2m_client_viewed)
+    end
+
+    @tag action: "M2M-A03"
+    test "a view that did not happen is not recorded: :unavailable emits no audit event" do
+      use_backend(FailingM2MClients)
+      Application.put_env(:nucleus, FailingM2MClients, :unavailable)
+
+      assert {:error, %Error{kind: :unavailable}} = M2M.view(@valid_client_id, @scope)
+      assert_no_audit_event(:m2m_client_viewed)
+    end
+
+    @tag action: "M2M-A03"
+    test "fetch/2 still emits nothing — M2M-S1 / #34's guarantee, re-asserted so this ticket cannot break it" do
+      assert {:ok, _detail} = M2M.fetch(@valid_client_id, @scope)
+      assert_no_audit_event(:m2m_client_viewed)
+    end
+
+    @tag action: "M2M-A03"
+    test "the seeded client's secret never appears in the audit trail" do
+      assert {:ok, _detail} = M2M.view(@valid_client_id, @scope)
+      refute_audit_contains(@valid_client_secret)
     end
   end
 end
