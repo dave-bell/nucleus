@@ -54,14 +54,41 @@ defmodule NucleusWeb.EnvironmentsLiveTest do
     end
 
     @tag action: "ENV-A02"
-    test "the IRI is rendered as text, not a link", %{conn: conn} do
+    test "the IRI is shown as text, with a copy button and a validated open-in-new-tab link",
+         %{conn: conn} do
       assert {:ok, view, _html} = live_environment(conn, "prod")
 
       html = view |> element("#environment-detail") |> render()
       doc = LazyHTML.from_fragment(html)
 
       refute Enum.empty?(LazyHTML.query(doc, "[id=\"copy-iri\"]"))
-      assert Enum.empty?(LazyHTML.query(doc, "a[href*=\"://\"]"))
+      assert LazyHTML.text(doc) =~ "https://tenant.example.com/environment/prod"
+
+      open_iri = LazyHTML.query(doc, "[id=\"open-iri\"]")
+      refute Enum.empty?(open_iri)
+
+      assert LazyHTML.attribute(open_iri, "href") == [
+               "https://tenant.example.com/environment/prod"
+             ]
+
+      assert LazyHTML.attribute(open_iri, "target") == ["_blank"]
+      assert LazyHTML.attribute(open_iri, "rel") == ["noopener noreferrer"]
+    end
+
+    @tag action: "ENV-A02"
+    test "an iri with an unsafe scheme renders as text with no open-in-new-tab link", %{
+      conn: conn
+    } do
+      seed_environment(%{"shortName" => "mailto-env", "iri" => "mailto:ops@example.com"})
+
+      assert {:ok, view, _html} = live_environment(conn, "mailto-env")
+
+      html = view |> element("#environment-detail") |> render()
+      doc = LazyHTML.from_fragment(html)
+
+      refute Enum.empty?(LazyHTML.query(doc, "[id=\"copy-iri\"]"))
+      assert Enum.empty?(LazyHTML.query(doc, "[id=\"open-iri\"]"))
+      assert LazyHTML.text(doc) =~ "mailto:ops@example.com"
     end
 
     @tag action: "ENV-A02"
@@ -218,9 +245,10 @@ defmodule NucleusWeb.EnvironmentsLiveTest do
       html = view |> element("#environment-detail") |> render()
       doc = LazyHTML.from_fragment(html)
 
-      # Never an href.
+      # Never an href, and no open-in-new-tab link is rendered at all.
       hrefs = doc |> LazyHTML.query("a[href]") |> LazyHTML.attribute("href")
       refute Enum.any?(hrefs, &(&1 =~ "javascript:"))
+      assert Enum.empty?(LazyHTML.query(doc, "[id=\"open-iri\"]"))
 
       # Never interpolated unvalidated into a style attribute.
       styles = doc |> LazyHTML.query("[style]") |> LazyHTML.attribute("style")

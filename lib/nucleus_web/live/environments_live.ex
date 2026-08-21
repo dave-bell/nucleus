@@ -54,12 +54,18 @@ defmodule NucleusWeb.EnvironmentsLive do
   delete affordance anywhere in this module's template — the absence itself
   is the deliverable.
 
-  ## The IRI is text, never an `href` — and the accent color is validated before use
+  ## The IRI and the accent color are both validated before use
 
   `Nucleus.TenantApi.Environment.from_api/1` only validates that `iri` is a
-  string, not that it is a safe URI scheme — rendering it as a link target
-  would let a tenant's own API hand back a `javascript:` scheme. HEEx's
-  default escaping renders it as inert text instead.
+  string, not that it is a safe URI scheme — interpolating it directly into
+  an `href` would let a tenant's own API hand back a `javascript:` scheme.
+  `iri_href/1` gates it against an `http`/`https`-with-host allowlist before
+  it is ever used as a link target; only then does the "open in a new tab"
+  button (`#open-iri`) render at all, and it always pairs
+  `target="_blank"` with `rel="noopener noreferrer"` so the new tab can't
+  reach back into this one. The raw IRI is always shown as HEEx-escaped
+  text next to it regardless of whether it passed validation — the text
+  never depends on the link.
 
   `accent_color` has the same problem in a different attribute: an
   unvalidated string interpolated into a `style` attribute is the same
@@ -83,6 +89,7 @@ defmodule NucleusWeb.EnvironmentsLive do
   alias Nucleus.Environments
 
   @hex_color ~r/\A#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\z/
+  @safe_iri_schemes ~w(http https)
 
   @impl Phoenix.LiveView
   def handle_params(%{"environment" => environment}, _uri, socket) do
@@ -154,13 +161,34 @@ defmodule NucleusWeb.EnvironmentsLive do
           </.link>
         </div>
 
-        <.list>
+        <.description_list>
           <:item title="Short name">{@environment.short_name}</:item>
           <:item title="Label">{@environment.label || @environment.short_name}</:item>
+          <:item title="Status">
+            <.badge variant={if @environment.archived?, do: "neutral", else: "success"}>
+              {if @environment.archived?, do: "Archived", else: "Active"}
+            </.badge>
+          </:item>
           <:item :if={@environment.iri} title="IRI">
             <div class="flex items-center gap-1">
               <span class="break-all">{@environment.iri}</span>
               <.copy_button id="copy-iri" value={@environment.iri} label="Copy IRI" />
+              <span
+                :if={iri_href(@environment.iri)}
+                class="tooltip"
+                data-tip="Open IRI in new tab"
+              >
+                <.link
+                  id="open-iri"
+                  href={iri_href(@environment.iri)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="btn btn-ghost btn-sm btn-square"
+                  aria-label="Open IRI in new tab"
+                >
+                  <.icon name="hero-arrow-top-right-on-square" class="size-4" />
+                </.link>
+              </span>
             </div>
           </:item>
           <:item title="Accent color">
@@ -179,15 +207,10 @@ defmodule NucleusWeb.EnvironmentsLive do
               do: "None",
               else: Enum.join(@environment.categories, ", ")}
           </:item>
-          <:item title="Status">
-            <.badge variant={if @environment.archived?, do: "neutral", else: "success"}>
-              {if @environment.archived?, do: "Archived", else: "Active"}
-            </.badge>
-          </:item>
           <:item :if={@environment.description} title="Description">
             <p id="environment-description">{@environment.description}</p>
           </:item>
-        </.list>
+        </.description_list>
       </div>
     </Layouts.app>
     """
@@ -195,11 +218,30 @@ defmodule NucleusWeb.EnvironmentsLive do
 
   # A validated `style` value, or `nil` when `color` fails the hex allowlist
   # — the swatch renders neutral and the raw string is still shown as
-  # escaped text alongside it (see the moduledoc, "The IRI is text...").
+  # escaped text alongside it (see the moduledoc, "The IRI and the accent
+  # color are both validated before use").
   defp accent_style(color) do
     if valid_hex_color?(color), do: "background-color: #{color};", else: nil
   end
 
   defp valid_hex_color?(color) when is_binary(color), do: Regex.match?(@hex_color, color)
   defp valid_hex_color?(_color), do: false
+
+  # `iri`, or `nil` when it fails the `http`/`https`-with-host allowlist —
+  # the "open in a new tab" button only renders when this returns a value
+  # (see the moduledoc, "The IRI and the accent color are both validated
+  # before use"). The raw string is always shown as escaped text regardless
+  # of this check.
+  defp iri_href(iri) when is_binary(iri) do
+    case URI.parse(iri) do
+      %URI{scheme: scheme, host: host}
+      when scheme in @safe_iri_schemes and is_binary(host) and host != "" ->
+        iri
+
+      _other ->
+        nil
+    end
+  end
+
+  defp iri_href(_iri), do: nil
 end
