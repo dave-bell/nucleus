@@ -95,9 +95,18 @@ action mounts through, the same relationship `Nucleus.Environments.fetch/2` has 
 `NucleusWeb.SecretsLive`; `Nucleus.M2M.list/1` reuses its `visible?/1` predicate rather than a
 second copy, pinned by a test that a client hidden from the list also 404s via `fetch/2`. `M2M-S1`
 also delivers the pure naming/shape validators (`Nucleus.M2M.TicketId`/`Purpose`/`ClientId`/`ClientName`)
-and the `Nucleus.M2M.DenyList` boundary `list/1` reads. Every other row is unimplemented. These
-names are the agreed target so that work lands consistently — treat them as the convention to
-follow, and correct this table if a better structure emerges.
+and the `Nucleus.M2M.DenyList` boundary `list/1` reads. `M2M-A04`–`A07` are now also claimed and
+covered (M2M-S4/#37): `Nucleus.M2M.NewClient` (`test/nucleus/m2m/new_client_test.exs`) is a
+no-repo `embedded_schema` changeset wrapping `TicketId.validate/1`/`Purpose.validate/1` with a
+distinct message per reason atom, and `Index`'s `#new-m2m-client-modal` drives it with
+`phx-change` validation and a `#new-m2m-client-name-preview` computed from
+`Nucleus.M2M.ClientName.build/2` itself — never a template-side reconstruction — so the preview
+is pinned equal to the string M2M-S5's create call will use. `M2M-A09` (duplicate-name
+rejection) is not part of this count; it was dropped, not deferred, by EN-10/#33 (`docs/adr/0016-m2m-client-adapter.md`).
+This ticket makes no backend write, so `save_new_client` still just flashes, same as M2M-S2's
+placeholder. Every other row is unimplemented. These names are the agreed target so that work
+lands consistently — treat them as the convention to follow, and correct this table if a better
+structure emerges.
 
 `NucleusWeb.EnvironmentsLive` and `test/nucleus_web/live/environments_live_test.exs` also now
 exist (ENV-S1/#52): `ENV-A02`–`A07` are claimed and covered. `ENV-A01` (sidebar category

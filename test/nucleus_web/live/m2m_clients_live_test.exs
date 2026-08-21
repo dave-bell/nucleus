@@ -5,6 +5,7 @@ defmodule NucleusWeb.M2MClientsLiveTest do
 
   alias Nucleus.Backend.Error
   alias Nucleus.M2M.Client
+  alias Nucleus.M2M.ClientName
 
   # Seeded in priv/backends/local_seed.json under TENANT_NAMESPACE = "local"
   # — the same fixtures `Nucleus.M2MTest` exercises at the context layer.
@@ -257,16 +258,369 @@ defmodule NucleusWeb.M2MClientsLiveTest do
     end
   end
 
-  describe "placeholder create handler" do
-    test "clicking #new-m2m-client-button does not crash", %{conn: conn} do
+  describe "M2M-A04 — start creating a new client" do
+    @tag action: "M2M-A04"
+    test "opens a form prompting for ticket ID and purpose", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/m2m/clients")
+
+      view |> element("#new-m2m-client-button") |> render_click()
+
+      assert has_element?(view, "#new-m2m-client-modal")
+      assert has_element?(view, "#new-m2m-client-form")
+      assert has_element?(view, "#new-m2m-client-ticket-id")
+      assert has_element?(view, "#new-m2m-client-purpose")
+    end
+
+    @tag action: "M2M-A04"
+    test "also opens from the empty state's button", %{conn: conn} do
+      use_backend(EmptyM2MClients)
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients")
+
+      view |> element("#new-m2m-client-button") |> render_click()
+
+      assert has_element?(view, "#new-m2m-client-form")
+      assert has_element?(view, "#new-m2m-client-ticket-id")
+      assert has_element?(view, "#new-m2m-client-purpose")
+    end
+
+    @tag action: "M2M-A04"
+    test "the access token validity input is pre-filled with the default of 15", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients")
+
+      html = view |> element("#new-m2m-client-button") |> render_click()
+
+      assert has_element?(view, "#new-m2m-client-token-validity")
+      assert html =~ ~s(value="15")
+    end
+  end
+
+  describe "M2M-A05 — validate the ticket ID" do
+    @tag action: "M2M-A05"
+    test "the wrong case shows a format-specific message and blocks submission", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients")
+      view |> element("#new-m2m-client-button") |> render_click()
 
       html =
         view
-        |> element("#new-m2m-client-button")
-        |> render_click()
+        |> form("#new-m2m-client-form",
+          new_client: %{"ticket_id" => "ops-1234", "purpose" => "sync"}
+        )
+        |> render_change()
+
+      assert html =~ "uppercase letters, a hyphen, then digits"
+      assert has_element?(view, "#new-m2m-client-submit[disabled]")
+    end
+
+    @tag action: "M2M-A05"
+    test "a 21-character ticket ID shows a length-specific message, distinct from the format one",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients")
+      view |> element("#new-m2m-client-button") |> render_click()
+
+      too_long = "OPS-" <> String.duplicate("1", 17)
+
+      html =
+        view
+        |> form("#new-m2m-client-form",
+          new_client: %{"ticket_id" => too_long, "purpose" => "sync"}
+        )
+        |> render_change()
+
+      assert html =~ "20 characters or fewer"
+      refute html =~ "uppercase letters, a hyphen, then digits"
+      assert has_element?(view, "#new-m2m-client-submit[disabled]")
+    end
+
+    @tag action: "M2M-A05"
+    test "the submit button starts disabled on the freshly-opened, empty form", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients")
+      view |> element("#new-m2m-client-button") |> render_click()
+
+      assert has_element?(view, "#new-m2m-client-submit[disabled]")
+    end
+  end
+
+  describe "M2M-A06 — validate the purpose" do
+    @tag action: "M2M-A06"
+    test "a leading hyphen shows a message distinct from a charset violation", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients")
+      view |> element("#new-m2m-client-button") |> render_click()
+
+      leading_html =
+        view
+        |> form("#new-m2m-client-form",
+          new_client: %{"ticket_id" => "OPS-1234", "purpose" => "-sync"}
+        )
+        |> render_change()
+
+      charset_html =
+        view
+        |> form("#new-m2m-client-form",
+          new_client: %{"ticket_id" => "OPS-1234", "purpose" => "Nightly Sync"}
+        )
+        |> render_change()
+
+      assert leading_html =~ "cannot start with a hyphen"
+      assert charset_html =~ "lowercase letters, digits, and hyphens"
+      refute leading_html =~ "lowercase letters, digits, and hyphens"
+      refute charset_html =~ "cannot start with a hyphen"
+      assert has_element?(view, "#new-m2m-client-submit[disabled]")
+    end
+  end
+
+  describe "M2M-A07 — preview the resulting client name before creating" do
+    @tag action: "M2M-A07"
+    test "with both fields valid, the preview renders exactly ClientName.build/2's output", %{
+      conn: conn
+    } do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients")
+      view |> element("#new-m2m-client-button") |> render_click()
+
+      expected = ClientName.build("OPS-4242", "nightly-sync")
+
+      html =
+        view
+        |> form("#new-m2m-client-form",
+          new_client: %{"ticket_id" => "OPS-4242", "purpose" => "nightly-sync"}
+        )
+        |> render_change()
+
+      assert has_element?(view, "#new-m2m-client-name-preview", expected)
+      assert html =~ expected
+    end
+
+    @tag action: "M2M-A07"
+    test "the preview updates as input changes", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients")
+      view |> element("#new-m2m-client-button") |> render_click()
+
+      first =
+        view
+        |> form("#new-m2m-client-form",
+          new_client: %{"ticket_id" => "OPS-1", "purpose" => "sync-one"}
+        )
+        |> render_change()
+
+      second =
+        view
+        |> form("#new-m2m-client-form",
+          new_client: %{"ticket_id" => "OPS-2", "purpose" => "sync-two"}
+        )
+        |> render_change()
+
+      assert first =~ ClientName.build("OPS-1", "sync-one")
+      assert second =~ ClientName.build("OPS-2", "sync-two")
+      refute first == second
+    end
+
+    @tag action: "M2M-A07"
+    test "with only one field filled, no name is previewed", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients")
+      view |> element("#new-m2m-client-button") |> render_click()
+
+      html =
+        view
+        |> form("#new-m2m-client-form", new_client: %{"ticket_id" => "OPS-1234", "purpose" => ""})
+        |> render_change()
+
+      refute html =~ "control-plane-OPS-1234"
+
+      assert has_element?(
+               view,
+               "#new-m2m-client-name-preview",
+               "Enter a ticket ID and purpose to preview the client name."
+             )
+    end
+
+    @tag action: "M2M-A07"
+    test "with a field invalid, no name is previewed", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients")
+      view |> element("#new-m2m-client-button") |> render_click()
+
+      html =
+        view
+        |> form("#new-m2m-client-form",
+          new_client: %{"ticket_id" => "ops-1234", "purpose" => "sync"}
+        )
+        |> render_change()
+
+      refute html =~ "control-plane-ops-1234"
+      refute html =~ "control-plane-OPS-1234"
+
+      assert has_element?(
+               view,
+               "#new-m2m-client-name-preview",
+               "Enter a ticket ID and purpose to preview the client name."
+             )
+    end
+
+    @tag action: "M2M-A07"
+    test "changing TENANT_NAMESPACE config changes the preview", %{conn: conn} do
+      original = Application.get_env(:nucleus, Nucleus.Scope, [])
+      on_exit(fn -> Application.put_env(:nucleus, Nucleus.Scope, original) end)
+
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients")
+      view |> element("#new-m2m-client-button") |> render_click()
+
+      form_params = %{"ticket_id" => "OPS-1234", "purpose" => "nightly-sync"}
+
+      local_html =
+        view
+        |> form("#new-m2m-client-form", new_client: form_params)
+        |> render_change()
+
+      Application.put_env(:nucleus, Nucleus.Scope, tenant_namespace: "acme")
+
+      acme_html =
+        view
+        |> form("#new-m2m-client-form", new_client: form_params)
+        |> render_change()
+
+      assert local_html =~ "local-control-plane-OPS-1234-nightly-sync"
+      assert acme_html =~ "acme-control-plane-OPS-1234-nightly-sync"
+      refute local_html == acme_html
+    end
+  end
+
+  describe "dismissal — cancel, Escape and backdrop all reach cancel_new_client" do
+    @tag action: "M2M-A04"
+    test "cancel closes the modal and creates nothing", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients")
+
+      view |> element("#new-m2m-client-button") |> render_click()
+      assert has_element?(view, "#new-m2m-client-modal")
+
+      view
+      |> form("#new-m2m-client-form",
+        new_client: %{"ticket_id" => "OPS-1234", "purpose" => "not-saved"}
+      )
+      |> render_change()
+
+      view |> element("#new-m2m-client-cancel") |> render_click()
+
+      refute has_element?(view, "#new-m2m-client-modal")
+      refute has_element?(view, "#m2m-clients-table-body", "not-saved")
+    end
+
+    test "the modal's Escape wiring is present and reaches cancel_new_client", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients")
+
+      view |> element("#new-m2m-client-button") |> render_click()
+      doc = view |> render() |> LazyHTML.from_fragment()
+
+      assert [cancel] =
+               doc |> LazyHTML.query("#new-m2m-client-modal") |> LazyHTML.attribute("data-cancel")
+
+      assert cancel =~ "cancel_new_client"
+
+      container = LazyHTML.query(doc, "#new-m2m-client-modal-container")
+      assert LazyHTML.attribute(container, "phx-key") == ["escape"]
+      assert LazyHTML.attribute(container, "phx-window-keydown") != []
+    end
+
+    test "backdrop dismissal reaches cancel_new_client", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients")
+
+      view |> element("#new-m2m-client-button") |> render_click()
+      doc = view |> render() |> LazyHTML.from_fragment()
+
+      container = LazyHTML.query(doc, "#new-m2m-client-modal-container")
+      assert LazyHTML.attribute(container, "phx-click-away") != []
+
+      assert [cancel] =
+               doc |> LazyHTML.query("#new-m2m-client-modal") |> LazyHTML.attribute("data-cancel")
+
+      assert cancel =~ "cancel_new_client"
+    end
+
+    test "reopening after a cancelled attempt shows an empty form", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients")
+
+      view |> element("#new-m2m-client-button") |> render_click()
+
+      view
+      |> form("#new-m2m-client-form",
+        new_client: %{"ticket_id" => "OPS-9999", "purpose" => "discarded"}
+      )
+      |> render_change()
+
+      view |> element("#new-m2m-client-cancel") |> render_click()
+
+      html = view |> element("#new-m2m-client-button") |> render_click()
+
+      refute html =~ "OPS-9999"
+      refute html =~ "discarded"
+    end
+  end
+
+  describe "submitting while save_new_client is unimplemented" do
+    test "does not crash the LiveView", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients")
+      view |> element("#new-m2m-client-button") |> render_click()
+
+      html =
+        view
+        |> form("#new-m2m-client-form",
+          new_client: %{"ticket_id" => "OPS-1234", "purpose" => "nightly-sync"}
+        )
+        |> render_submit()
 
       assert html =~ "M2M Clients"
+    end
+
+    test "dispatching save_new_client directly (bypassing the disabled button) does not crash",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients")
+
+      html = render_click(view, "save_new_client", %{})
+
+      assert html =~ "M2M Clients"
+    end
+  end
+
+  defmodule NewClientModalBrowserGaps do
+    @moduledoc """
+    `M2M-A04`–`A07` dismissal behaviour `Phoenix.LiveViewTest` structurally
+    cannot execute — the same gap recorded for `SEC-A13` in
+    `NucleusWeb.SecretsLiveTest.NewSecretModalBrowserGaps` and
+    `test/README.md`: Escape and a backdrop click reach the server only by
+    running the `Phoenix.LiveView.JS` chain in `data-cancel`, which needs a
+    real key event, a real click outside the `.modal-box`, and a client to
+    interpret the command list (`docs/adr/0008-test-strategy.md`). Focus
+    restoration is the same story — `JS.push_focus/1`/`JS.pop_focus/1` are
+    client-side.
+
+    The describe block above proves the wiring these gaps depend on
+    (`data-cancel` present and pushing `cancel_new_client`, `phx-key="escape"`,
+    `phx-window-keydown`, `phx-click-away` all present) and proves the one
+    route a `render_click/1` can actually drive (the Cancel button) discards
+    cleanly. None of `M2M-A04`–`A07` depends on real Escape keypresses, the
+    focus trap, or focus restoration, so no action tag is weakened by this
+    gap — but it is noted here rather than left for a reader to assume the
+    dismissal tests prove more than they do.
+
+    Skipped unconditionally rather than by default-exclude tag, matching
+    `NewSecretModalBrowserGaps`'s reasoning exactly.
+    """
+
+    use ExUnit.Case, async: true
+
+    @moduletag :browser
+    @moduletag skip: "no browser driver in this repo — see docs/adr/0008-test-strategy.md"
+
+    test "pressing Escape while the modal is open closes it and creates nothing" do
+    end
+
+    test "clicking the backdrop outside the modal box closes it and creates nothing" do
+    end
+
+    test "focus moves into the modal on open and returns to #new-m2m-client-button on dismissal" do
+    end
+
+    test "Tab is trapped inside the modal while it is open" do
+    end
+
+    test "the preview updates smoothly while typing, with no visible lag or flicker" do
     end
   end
 
