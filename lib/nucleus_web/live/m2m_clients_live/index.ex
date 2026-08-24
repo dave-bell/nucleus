@@ -83,17 +83,54 @@ defmodule NucleusWeb.M2MClientsLive.Index do
   visually distinct from "there was no date to begin with" (there is always
   a date; only reading it can fail).
 
-  ## Creation is a modal, `save_new_client` is M2M-S5's
+  ## Creation is a modal; `save_new_client` is M2M-S5's
 
-  `M2M-S4` (#37) replaces M2M-S2's placeholder `handle_event("new_client",
-  ...)` — it now opens `#new-m2m-client-modal` instead of flashing. The
-  form (`Nucleus.M2M.NewClient`) validates `:ticket_id`/`:purpose` via
-  `phx-change` and previews the exact name `Nucleus.M2M.ClientName.build/2`
-  would produce, but this module makes no backend write: `save_new_client`
-  only flashes "not yet implemented", the same pattern the create button
-  itself used before this ticket, so the form can be submitted (directly,
-  bypassing the disabled submit button) without ever crashing the
-  LiveView. M2M-S5 (#38) replaces that flash with the real create call.
+  `M2M-S4` (#37) opens `#new-m2m-client-modal` and previews the exact name
+  `Nucleus.M2M.ClientName.build/2` would produce. `M2M-S5` (#38, this
+  ticket) replaces the placeholder flash with the real create call:
+  `handle_event("save_new_client", ...)` re-validates the form server-side
+  (a disabled submit button is UI convenience, not enforcement — the event
+  can be dispatched directly with any params), then calls `Nucleus.M2M.create/4`,
+  which itself re-validates `ticket_id`/`purpose`, builds the name, and
+  rejects a reserved name (`M2M-A18`) — all before any adapter call.
+
+  On success: the creation modal closes, the one-time credentials panel
+  (`NucleusWeb.M2MClientsLive.CredentialsPanel`) opens holding the
+  `Nucleus.M2M.ClientCredentials` this is the only place in the system that
+  ever assigns, and the client list is **re-fetched** rather than
+  `stream_insert/3`-ed at a computed position — the same choice
+  `docs/adr/0014-secret-creation-key-consolidation-and-modal-exclusion.md`
+  made for Secrets creation, for the same reason: re-deriving
+  `Nucleus.M2M.list/1`'s case-insensitive sort/tiebreak a second time here
+  risks the two drifting apart, where re-listing cannot drift because it
+  *is* `list/1`. This also refreshes `:client_count`, which is what flips
+  `#m2m-clients-empty` to `#m2m-clients-table` on a first client.
+
+  On failure: a reserved name (`M2M-A18`) attaches a field error to
+  `:purpose` (not a bare flash) rather than the generic format errors
+  `M2M-S4`'s `phx-change` already shows, since the two need different copy
+  and neither should be confused for the other. `:not_configured`,
+  `:unavailable`, and `:auth_expired` render as `:create_error`, a banner
+  above the modal's action row — mirroring `NucleusWeb.SecretsLive`'s
+  `create_error_message/1` pattern exactly, including reusing this same
+  module's own `:auth_expired`/`:misconfigured` page-level copy so the two
+  states read consistently. Every branch keeps `@create_form` populated
+  with what was submitted — a failure never discards entered values.
+
+  ## The credentials panel and the creation modal are mutually exclusive
+
+  Opening the creation modal (`"new_client"`) clears `:credentials` to
+  `nil`, the same structural fix
+  `docs/adr/0014-secret-creation-key-consolidation-and-modal-exclusion.md`
+  applied to Secrets' own two conditionally-rendered modals: both this
+  panel and `<.modal>` push onto the same module-global `focusStack`
+  (`JS.push_focus/1`/`JS.pop_focus/1`), and having both mounted at once
+  would double-pop it on whichever closes second. The panel has no
+  backdrop-click or Escape dismissal of its own (see
+  `CredentialsPanel`'s own moduledoc for why), so the only other way it
+  closes is this deliberate one — a fresh "New client" click discards an
+  unretrieved secret exactly as visibly as any other abandonment, never
+  silently.
 
   The row's view control is `<.link navigate={~p"/m2m/clients/\#{client.client_id}"}>` —
   explicit `client_id` interpolation, not `~p"...\#{client}"`, since
@@ -114,8 +151,11 @@ defmodule NucleusWeb.M2MClientsLive.Index do
   alias Nucleus.M2M.Client
   alias Nucleus.M2M.ClientName
   alias Nucleus.M2M.NewClient
+  alias NucleusWeb.M2MClientsLive.CredentialsPanel
   alias NucleusWeb.M2MClientsLive.Format
   alias NucleusWeb.M2MClientsLive.States
+
+  @reserved_name_message "this name is reserved for internal system use — choose a different purpose"
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
@@ -126,6 +166,8 @@ defmodule NucleusWeb.M2MClientsLive.Index do
       |> assign(:creating, false)
       |> assign(:create_form, nil)
       |> assign(:name_preview, nil)
+      |> assign(:create_error, nil)
+      |> assign(:credentials, nil)
       |> fetch_clients()
 
     {:ok, socket}
@@ -140,6 +182,11 @@ defmodule NucleusWeb.M2MClientsLive.Index do
       |> assign(:creating, true)
       |> assign(:create_form, form)
       |> assign(:name_preview, preview_name(form.source))
+      |> assign(:create_error, nil)
+      # Mutual exclusion with the credentials panel — see the moduledoc's
+      # "The credentials panel and the creation modal are mutually
+      # exclusive" section.
+      |> assign(:credentials, nil)
 
     {:noreply, socket}
   end
@@ -159,13 +206,37 @@ defmodule NucleusWeb.M2MClientsLive.Index do
     {:noreply, socket}
   end
 
-  # `save_new_client` is M2M-S5's — this clause exists only so a form
-  # submitted directly (bypassing the disabled submit button, which is UI
-  # convenience only) cannot dispatch an unmatched event and crash the
-  # LiveView. See the moduledoc's "Creation is a modal" section.
+  # `M2M-A08`/`M2M-A18` — server-side, always: a disabled submit button is
+  # UI convenience only, and this event can be dispatched directly with any
+  # params, bypassing whatever `validate_new_client` already rejected
+  # client-side (`M2M-A05`/`A06`'s own server-side enforcement claim). See
+  # the moduledoc's "Creation is a modal" section.
+  @impl Phoenix.LiveView
+  def handle_event("save_new_client", %{"new_client" => params}, socket) do
+    changeset =
+      %NewClient{}
+      |> NewClient.changeset(params)
+      |> Map.put(:action, :validate)
+
+    if changeset.valid? do
+      create_client(socket, changeset)
+    else
+      socket =
+        socket
+        |> assign(:create_form, to_form(changeset, as: :new_client))
+        |> assign(:name_preview, preview_name(changeset))
+
+      {:noreply, socket}
+    end
+  end
+
+  # A `save_new_client` dispatched with no `"new_client"` key at all (a
+  # hand-crafted event, not anything the real form ever sends) — treated as
+  # an empty submission rather than left unmatched, so a malformed direct
+  # dispatch cannot crash the LiveView either.
   @impl Phoenix.LiveView
   def handle_event("save_new_client", _params, socket) do
-    {:noreply, put_flash(socket, :info, "Creating a client is not yet implemented.")}
+    handle_event("save_new_client", %{"new_client" => %{}}, socket)
   end
 
   # Every dismissal route the modal offers — X, Escape, backdrop, and the
@@ -177,13 +248,104 @@ defmodule NucleusWeb.M2MClientsLive.Index do
       |> assign(:creating, false)
       |> assign(:create_form, nil)
       |> assign(:name_preview, nil)
+      |> assign(:create_error, nil)
 
     {:noreply, socket}
+  end
+
+  # The credentials panel's own, sole dismissal route — see
+  # `CredentialsPanel`'s moduledoc for why it has no other. Once this runs,
+  # the secret is gone from both the rendered HTML and this socket's
+  # assigns — there is no way back to it, by design (`M2M-A08`'s error
+  # matrix: the only recovery past this point is rotation).
+  @impl Phoenix.LiveView
+  def handle_event("dismiss_credentials", _params, socket) do
+    {:noreply, assign(socket, :credentials, nil)}
   end
 
   @impl Phoenix.LiveView
   def handle_event("retry", _params, socket) do
     {:noreply, fetch_clients(socket)}
+  end
+
+  # `M2M-A08`'s success path, plus every `Nucleus.Backend.Error.kinds/0`
+  # failure — see the moduledoc's "Creation is a modal" section for the
+  # reasoning behind each branch.
+  defp create_client(socket, changeset) do
+    ticket_id = Ecto.Changeset.get_field(changeset, :ticket_id)
+    purpose = Ecto.Changeset.get_field(changeset, :purpose)
+    minutes = Ecto.Changeset.get_field(changeset, :access_token_validity_minutes)
+
+    case M2M.create(ticket_id, purpose, minutes, socket.assigns.current_scope) do
+      {:ok, credentials} ->
+        socket =
+          socket
+          |> assign(:creating, false)
+          |> assign(:create_form, nil)
+          |> assign(:name_preview, nil)
+          |> assign(:create_error, nil)
+          |> assign(:credentials, credentials)
+          # `M2M-A08`: the new client appears in the list, in sort
+          # position, and `:client_count` flips the empty state — see the
+          # moduledoc for why this re-lists rather than computing a stream
+          # insertion position.
+          |> fetch_clients()
+
+        {:noreply, socket}
+
+      {:error, %Error{kind: :invalid, details: %{reason: :reserved_name}}} ->
+        {:noreply, attach_form_error(socket, changeset, :purpose, @reserved_name_message)}
+
+      {:error, %Error{kind: :invalid, details: %{field: field}}}
+      when field in [:ticket_id, :purpose] ->
+        {:noreply, attach_form_error(socket, changeset, field, "isn't valid")}
+
+      {:error, %Error{kind: :invalid}} ->
+        {:noreply,
+         attach_form_error(
+           socket,
+           changeset,
+           :access_token_validity_minutes,
+           "must be a whole number of minutes from 5 to 60 inclusive"
+         )}
+
+      {:error, %Error{} = error} ->
+        # `:not_found`/`:already_exists` are not reachable from
+        # `Nucleus.M2M.create/4` today — folded into the same generic copy
+        # as `:unavailable` so no `Nucleus.Backend.Error.kinds/0` value can
+        # crash this LiveView, matching `NucleusWeb.SecretsLive`'s own
+        # exhaustive fallback. `:create_form` is still reassigned from the
+        # submitted changeset — a failure must never discard entered
+        # values, on this branch any more than the field-error branches
+        # above.
+        socket =
+          socket
+          |> assign(:create_form, to_form(changeset, as: :new_client))
+          |> assign(:create_error, create_error_message(error))
+
+        {:noreply, socket}
+    end
+  end
+
+  defp attach_form_error(socket, changeset, field, message) do
+    changeset =
+      changeset
+      |> Ecto.Changeset.add_error(field, message)
+      |> Map.put(:action, :validate)
+
+    assign(socket, :create_form, to_form(changeset, as: :new_client))
+  end
+
+  defp create_error_message(%Error{kind: :not_configured}) do
+    "M2M Clients isn't configured yet. This is an operations issue, not something you can fix here."
+  end
+
+  defp create_error_message(%Error{kind: :auth_expired}) do
+    "M2M clients can't be reached right now."
+  end
+
+  defp create_error_message(%Error{}) do
+    "Can't create this client right now. Try again shortly."
   end
 
   defp fetch_clients(socket) do
@@ -337,6 +499,15 @@ defmodule NucleusWeb.M2MClientsLive.Index do
               </div>
             </div>
 
+            <p
+              :if={@create_error}
+              id="new-m2m-client-error"
+              role="alert"
+              class="text-error text-sm mt-2"
+            >
+              {@create_error}
+            </p>
+
             <div class="modal-action">
               <.button id="new-m2m-client-cancel" type="button" phx-click="cancel_new_client">
                 Cancel
@@ -352,6 +523,20 @@ defmodule NucleusWeb.M2MClientsLive.Index do
             </div>
           </.form>
         </.modal>
+
+        <%!--
+        `M2M-A08`: shown exactly once. Only in the DOM while `@credentials`
+        is set — see `CredentialsPanel`'s own moduledoc for why this is not
+        `<.modal>`, and the moduledoc above for why opening the creation
+        modal clears this assign (mutual exclusion, not incidental
+        dismissal).
+        --%>
+        <CredentialsPanel.credentials_panel
+          :if={@credentials}
+          client_id={@credentials.client_id}
+          client_secret={@credentials.client_secret}
+          on_dismiss={JS.push("dismiss_credentials")}
+        />
       </div>
     </Layouts.app>
     """

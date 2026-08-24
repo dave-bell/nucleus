@@ -4,6 +4,7 @@ defmodule NucleusWeb.M2MClientsLiveTest do
   use NucleusWeb.LiveCase, async: false
 
   alias Nucleus.Backend.Error
+  alias Nucleus.Backend.Seed
   alias Nucleus.M2M.Client
   alias Nucleus.M2M.ClientName
 
@@ -100,6 +101,36 @@ defmodule NucleusWeb.M2MClientsLiveTest do
     def health_check, do: raise("should not be called")
   end
 
+  defmodule FailingCreateM2MClients do
+    @moduledoc """
+    A controllable `create_client/2` failure, for M2M-S5's `save_new_client`
+    failure-kind coverage. `list_clients/0` and `describe_client/1` delegate
+    to `Nucleus.M2M.Clients.Local` so `Index`'s own list still renders
+    normally — only creation itself is forced to fail, with a fresh kind per
+    test via `Application.put_env/3`, matching `FailingM2MClients`'s
+    convention one callback over.
+    """
+    @behaviour Nucleus.M2M.Clients
+
+    @impl Nucleus.M2M.Clients
+    def list_clients, do: Nucleus.M2M.Clients.Local.list_clients()
+
+    @impl Nucleus.M2M.Clients
+    def describe_client(client_id), do: Nucleus.M2M.Clients.Local.describe_client(client_id)
+
+    @impl Nucleus.M2M.Clients
+    def create_client(_client_name, _settings) do
+      kind = Application.get_env(:nucleus, __MODULE__, :unavailable)
+      {:error, Error.new(kind, :m2m, "forced for test", %{})}
+    end
+
+    @impl Nucleus.M2M.Clients
+    def rotate_secret(_client_id), do: raise("should not be called")
+
+    @impl Nucleus.M2M.Clients
+    def health_check, do: raise("should not be called")
+  end
+
   defp use_backend(module) do
     original = Application.get_env(:nucleus, :backends, [])
     on_exit(fn -> Application.put_env(:nucleus, :backends, original) end)
@@ -112,6 +143,22 @@ defmodule NucleusWeb.M2MClientsLiveTest do
     |> LazyHTML.from_fragment()
     |> LazyHTML.query("#m2m-clients-table-body [data-client-id]")
     |> LazyHTML.attribute("data-client-id")
+  end
+
+  # The full, untruncated client ID and secret text as rendered inside the
+  # credentials panel — `M2M-A08`'s "shown exactly once" is checked against
+  # this, not against a value the test already knows ahead of time (the
+  # secret is generated fresh, server-side, on every create).
+  defp credentials_panel_values(view) do
+    doc = view |> render() |> LazyHTML.from_fragment()
+
+    client_id =
+      doc |> LazyHTML.query("#m2m-new-client-id") |> LazyHTML.text() |> String.trim()
+
+    client_secret =
+      doc |> LazyHTML.query("#m2m-new-client-secret") |> LazyHTML.text() |> String.trim()
+
+    {client_id, client_secret}
   end
 
   describe "M2M-A01 — list the tenant's M2M clients" do
@@ -553,28 +600,294 @@ defmodule NucleusWeb.M2MClientsLiveTest do
     end
   end
 
-  describe "submitting while save_new_client is unimplemented" do
-    test "does not crash the LiveView", %{conn: conn} do
+  describe "M2M-A08 — create a client" do
+    @tag action: "M2M-A08"
+    test "submitting a valid form closes the modal and renders #m2m-client-credentials containing both the ID and the secret",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients")
+      view |> element("#new-m2m-client-button") |> render_click()
+
+      view
+      |> form("#new-m2m-client-form",
+        new_client: %{"ticket_id" => "OPS-7001", "purpose" => "first-client"}
+      )
+      |> render_submit()
+
+      refute has_element?(view, "#new-m2m-client-modal")
+      assert has_element?(view, "#m2m-client-credentials")
+
+      {client_id, client_secret} = credentials_panel_values(view)
+      assert client_id != ""
+      assert client_secret != ""
+    end
+
+    @tag action: "M2M-A08"
+    test "#m2m-client-credentials-warning is present and states the secret will not be shown again",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients")
+      view |> element("#new-m2m-client-button") |> render_click()
+
+      view
+      |> form("#new-m2m-client-form",
+        new_client: %{"ticket_id" => "OPS-7002", "purpose" => "warning-check"}
+      )
+      |> render_submit()
+
+      assert has_element?(view, "#m2m-client-credentials-warning", "will not be shown again")
+    end
+
+    @tag action: "M2M-A08"
+    test "the row appears in the list, in the correct sort position", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients")
+      view |> element("#new-m2m-client-button") |> render_click()
+
+      # Sorting is by the full `client_name` string, and `ticket_id` sits
+      # before `purpose` in it (`{tenant}-control-plane-{ticket_id}-{purpose}`)
+      # — every seeded fixture's ticket ID starts "OPS-1"/"OPS-9", so
+      # "OPS-0001" sorts first regardless of purpose.
+      view
+      |> form("#new-m2m-client-form",
+        new_client: %{"ticket_id" => "OPS-0001", "purpose" => "sorts-first"}
+      )
+      |> render_submit()
+
+      {client_id, _secret} = credentials_panel_values(view)
+
+      assert [^client_id | _rest] = row_client_ids(view)
+    end
+
+    @tag action: "M2M-A08"
+    test "creating the first client replaces #m2m-clients-empty with #m2m-clients-table", %{
+      conn: conn
+    } do
+      Seed.write(:m2m, %{})
+
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients")
+      assert has_element?(view, "#m2m-clients-empty")
+
+      view |> element("#new-m2m-client-button") |> render_click()
+
+      view
+      |> form("#new-m2m-client-form",
+        new_client: %{"ticket_id" => "OPS-7004", "purpose" => "very-first"}
+      )
+      |> render_submit()
+
+      refute has_element?(view, "#m2m-clients-empty")
+      assert has_element?(view, "#m2m-clients-table")
+    end
+
+    @tag action: "M2M-A08"
+    test "copy affordances are present for both values, each carrying the full untruncated value",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients")
+      view |> element("#new-m2m-client-button") |> render_click()
+
+      view
+      |> form("#new-m2m-client-form",
+        new_client: %{"ticket_id" => "OPS-7005", "purpose" => "copy-check"}
+      )
+      |> render_submit()
+
+      {client_id, client_secret} = credentials_panel_values(view)
+      doc = view |> render() |> LazyHTML.from_fragment()
+
+      assert LazyHTML.query(doc, "#copy-m2m-client-id") |> LazyHTML.attribute("data-value") ==
+               [client_id]
+
+      assert LazyHTML.query(doc, "#copy-m2m-client-secret") |> LazyHTML.attribute("data-value") ==
+               [client_secret]
+    end
+
+    @tag action: "M2M-A08"
+    test "the panel does not close on an unrelated event; only the explicit dismiss control closes it",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients")
+      view |> element("#new-m2m-client-button") |> render_click()
+
+      view
+      |> form("#new-m2m-client-form",
+        new_client: %{"ticket_id" => "OPS-7006", "purpose" => "stays-open"}
+      )
+      |> render_submit()
+
+      assert has_element?(view, "#m2m-client-credentials")
+
+      # An unrelated event — retrying the list, say — must not touch the panel.
+      render_click(view, "retry", %{})
+      assert has_element?(view, "#m2m-client-credentials")
+
+      view |> element("#m2m-client-credentials-dismiss") |> render_click()
+      refute has_element?(view, "#m2m-client-credentials")
+    end
+
+    @tag action: "M2M-A08"
+    test "after dismissal, the secret is gone from the rendered HTML and from the socket assigns",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients")
+      view |> element("#new-m2m-client-button") |> render_click()
+
+      view
+      |> form("#new-m2m-client-form",
+        new_client: %{"ticket_id" => "OPS-7007", "purpose" => "dismiss-check"}
+      )
+      |> render_submit()
+
+      {_client_id, client_secret} = credentials_panel_values(view)
+
+      html = view |> element("#m2m-client-credentials-dismiss") |> render_click()
+
+      refute html =~ client_secret
+      refute has_element?(view, "#m2m-client-credentials")
+
+      # Re-render, not just the click's own return value — this is what
+      # makes "shown exactly once" true of socket state, not merely of one
+      # HTML fragment.
+      refute render(view) =~ client_secret
+    end
+
+    @tag action: "M2M-A08"
+    test "the secret is in no flash message", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/m2m/clients")
       view |> element("#new-m2m-client-button") |> render_click()
 
       html =
         view
         |> form("#new-m2m-client-form",
-          new_client: %{"ticket_id" => "OPS-1234", "purpose" => "nightly-sync"}
+          new_client: %{"ticket_id" => "OPS-7008", "purpose" => "flash-check"}
         )
         |> render_submit()
 
-      assert html =~ "M2M Clients"
+      {_client_id, client_secret} = credentials_panel_values(view)
+      refute has_element?(view, "[role='alert'][id^='flash']", client_secret)
+      refute html =~ ~s(id="flash) <> "\"" <> client_secret
+    end
+  end
+
+  describe "M2M-A18 — with a reserved purpose" do
+    @tag action: "M2M-A18"
+    test "the form stays open, the error names the reserved name, and no new row appears", %{
+      conn: conn
+    } do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients")
+      view |> element("#new-m2m-client-button") |> render_click()
+
+      ids_before = row_client_ids(view)
+
+      html =
+        view
+        |> form("#new-m2m-client-form",
+          new_client: %{"ticket_id" => "OPS-8001", "purpose" => "nucleus"}
+        )
+        |> render_submit()
+
+      assert has_element?(view, "#new-m2m-client-modal")
+      refute has_element?(view, "#m2m-client-credentials")
+      assert html =~ "reserved for internal system use"
+      assert row_client_ids(view) == ids_before
+    end
+  end
+
+  describe "M2M-A05/A06 — direct event dispatch cannot bypass server-side validation" do
+    @tag action: "M2M-A05"
+    test "dispatching save_new_client directly with an invalid ticket ID creates nothing", %{
+      conn: conn
+    } do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients")
+      view |> element("#new-m2m-client-button") |> render_click()
+
+      ids_before = row_client_ids(view)
+
+      render_click(view, "save_new_client", %{
+        "new_client" => %{"ticket_id" => "not-valid", "purpose" => "billing-sync"}
+      })
+
+      refute has_element?(view, "#m2m-client-credentials")
+      assert row_client_ids(view) == ids_before
     end
 
-    test "dispatching save_new_client directly (bypassing the disabled button) does not crash",
-         %{conn: conn} do
+    @tag action: "M2M-A06"
+    test "dispatching save_new_client directly with an invalid purpose creates nothing", %{
+      conn: conn
+    } do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients")
+      view |> element("#new-m2m-client-button") |> render_click()
+
+      ids_before = row_client_ids(view)
+
+      render_click(view, "save_new_client", %{
+        "new_client" => %{"ticket_id" => "OPS-8002", "purpose" => "Not Valid!"}
+      })
+
+      refute has_element?(view, "#m2m-client-credentials")
+      assert row_client_ids(view) == ids_before
+    end
+
+    test "dispatching save_new_client with no new_client key at all does not crash", %{
+      conn: conn
+    } do
       {:ok, view, _html} = live(conn, ~p"/m2m/clients")
 
       html = render_click(view, "save_new_client", %{})
 
       assert html =~ "M2M Clients"
+    end
+  end
+
+  describe "failure handling — every Nucleus.Backend.Error kind" do
+    @tag action: "M2M-A08"
+    test "forced :unavailable shows an error, keeps the form open with input preserved, and retry succeeds without re-entry",
+         %{conn: conn} do
+      use_backend(FailingCreateM2MClients)
+      Application.put_env(:nucleus, FailingCreateM2MClients, :unavailable)
+
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients")
+      view |> element("#new-m2m-client-button") |> render_click()
+
+      html =
+        view
+        |> form("#new-m2m-client-form",
+          new_client: %{"ticket_id" => "OPS-8101", "purpose" => "retry-check"}
+        )
+        |> render_submit()
+
+      assert html =~ "Can&#39;t create this client"
+      assert has_element?(view, "#new-m2m-client-form")
+
+      assert has_element?(view, "#new-m2m-client-ticket-id[value='OPS-8101']")
+      assert has_element?(view, "#new-m2m-client-purpose[value='retry-check']")
+
+      # Same form, no re-entry — swap the backend back and resubmit.
+      use_backend(Nucleus.M2M.Clients.Local)
+
+      view
+      |> form("#new-m2m-client-form",
+        new_client: %{"ticket_id" => "OPS-8101", "purpose" => "retry-check"}
+      )
+      |> render_submit()
+
+      assert has_element?(view, "#m2m-client-credentials")
+    end
+
+    for kind <- Error.kinds() do
+      @tag action: "M2M-A08"
+      @tag kind: kind
+      test "#{kind} renders without crashing the LiveView", %{conn: conn, kind: kind} do
+        use_backend(FailingCreateM2MClients)
+        Application.put_env(:nucleus, FailingCreateM2MClients, kind)
+
+        {:ok, view, _html} = live(conn, ~p"/m2m/clients")
+        view |> element("#new-m2m-client-button") |> render_click()
+
+        html =
+          view
+          |> form("#new-m2m-client-form",
+            new_client: %{"ticket_id" => "OPS-8102", "purpose" => "exhaustive-check"}
+          )
+          |> render_submit()
+
+        assert html =~ "M2M Clients"
+      end
     end
   end
 
@@ -621,6 +934,61 @@ defmodule NucleusWeb.M2MClientsLiveTest do
     end
 
     test "the preview updates smoothly while typing, with no visible lag or flicker" do
+    end
+  end
+
+  defmodule CredentialsPanelBrowserGaps do
+    @moduledoc """
+    `M2M-A08`'s "the user can copy both values" clause has a browser gap
+    identical in shape to `SEC-A02`'s (`NucleusWeb.SecretsLiveTest.CopyButtonBrowserGaps`):
+    `navigator.clipboard.writeText` needs a browser, so the actual clipboard
+    write, its confirmation-face swap, the non-secure-context `execCommand`
+    fallback, and a denied write's failure indication are all untestable
+    here (`docs/adr/0008-test-strategy.md`).
+
+    Stated explicitly, per the ticket's own instruction, rather than left
+    for a reader to assume the describe block above proves more than it
+    does: `M2M-A08` is still legitimately claimed on that block, because its
+    `Then` clauses are "shown exactly once", "with a clear warning", and the
+    user *can* copy — the affordance's presence and its exact, untruncated
+    `data-value` are what is actually proven (`credentials_panel_values/1`,
+    `#copy-m2m-client-id`/`#copy-m2m-client-secret`'s `data-value`
+    attributes). Only the browser's clipboard write itself is not.
+
+    This panel's own dismiss-only design (no `phx-click-away`, no
+    `phx-window-keydown` — see `NucleusWeb.M2MClientsLive.CredentialsPanel`'s
+    moduledoc) means it carries none of `NewClientModalBrowserGaps`'
+    Escape/backdrop gaps: there is no Escape or backdrop wiring on this
+    panel to be a gap in.
+
+    Skipped unconditionally, matching every other browser-gap module in this
+    suite.
+    """
+
+    use ExUnit.Case, async: true
+
+    @moduletag :browser
+    @moduletag skip: "no browser driver in this repo — see docs/adr/0008-test-strategy.md"
+
+    test "navigator.clipboard.writeText is called with the client ID's full, untruncated value" do
+    end
+
+    test "navigator.clipboard.writeText is called with the secret's full, untruncated value" do
+    end
+
+    test "on success, each copy button's icon swaps to a check and reverts after ~2s" do
+    end
+
+    test "over a non-secure context (no navigator.clipboard), the execCommand fallback copies" do
+    end
+
+    test "a failed copy (permission denied, unfocused document) shows failure, never success" do
+    end
+
+    test "focus moves into the panel on open and returns to #new-m2m-client-button on dismissal" do
+    end
+
+    test "Tab is trapped inside the panel while it is open" do
     end
   end
 
