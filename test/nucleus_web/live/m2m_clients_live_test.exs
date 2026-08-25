@@ -1471,7 +1471,9 @@ defmodule NucleusWeb.M2MClientsLiveTest do
       doc = view |> render() |> LazyHTML.from_fragment()
 
       assert [cancel] =
-               doc |> LazyHTML.query("#rotate-secret-confirm") |> LazyHTML.attribute("data-cancel")
+               doc
+               |> LazyHTML.query("#rotate-secret-confirm")
+               |> LazyHTML.attribute("data-cancel")
 
       assert cancel =~ "cancel_rotate"
 
@@ -1490,7 +1492,9 @@ defmodule NucleusWeb.M2MClientsLiveTest do
       assert LazyHTML.attribute(container, "phx-click-away") != []
 
       assert [cancel] =
-               doc |> LazyHTML.query("#rotate-secret-confirm") |> LazyHTML.attribute("data-cancel")
+               doc
+               |> LazyHTML.query("#rotate-secret-confirm")
+               |> LazyHTML.attribute("data-cancel")
 
       assert cancel =~ "cancel_rotate"
     end
