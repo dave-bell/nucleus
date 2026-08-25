@@ -81,18 +81,123 @@ defmodule NucleusWeb.ShellTest do
   end
 
   @tag :unit
-  test "lists non-archived environments from the local backend, archived excluded", %{
+  @tag action: "NAV-A04"
+  test "lists non-archived environments grouped by category, with per-category counts, archived excluded",
+       %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/environments/prod/secrets")
+
+    render_async(view)
+
+    assert has_element?(view, "#environment-category-customer-facing-toggle", "Customer Facing")
+    assert has_element?(view, "#environment-category-customer-facing-toggle", "1")
+    assert has_element?(view, "#environment-category-regulated-toggle", "Regulated")
+    assert has_element?(view, "#environment-category-pre-production-toggle", "Pre-Production")
+    assert has_element?(view, "#environment-category-experimental-toggle", "Experimental")
+    assert has_element?(view, "#environment-category-uncategorized-toggle", "Uncategorized")
+    assert has_element?(view, "#environment-category-uncategorized-toggle", "1")
+
+    # legacy-qa is archived and categorized as "Deprecated" — the group
+    # itself must not exist, not merely be empty.
+    refute has_element?(view, "#environment-category-deprecated-toggle")
+    refute has_element?(view, "[id^=environment-category-]", "Legacy QA")
+  end
+
+  @tag :unit
+  @tag action: "NAV-A05"
+  test "a collapsed category starts with no navigable links rendered, expands to reveal them, and collapses again",
+       %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/environments/prod/secrets")
+
+    render_async(view)
+
+    toggle = element(view, "#environment-category-pre-production-toggle")
+
+    assert has_element?(
+             view,
+             ~s(#environment-category-pre-production-toggle[aria-expanded="false"])
+           )
+
+    refute has_element?(view, "#environment-category-pre-production-list")
+
+    render_click(toggle)
+
+    assert has_element?(
+             view,
+             ~s(#environment-category-pre-production-toggle[aria-expanded="true"])
+           )
+
+    assert has_element?(view, "#environment-category-pre-production-list", "Staging")
+
+    render_click(toggle)
+
+    assert has_element?(
+             view,
+             ~s(#environment-category-pre-production-toggle[aria-expanded="false"])
+           )
+
+    refute has_element?(view, "#environment-category-pre-production-list")
+  end
+
+  @tag :unit
+  @tag action: "NAV-A05"
+  test "two categories expand and collapse independently", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/environments/prod/secrets")
+
+    render_async(view)
+
+    render_click(element(view, "#environment-category-pre-production-toggle"))
+
+    assert has_element?(view, "#environment-category-pre-production-list", "Staging")
+    refute has_element?(view, "#environment-category-experimental-list")
+
+    render_click(element(view, "#environment-category-experimental-toggle"))
+
+    assert has_element?(view, "#environment-category-pre-production-list", "Staging")
+    assert has_element?(view, "#environment-category-experimental-list", "Sandbox")
+
+    render_click(element(view, "#environment-category-pre-production-toggle"))
+
+    refute has_element?(view, "#environment-category-pre-production-list")
+    assert has_element?(view, "#environment-category-experimental-list", "Sandbox")
+  end
+
+  @tag :unit
+  @tag action: "NAV-A06"
+  test "selecting an environment link inside an expanded category navigates to its detail view",
+       %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/environments/prod/secrets")
+
+    render_async(view)
+
+    render_click(element(view, "#environment-category-pre-production-toggle"))
+
+    assert {:ok, detail_view, _html} =
+             view
+             |> element("#environment-category-pre-production-list a", "Staging")
+             |> render_click()
+             |> follow_redirect(conn, ~p"/environments/staging")
+
+    assert has_element?(detail_view, "#environment-detail")
+  end
+
+  @tag :unit
+  @tag action: "ENV-A01"
+  test "expanding a category and selecting an environment reaches its detail view", %{
     conn: conn
   } do
     {:ok, view, _html} = live(conn, ~p"/environments/prod/secrets")
 
     render_async(view)
 
-    assert has_element?(view, "#environments-list", "Production")
-    assert has_element?(view, "#environments-list", "Staging")
-    assert has_element?(view, "#environments-list", "Development")
-    assert has_element?(view, "#environments-list", "Sandbox")
-    refute has_element?(view, "#environments-list", "Legacy QA")
+    render_click(element(view, "#environment-category-pre-production-toggle"))
+
+    assert {:ok, detail_view, _html} =
+             view
+             |> element("#environment-category-pre-production-list a", "Staging")
+             |> render_click()
+             |> follow_redirect(conn, ~p"/environments/staging")
+
+    assert has_element?(detail_view, "#environment-detail")
   end
 
   @tag :unit
@@ -106,10 +211,11 @@ defmodule NucleusWeb.ShellTest do
     refute has_element?(view, "#secrets-environment-not-found")
     refute has_element?(view, "#secrets-invalid-environment")
     refute has_element?(view, "#secrets-validation-unavailable")
-    refute has_element?(view, "#environments-list", "Legacy QA")
+    refute has_element?(view, "#environment-category-deprecated-toggle")
   end
 
   @tag :unit
+  @tag action: "NAV-A07"
   test "shows the empty state when there are no environments", %{conn: conn} do
     put_tenant_api(EmptyTenantApi)
 
@@ -118,10 +224,11 @@ defmodule NucleusWeb.ShellTest do
     render_async(view)
 
     assert has_element?(view, "#environments-empty")
-    refute has_element?(view, "#environments-list")
+    refute has_element?(view, "[id^=environment-category-]")
   end
 
   @tag :unit
+  @tag action: "NAV-A07"
   test "LOCAL_FORCE_ERROR=unavailable degrades to the same empty state, not an error", %{
     conn: conn
   } do
@@ -132,7 +239,7 @@ defmodule NucleusWeb.ShellTest do
     render_async(view)
 
     assert has_element?(view, "#environments-empty")
-    refute has_element?(view, "#environments-list")
+    refute has_element?(view, "[id^=environment-category-]")
     # The shell itself still renders — a failed environment load never blocks
     # navigation (NAV-A07).
     assert has_element?(view, "#tenant-identifier")

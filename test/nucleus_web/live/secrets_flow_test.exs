@@ -37,7 +37,16 @@ defmodule NucleusWeb.SecretsFlowTest do
     conn
     |> visit(~p"/environments/prod/secrets")
     |> assert_has("#tenant-identifier")
-    |> assert_has("#environments-list", text: "Staging", timeout: 100)
+    # Wait for the async environments list to actually resolve (proven by a
+    # real category toggle appearing) before expanding it — otherwise the
+    # click below would race a still-loading sidebar, the same hazard
+    # shell_test.exs's `render_async/1` calls guard against.
+    |> assert_has("#environment-category-pre-production-toggle",
+      text: "Pre-Production",
+      timeout: 100
+    )
+    |> click_button("Pre-Production")
+    |> assert_has("#environment-category-pre-production-list", text: "Staging")
     |> click_link("Staging")
     |> assert_path(~p"/environments/staging")
     |> assert_has("#environment-detail")
@@ -53,11 +62,14 @@ defmodule NucleusWeb.SecretsFlowTest do
     |> visit(~p"/environments/legacy-qa/secrets")
     |> assert_has("#tenant-identifier")
     # Wait for the async environments list to actually resolve (proven by a
-    # real, non-archived entry appearing) before asserting an absence —
-    # otherwise this would vacuously pass while #environments-list hasn't
-    # rendered yet at all (still showing #environments-loading), the same
-    # hazard shell_test.exs's `render_async/1` calls guard against.
-    |> assert_has("#environments-list", text: "Staging", timeout: 100)
-    |> refute_has("#environments-list", text: "Legacy QA")
+    # real, non-archived category appearing) before asserting an absence —
+    # otherwise this would vacuously pass while the sidebar hasn't rendered
+    # yet at all (still showing #environments-loading), the same hazard
+    # shell_test.exs's `render_async/1` calls guard against.
+    |> assert_has("#environment-category-pre-production-toggle",
+      text: "Pre-Production",
+      timeout: 100
+    )
+    |> refute_has("#environment-category-deprecated-toggle")
   end
 end

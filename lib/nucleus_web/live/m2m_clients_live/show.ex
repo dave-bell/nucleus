@@ -253,7 +253,12 @@ defmodule NucleusWeb.M2MClientsLive.Show do
   @impl Phoenix.LiveView
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope} environments={@environments}>
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      environments={@environments}
+      expanded_categories={@expanded_categories}
+    >
       <States.misconfigured :if={@status == :misconfigured} />
       <States.unavailable :if={@status == :unavailable} />
       <States.auth_expired :if={@status == :auth_expired} />

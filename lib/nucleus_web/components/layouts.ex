@@ -11,6 +11,8 @@ defmodule NucleusWeb.Layouts do
   # and other static content.
   embed_templates "layouts/*"
 
+  alias NucleusWeb.SidebarEnvironments
+
   @doc """
   Renders your app layout.
 
@@ -38,7 +40,18 @@ defmodule NucleusWeb.Layouts do
     `NucleusWeb.EnvironmentsHook` at the `live_session` level. `nil` (the
     default) renders the same empty state as a `nil`-vs-loaded distinction
     matters less than never crashing a caller that hasn't wired the hook —
-    see `test/support/scope_hook_demo_live.ex` (EN-6), which doesn't.
+    see `test/support/scope_hook_demo_live.ex` (EN-6), which doesn't. Carries
+    every environment the tenant has, archived included —
+    `NucleusWeb.SidebarEnvironments.group/1` is what excludes them (`NAV-S1`).
+    """
+
+  attr :expanded_categories, MapSet,
+    default: MapSet.new(),
+    doc: """
+    the set of category slugs currently expanded in the sidebar's
+    Environments section (`NAV-A05`), assigned by `NucleusWeb.EnvironmentsHook`
+    and toggled via its `"toggle-category"` event hook. Defaults to empty —
+    every category collapsed — for a caller that hasn't wired the hook.
     """
 
   slot :inner_block, required: true
@@ -105,16 +118,6 @@ defmodule NucleusWeb.Layouts do
             <p class="text-xs font-semibold uppercase text-base-content/50 mb-2 px-2 group-data-[collapsed=true]:hidden">
               Environments
             </p>
-            <%!--
-              NAV-A04/NAV-A05 (category grouping, per-category counts,
-              multi-category membership, the uncategorised group ordered
-              last, expand/collapse of individual *categories*) are out of
-              scope for this ticket. A flat list is acceptable here — the
-              Application Shell & Navigation ticket should replace this
-              list, not extend it. The sidebar-wide collapse-to-icon-rail
-              here is a distinct, later addition and does not group or
-              count environments.
-            --%>
             <div class="group-data-[collapsed=true]:hidden">
               <%= if @environments do %>
                 <.async_result :let={environments} assign={@environments}>
@@ -123,7 +126,8 @@ defmodule NucleusWeb.Layouts do
                       Loading environments…
                     </p>
                   </:loading>
-                  <%= if environments == [] do %>
+                  <% groups = SidebarEnvironments.group(environments) %>
+                  <%= if groups == [] do %>
                     <.empty_state
                       id="environments-empty"
                       icon="hero-server-stack"
@@ -131,11 +135,45 @@ defmodule NucleusWeb.Layouts do
                       class="py-4"
                     />
                   <% else %>
-                    <ul id="environments-list" class="menu menu-sm p-0">
-                      <li :for={env <- environments}>
-                        <.link navigate={~p"/environments/#{env.short_name}"}>
-                          {env.label || env.short_name}
-                        </.link>
+                    <ul class="flex flex-col gap-1">
+                      <li
+                        :for={group <- groups}
+                        id={"environment-category-#{category_slug(group.category)}"}
+                      >
+                        <button
+                          type="button"
+                          id={"environment-category-#{category_slug(group.category)}-toggle"}
+                          class="w-full flex items-center justify-between gap-2 px-2 py-1 rounded-md text-sm hover:bg-base-200"
+                          phx-click="toggle-category"
+                          phx-value-category={category_slug(group.category)}
+                          aria-expanded={
+                            to_string(category_expanded?(@expanded_categories, group.category))
+                          }
+                        >
+                          <span class="flex items-center gap-1.5">
+                            <.icon
+                              name="hero-chevron-right"
+                              class={[
+                                "size-3.5 transition-transform",
+                                category_expanded?(@expanded_categories, group.category) &&
+                                  "rotate-90"
+                              ]}
+                            />
+                            {category_label(group.category)}
+                          </span>
+                          <span class="badge badge-sm badge-ghost">{group.count}</span>
+                        </button>
+                        <ul
+                          :if={category_expanded?(@expanded_categories, group.category)}
+                          id={"environment-category-#{category_slug(group.category)}-list"}
+                          class="menu menu-sm p-0 pl-4"
+                        >
+                          <li :for={env <- group.environments}>
+                            <.link navigate={~p"/environments/#{env.short_name}"}>
+                              {env.label || env.short_name}
+                            </.link>
+                          </li>
+                        </ul>
                       </li>
                     </ul>
                   <% end %>
@@ -269,6 +307,27 @@ defmodule NucleusWeb.Layouts do
   """
   def toggle_sidebar(js \\ %JS{}) do
     JS.toggle_attribute(js, {"data-collapsed", "true"}, to: "#shell")
+  end
+
+  # Sidebar Environments category disclosure (`NAV-A04`/`NAV-A05`) — a DOM-safe
+  # id fragment, the human-facing label, and whether the category is currently
+  # expanded, all derived from a `NucleusWeb.SidebarEnvironments.group/1`
+  # entry's `:category` field (either a category name or `:uncategorized`).
+
+  defp category_slug(:uncategorized), do: "uncategorized"
+
+  defp category_slug(category) when is_binary(category) do
+    category
+    |> String.downcase()
+    |> String.replace(~r/[^a-z0-9]+/, "-")
+    |> String.trim("-")
+  end
+
+  defp category_label(:uncategorized), do: "Uncategorized"
+  defp category_label(category) when is_binary(category), do: category
+
+  defp category_expanded?(expanded_categories, category) do
+    MapSet.member?(expanded_categories, category_slug(category))
   end
 
   @doc """
