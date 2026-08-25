@@ -6,10 +6,14 @@ defmodule Nucleus.M2MTest do
   use Nucleus.BackendCase, async: false
   use Nucleus.AuditCase, async: false
 
+  import ExUnit.CaptureLog
+
   alias Nucleus.Backend.Error
   alias Nucleus.M2M
   alias Nucleus.M2M.Client
+  alias Nucleus.M2M.ClientCredentials
   alias Nucleus.M2M.ClientDetail
+  alias Nucleus.M2M.ClientName
   alias Nucleus.M2M.DenyList
   alias Nucleus.Scope
 
@@ -453,6 +457,134 @@ defmodule Nucleus.M2MTest do
     test "the seeded client's secret never appears in the audit trail" do
       assert {:ok, _detail} = M2M.view(@valid_client_id, @scope)
       refute_audit_contains(@valid_client_secret)
+    end
+  end
+
+  describe "create/4 — M2M-A08 create a client" do
+    @tag action: "M2M-A08"
+    test "returns a ClientCredentials with a non-empty secret; list/1 afterwards includes the new client" do
+      assert {:ok, %ClientCredentials{} = credentials} =
+               M2M.create("OPS-5001", "nightly-sync", 15, @scope)
+
+      assert is_binary(credentials.client_id) and credentials.client_id != ""
+      assert is_binary(credentials.client_secret) and credentials.client_secret != ""
+
+      assert {:ok, clients} = M2M.list(@scope)
+      assert Enum.any?(clients, &(&1.client_id == credentials.client_id))
+    end
+
+    @tag action: "M2M-A08"
+    test "the created client's name equals ClientName.build/2 for the same inputs" do
+      assert {:ok, credentials} = M2M.create("OPS-5002", "billing-export", 15, @scope)
+      assert credentials.client_name == ClientName.build("OPS-5002", "billing-export")
+    end
+
+    # `create/4`'s own `@spec` (`ticket_id`, `purpose`, `token_validity_minutes`,
+    # `scope`) has no parameter a caller could use to supply a full name —
+    # this proves the *behavioural* half: a hostile `purpose`, already
+    # rejected by `Nucleus.M2M.Purpose.validate/1`, reaches
+    # `Clients.create_client/2` zero times.
+    @tag action: "M2M-A08"
+    test "a caller-supplied name cannot influence the created name — a hostile purpose rejected by validation creates nothing" do
+      use_backend(ExplodingM2MClients)
+
+      assert {:error, %Error{kind: :invalid}} = M2M.create("OPS-5003", "Not Valid!", 15, @scope)
+    end
+
+    @tag action: "M2M-A08"
+    test "emits exactly one m2m_client_created, with client_name and ticket_id in details" do
+      assert {:ok, credentials} = M2M.create("OPS-5004", "reporting", 15, @scope)
+
+      assert_audit_event(:m2m_client_created,
+        tenant: "local",
+        details: %{client_name: credentials.client_name, ticket_id: "OPS-5004"}
+      )
+
+      assert audit_events() |> Enum.filter(&(&1.event == :m2m_client_created)) |> length() == 1
+    end
+
+    @tag action: "M2M-A08"
+    test "the actual generated secret never appears in the audit trail" do
+      assert {:ok, credentials} = M2M.create("OPS-5005", "audit-check", 15, @scope)
+      refute_audit_contains(credentials.client_secret)
+    end
+
+    @tag action: "M2M-A08"
+    test "the secret appears in no captured log output, on the success path and on each failure path" do
+      log =
+        capture_log(fn ->
+          {:ok, credentials} = M2M.create("OPS-5006", "log-check", 15, @scope)
+          Process.put(:credentials, credentials)
+
+          M2M.create("OPS-5006", "nucleus", 15, @scope)
+          M2M.create("", "", 15, @scope)
+          M2M.create("OPS-5006", "log-check", 999, @scope)
+        end)
+
+      credentials = Process.get(:credentials)
+      refute log =~ credentials.client_secret
+    end
+
+    @tag action: "M2M-A08"
+    test "no m2m_client_viewed is emitted by creation — creating is not viewing" do
+      assert {:ok, _credentials} = M2M.create("OPS-5007", "view-check", 15, @scope)
+      assert_no_audit_event(:m2m_client_viewed)
+    end
+
+    @tag action: "M2M-A08"
+    test "invalid ticket ID or purpose returns :invalid, with no backend call and no audit event" do
+      use_backend(ExplodingM2MClients)
+
+      assert {:error, %Error{kind: :invalid}} = M2M.create("ops-1234", "nightly-sync", 15, @scope)
+      assert {:error, %Error{kind: :invalid}} = M2M.create("OPS-1234", "Not Valid!", 15, @scope)
+
+      assert_no_audit_event(:m2m_client_created)
+    end
+
+    @tag action: "M2M-A08"
+    test "list/1 and fetch/2 results still have no :client_secret key after a create" do
+      assert {:ok, credentials} = M2M.create("OPS-5008", "secret-shape", 15, @scope)
+
+      assert {:ok, clients} = M2M.list(@scope)
+      client = Enum.find(clients, &(&1.client_id == credentials.client_id))
+      refute Map.has_key?(client, :client_secret)
+
+      assert {:ok, detail} = M2M.fetch(credentials.client_id, @scope)
+      refute Map.has_key?(detail, :client_secret)
+    end
+  end
+
+  describe "create/4 — M2M-A18 reject a reserved client name" do
+    @tag action: "M2M-A18"
+    test "a purpose whose built name ends with a configured deny-list suffix is rejected, with no audit event and zero calls to Clients.create_client/2" do
+      use_backend(ExplodingM2MClients)
+
+      assert {:error, %Error{kind: :invalid, details: %{reason: :reserved_name}}} =
+               M2M.create("OPS-6001", "nucleus", 15, @scope)
+
+      assert_no_audit_event(:m2m_client_created)
+    end
+
+    @tag action: "M2M-A18"
+    test "a purpose that is merely a substring of a reserved suffix, not a suffix of the built name, is not rejected" do
+      assert {:ok, _credentials} = M2M.create("OPS-6002", "nucleus-relay", 15, @scope)
+    end
+
+    # A misconfigured (unreadable) deny-list must surface as its own
+    # `:not_configured` kind, not as a false `:reserved_name` rejection —
+    # `DenyList.denied?/1` alone fails closed (`true`) when `suffixes/0`
+    # itself errors, which would otherwise reject every input, however
+    # harmless, with the wrong `Error.kind` and misleading copy ("choose a
+    # different purpose" when no purpose would ever work). Mirrors
+    # `fetch/2`'s own "unconfigured deny-list fails closed" coverage.
+    test "an unconfigured deny-list returns :not_configured, not :reserved_name, with zero calls to Clients.create_client/2" do
+      unconfigure_deny_list()
+      use_backend(ExplodingM2MClients)
+
+      assert {:error, %Error{kind: :not_configured}} =
+               M2M.create("OPS-6003", "harmless-purpose", 15, @scope)
+
+      assert_no_audit_event(:m2m_client_created)
     end
   end
 end

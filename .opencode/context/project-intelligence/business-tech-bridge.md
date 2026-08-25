@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.15 | Updated: 2026-08-20 -->
+<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.16 | Updated: 2026-08-24 -->
 
 # Business ↔ Tech Bridge
 
@@ -103,10 +103,30 @@ distinct message per reason atom, and `Index`'s `#new-m2m-client-modal` drives i
 `Nucleus.M2M.ClientName.build/2` itself — never a template-side reconstruction — so the preview
 is pinned equal to the string M2M-S5's create call will use. `M2M-A09` (duplicate-name
 rejection) is not part of this count; it was dropped, not deferred, by EN-10/#33 (`docs/adr/0016-m2m-client-adapter.md`).
-This ticket makes no backend write, so `save_new_client` still just flashes, same as M2M-S2's
-placeholder. Every other row is unimplemented. These names are the agreed target so that work
-lands consistently — treat them as the convention to follow, and correct this table if a better
-structure emerges.
+This ticket makes no backend write, so `save_new_client` still just flashed, same as M2M-S2's
+placeholder — see M2M-S5 below for the real implementation. These names are the agreed target so
+that work lands consistently — treat them as the convention to follow, and correct this table if
+a better structure emerges.
+
+`M2M-A08` and `M2M-A18` are now claimed and covered (M2M-S5/#38, `docs/adr/0020-m2m-client-creation-and-credentials-panel.md`):
+`Nucleus.M2M.create/4` (note the arity — `token_validity_minutes` was added to the ticket's own
+stale `create/3` plan text mid-implementation, per a later issue comment) validates
+`ticket_id`/`purpose`, builds the name server-side via `ClientName.build/2` (never taken from the
+caller), checks `DenyList.suffixes/0` then `denied?/1` against it — in that order, not `denied?/1`
+alone, so an unconfigured deny-list surfaces its own `:not_configured` rather than a false
+`:reserved_name` on every input — and calls `Clients.create_client/2` only once both pass, auditing
+`m2m_client_created` on success only. `NucleusWeb.M2MClientsLive.CredentialsPanel` is the shared
+one-time secret panel (reused verbatim by `M2M-S6`/#39's rotation): deliberately not built on
+`<.modal>`, since `M2M-A08` requires the secret be copyable *before leaving the screen* and a
+backdrop click or stray Escape must not be able to discard the only copy — the panel carries no
+`phx-click-away`/`phx-window-keydown` at all, only its own explicit dismiss control.
+`Index`'s `save_new_client` now: closes the creation modal and opens this panel on success,
+re-lists (`Nucleus.M2M.list/1`) rather than computing a `stream_insert/3` position — the same
+choice ADR-0014 made for Secrets creation, for the same anti-drift reason — and clears
+`:credentials` when the creation modal reopens, the same `focusStack`-double-pop guard ADR-0014
+applied to Secrets' own two conditionally-rendered modals. `M2M-A05`/`A06`'s server-side claim
+(direct `save_new_client` dispatch bypassing the disabled submit button) is proven again here,
+tagged as such per the ticket's own instruction that the tags stay with M2M-S4/#37.
 
 `NucleusWeb.EnvironmentsLive` and `test/nucleus_web/live/environments_live_test.exs` also now
 exist (ENV-S1/#52): `ENV-A02`–`A07` are claimed and covered. `ENV-A01` (sidebar category

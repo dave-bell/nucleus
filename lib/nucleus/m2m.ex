@@ -69,11 +69,14 @@ defmodule Nucleus.M2M do
   alias Nucleus.Audit
   alias Nucleus.Backend.Error
   alias Nucleus.M2M.Client
+  alias Nucleus.M2M.ClientCredentials
   alias Nucleus.M2M.ClientDetail
   alias Nucleus.M2M.ClientId
   alias Nucleus.M2M.ClientName
   alias Nucleus.M2M.Clients
   alias Nucleus.M2M.DenyList
+  alias Nucleus.M2M.Purpose
+  alias Nucleus.M2M.TicketId
   alias Nucleus.Scope
 
   @boundary :m2m
@@ -96,6 +99,95 @@ defmodule Nucleus.M2M do
       else
         not_found(client_id)
       end
+    end
+  end
+
+  @doc """
+  Creates a new M2M client (`M2M-A08`), rejecting a reserved name first
+  (`M2M-A18`).
+
+  Takes `ticket_id` and `purpose` — never a client name — so a crafted event
+  bypassing the M2M-S4 form's disabled submit button cannot inject a name
+  outside the naming convention: the name is built here, server-side, from
+  the same two validated inputs every caller must supply.
+
+  Strict order:
+
+  1. `Nucleus.M2M.TicketId.validate/1` and `Nucleus.M2M.Purpose.validate/1`
+     — before any backend call. A disabled submit button is UI convenience,
+     not enforcement; `handle_event/3` can be dispatched directly with any
+     params. On failure, `{:error, %Error{kind: :invalid, details: %{field:
+     :ticket_id | :purpose, reason: reason}}}` — the same reason atoms
+     `Nucleus.M2M.NewClient`'s changeset already maps to per-field copy.
+  2. `Nucleus.M2M.ClientName.build/2` on the validated inputs.
+  3. `Nucleus.M2M.DenyList.suffixes/0`, checked directly — on
+     `:not_configured`, returned unchanged, same as `fetch/2`'s step 2.
+     `DenyList.denied?/1` alone is not enough here: it fails closed (`true`)
+     when the deny-list itself is unreadable, which is exactly correct for
+     *that* function, but a caller that skips this check would see every
+     input rejected as `:reserved_name` the moment `M2M_DENY_SUFFIXES` goes
+     missing — an ops misconfiguration reported as if the operator chose a
+     bad purpose, and the wrong `Error.kind` besides.
+  4. `Nucleus.M2M.DenyList.denied?/1` against the built name — on a match,
+     `{:error, %Error{kind: :invalid, details: %{reason: :reserved_name}}}`
+     **immediately, no adapter call** (`M2M-A18`). This runs against a name
+     that does not exist yet, the write-path analogue of `fetch/2`'s step 4
+     against an already-existing client.
+  5. `Nucleus.M2M.Clients.create_client/2`, with `token_validity_minutes` —
+     the value the M2M-S4 form collected (`M2M-A17`'s 5–60 minute range is
+     enforced structurally inside `create_client/2` itself, independent of
+     the form; this function's own test proves `M2M-A17` through this call,
+     not a second copy of the range check).
+  6. On success only, `Audit.emit(:m2m_client_created, ...)` with `details:
+     %{client_name:, ticket_id:}` — exactly the keys
+     `Nucleus.Audit.Event`'s catalogue allowlists for this event
+     (`lib/nucleus/audit/event.ex`). `user` comes from
+     `Nucleus.Scope.audit_user/1`, matching every other emit in this module.
+
+  Returns the `Nucleus.M2M.ClientCredentials` struct — the only value in the
+  system carrying a secret. It must travel no further than the caller's
+  single render of the one-time panel; see that component's own doc.
+  """
+  @spec create(
+          ticket_id :: term(),
+          purpose :: term(),
+          token_validity_minutes :: term(),
+          scope :: Scope.t()
+        ) :: {:ok, ClientCredentials.t()} | {:error, Error.t()}
+  def create(ticket_id, purpose, token_validity_minutes, %Scope{} = scope) do
+    with :ok <- validate_field(:ticket_id, TicketId.validate(ticket_id)),
+         :ok <- validate_field(:purpose, Purpose.validate(purpose)),
+         client_name = ClientName.build(ticket_id, purpose),
+         {:ok, _suffixes} <- DenyList.suffixes(),
+         :ok <- reject_if_denied(client_name),
+         {:ok, credentials} <-
+           Clients.create_client(client_name, token_validity_minutes: token_validity_minutes) do
+      :ok =
+        Audit.emit(:m2m_client_created,
+          user: Scope.audit_user(scope),
+          tenant: scope.tenant,
+          details: %{client_name: client_name, ticket_id: ticket_id}
+        )
+
+      {:ok, credentials}
+    end
+  end
+
+  defp validate_field(_field, :ok), do: :ok
+
+  defp validate_field(field, {:error, reason}) do
+    {:error,
+     Error.new(:invalid, @boundary, "#{field} is invalid", %{field: field, reason: reason})}
+  end
+
+  defp reject_if_denied(client_name) do
+    if DenyList.denied?(client_name) do
+      {:error,
+       Error.new(:invalid, @boundary, "client name is reserved for internal system use", %{
+         reason: :reserved_name
+       })}
+    else
+      :ok
     end
   end
 

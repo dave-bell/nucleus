@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.20 | Updated: 2026-08-20 -->
+<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.21 | Updated: 2026-08-24 -->
 
 # Decisions Log
 
@@ -44,6 +44,7 @@ job and the row should point rather than paraphrase.
 | 17 | M2M naming, deny-list, and resolution gate — `M2M_DENY_SUFFIXES` defaults to the prototype's Terraform value (fail-closed, `none` sentinel), `ClientId` uses AWS's own `[\w+]+` pattern not a tighter one, tenancy is the full `{tenant}-control-plane-` prefix (pool shared across tenants), deny-list enforced at creation too — new wiki action `M2M-A18` | 2026-08-19 | Decided | `docs/adr/0017-m2m-naming-deny-list-and-resolution-gate.md` |
 | 18 | M2M clients listing — two `Phoenix.LiveView` modules (`Index`/`Show`, the `phx.gen.live` split) not one switching on `handle_params/3`; `Nucleus.M2M.list/1` collapses the deny-list gate to one call, reusing `visible?/1`; row DOM ids are the plain `client_id` (already allowlist-safe, unlike Secrets' ARN hash); create button sits outside the empty-state conditional | 2026-08-20 | Decided | `docs/adr/0018-m2m-clients-listing-module-split-and-dom-ids.md` |
 | 19 | M2M client detail — `Show.mount/3` calls `fetch/2` (no audit) disconnected and `view/2` (audit) only once `connected?(socket)`, so `m2m_client_viewed` fires exactly once per open with no render flicker; `TokenValidity.humanize/1` corrected to the actual three-tier, seconds-based `M2M-A16` rule over the issue's stale hours-only draft; `Format.created_date/1` extracted so `Index`/`Show` share one formatter | 2026-08-20 | Decided | `docs/adr/0019-m2m-client-detail-mount-audit-guard-and-token-validity.md` |
+| 20 | M2M client creation — `create/4` (not the plan's stale `create/3`) threads `token_validity_minutes` through to `Clients.create_client/2`'s own structural range guard; `DenyList.suffixes/0` checked before `denied?/1` (a fail-open ordering bug caught in review, now pinned by a test); the one-time credentials panel is deliberately not `<.modal>` (no backdrop/Escape dismissal); re-lists on success and clears `:credentials` on reopen, reusing ADR-0014's patterns | 2026-08-24 | Decided | `docs/adr/0020-m2m-client-creation-and-credentials-panel.md` |
 
 No **"re-platform" decision** (fresh start) and no **inherited ADRs** — the wiki's `ADR-0001`–
 `ADR-0007` are reference only; adopting one is a decision made on its own merits.
