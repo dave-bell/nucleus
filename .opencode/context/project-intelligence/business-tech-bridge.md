@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.16 | Updated: 2026-08-24 -->
+<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.17 | Updated: 2026-08-24 -->
 
 # Business ↔ Tech Bridge
 
@@ -127,6 +127,19 @@ choice ADR-0014 made for Secrets creation, for the same anti-drift reason — an
 applied to Secrets' own two conditionally-rendered modals. `M2M-A05`/`A06`'s server-side claim
 (direct `save_new_client` dispatch bypassing the disabled submit button) is proven again here,
 tagged as such per the ticket's own instruction that the tags stay with M2M-S4/#37.
+
+`M2M-A10` (M2M-S7/#40) breaks the pattern above rather than extending it: `Index`'s colocated
+`.UnsavedGuard` hook and `:new_client_dirty?` assign (armed on `validate_new_client` when either
+field is non-blank, cleared on `cancel_new_client`, mount, a fresh `new_client` open, and now
+`create_client/2`'s `:ok` branch) are wiring-only with **zero** `@tag action:` claims — not a
+partial claim like `SEC-A02`'s. The `beforeunload` dialog itself is a browser API no
+`Phoenix.LiveViewTest` run can trigger at all, so nothing in
+`test/nucleus_web/live/m2m_clients_live_test.exs`'s `M2M-A10` describe block proves the
+requirement's `Then`; `mix nucleus.trace` correctly reports it as uncovered. See
+`test/README.md`'s browser-gap table and `living-notes.md`'s browser-coverage debt row.
+`phx-update="ignore"` is deliberately absent from the guard element, the one place in this
+codebase a hook-bearing element does not carry it — `data-dirty` must keep updating, which
+`ignore` would freeze.
 
 `NucleusWeb.EnvironmentsLive` and `test/nucleus_web/live/environments_live_test.exs` also now
 exist (ENV-S1/#52): `ENV-A02`–`A07` are claimed and covered. `ENV-A01` (sidebar category
