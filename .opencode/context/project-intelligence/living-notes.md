@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/notes | Priority: high | Version: 1.19 | Updated: 2026-08-25 -->
+<!-- Context: project-intelligence/notes | Priority: high | Version: 1.20 | Updated: 2026-08-25 -->
 
 # Living Notes
 
@@ -114,6 +114,12 @@ deploys it.
   `phx-click="event"` rather than a `JS.exec("data-cancel", ...)` chain — `render_click/1` can
   drive the former and not the latter. The modal's `phx-remove` still runs `hide_modal/2`, so
   focus restoration is unaffected. See `docs/adr/0012-secret-reveal-modal-and-icon-only-copy-affordances.md`.
+- `Phoenix.LiveView.attach_hook/4` on the `:handle_event` stage, added from an `on_mount` hook,
+  for an event a shared function component (`Layouts.app`) triggers but every LiveView that
+  renders it would otherwise need its own identical handler for — halt the lifecycle
+  (`{:halt, socket}`) for the event the hook owns, fall through (`{:cont, socket}`) for every
+  other event. First used for the sidebar's per-category expand/collapse toggle. See
+  `docs/adr/0023-sidebar-environment-grouping-and-category-toggle-state.md`.
 - `Nucleus.Audit.Sink.Test` falls back to `Process.get(:"$callers")` when the writing process
   has no direct `register/1` call — reaches a test's own `AuditCase` registration from inside a
   mounted LiveView, using the same ancestry chain Ecto's SQL Sandbox relies on. Any test
