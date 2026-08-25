@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.17 | Updated: 2026-08-24 -->
+<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.18 | Updated: 2026-08-25 -->
 
 # Business ↔ Tech Bridge
 
@@ -140,6 +140,27 @@ requirement's `Then`; `mix nucleus.trace` correctly reports it as uncovered. See
 `phx-update="ignore"` is deliberately absent from the guard element, the one place in this
 codebase a hook-bearing element does not carry it — `data-dirty` must keep updating, which
 `ignore` would freeze.
+
+`M2M-A11` and `M2M-A12` are now claimed and covered (M2M-S6/#39, `docs/adr/0021-m2m-secret-rotation-and-unavailable-copy.md`):
+`Nucleus.M2M.rotate/2` resolves through `fetch/2` (never a bare `ClientId.validate/1`, matching
+`create/4`'s reasoning for `M2M-A14`), calls the already-implemented `Clients.rotate_secret/1`
+(EN-10/#33's Cognito two-secret sequence — list, delete the older secret if two exist, add a
+new one — unchanged by this ticket), and audits `m2m_secret_rotated` with `client_name` on
+success only. `Show` (`lib/nucleus_web/live/m2m_clients_live/show.ex`) adds
+`#rotate-secret-button` -> `#rotate-secret-confirm` (`<.modal>`, stating all three `M2M-A12`
+facts) -> `"rotate"`, which on success renders `CredentialsPanel` again — parameterised with
+`title="Secret rotated"` (a new `attr` on that component) rather than forked, per the ticket's
+own instruction. Failure collapses `:not_found`/`:invalid`/`:not_configured`/`:auth_expired` to
+the same page-level states `mount/3` already has; `:unavailable` deliberately does **not**
+collapse to the shared `States.unavailable/1` — Cognito's rotate sequence can fail after
+deleting the older secret and before adding the new one, so a local `#rotate-secret-error`
+banner says "reload and check," never "nothing happened." No dedicated retry control exists;
+retrying means re-opening the same confirmation, since a transient failure does not make
+`M2M-A12`'s three facts any less necessary to restate. `mix nucleus.trace --feature M2M` now
+reports 15/17 covered — `M2M-A10` (M2M-S7, browser-only gap, as already noted above) and
+`M2M-A17` (pre-existing, unclaimed by any ticket including M2M-S4, not introduced by this one)
+are the two remaining gaps; the ticket's own acceptance criterion ("fifteen of sixteen") undercounted
+the catalogue by one action.
 
 `NucleusWeb.EnvironmentsLive` and `test/nucleus_web/live/environments_live_test.exs` also now
 exist (ENV-S1/#52): `ENV-A02`–`A07` are claimed and covered. `ENV-A01` (sidebar category
