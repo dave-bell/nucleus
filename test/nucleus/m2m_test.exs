@@ -9,6 +9,7 @@ defmodule Nucleus.M2MTest do
   import ExUnit.CaptureLog
 
   alias Nucleus.Backend.Error
+  alias Nucleus.Backend.Seed
   alias Nucleus.M2M
   alias Nucleus.M2M.Client
   alias Nucleus.M2M.ClientCredentials
@@ -88,7 +89,10 @@ defmodule Nucleus.M2MTest do
     def create_client(_client_name, _settings), do: raise("should not be called")
 
     @impl Nucleus.M2M.Clients
-    def rotate_secret(_client_id), do: raise("should not be called")
+    def rotate_secret(_client_id) do
+      kind = Application.get_env(:nucleus, __MODULE__, :unavailable)
+      {:error, Error.new(kind, :m2m, "forced for test", %{})}
+    end
 
     @impl Nucleus.M2M.Clients
     def health_check, do: raise("should not be called")
@@ -165,6 +169,17 @@ defmodule Nucleus.M2MTest do
     original = Application.get_env(:nucleus, DenyList, [])
     on_exit(fn -> Application.put_env(:nucleus, DenyList, original) end)
     Application.put_env(:nucleus, DenyList, [])
+  end
+
+  # The only way, against the local backend, to prove "the old secret
+  # remains valid until the next rotation" structurally rather than by
+  # inference: `ClientDetail` carries no `secrets` field (it never should —
+  # see `ClientCredentials`'s own moduledoc), so this reads the seed's
+  # internal state directly, the same technique
+  # `Nucleus.M2M.Clients.LocalTest` uses for the identical assertion one
+  # boundary lower.
+  defp seeded_secrets(client_id) do
+    Seed.read(:m2m) |> get_in([client_id, "secrets"])
   end
 
   describe "fetch/2 — M2M-A13 malformed client ID" do
@@ -585,6 +600,150 @@ defmodule Nucleus.M2MTest do
                M2M.create("OPS-6003", "harmless-purpose", 15, @scope)
 
       assert_no_audit_event(:m2m_client_created)
+    end
+  end
+
+  describe "rotate/2 — M2M-A11 rotate a client's secret" do
+    @tag action: "M2M-A11"
+    test "returns a ClientCredentials whose client_id is identical to the input" do
+      assert {:ok, credentials} = M2M.create("OPS-7001", "rotate-check", 15, @scope)
+
+      assert {:ok, %ClientCredentials{} = rotated} = M2M.rotate(credentials.client_id, @scope)
+      assert rotated.client_id == credentials.client_id
+    end
+
+    @tag action: "M2M-A11"
+    test "the returned secret differs from the client's previous secret" do
+      assert {:ok, credentials} = M2M.create("OPS-7002", "rotate-check", 15, @scope)
+
+      assert {:ok, rotated} = M2M.rotate(credentials.client_id, @scope)
+      refute rotated.client_secret == credentials.client_secret
+    end
+
+    @tag action: "M2M-A11"
+    test "after one rotation, the previous secret is still present on the client" do
+      assert {:ok, credentials} = M2M.create("OPS-7003", "rotate-check", 15, @scope)
+      assert {:ok, rotated} = M2M.rotate(credentials.client_id, @scope)
+
+      values = credentials.client_id |> seeded_secrets() |> Enum.map(& &1["value"])
+      assert credentials.client_secret in values
+      assert rotated.client_secret in values
+    end
+
+    # The test the ticket itself names as the one that catches every
+    # ordering mistake (add-before-delete, delete-the-newer-secret,
+    # delete-unconditionally) — together with the assertion above, this is
+    # the proof of "valid until the next rotation."
+    @tag action: "M2M-A11"
+    test "after two rotations, the original secret is gone and the intermediate one remains" do
+      assert {:ok, credentials} = M2M.create("OPS-7004", "rotate-check", 15, @scope)
+      assert {:ok, first} = M2M.rotate(credentials.client_id, @scope)
+      assert {:ok, second} = M2M.rotate(credentials.client_id, @scope)
+
+      values = credentials.client_id |> seeded_secrets() |> Enum.map(& &1["value"])
+      refute credentials.client_secret in values
+      assert first.client_secret in values
+      assert second.client_secret in values
+    end
+
+    @tag action: "M2M-A11"
+    test "rotating a client with only one secret performs no delete and succeeds" do
+      assert {:ok, credentials} = M2M.create("OPS-7005", "rotate-check", 15, @scope)
+      assert length(seeded_secrets(credentials.client_id)) == 1
+
+      assert {:ok, _rotated} = M2M.rotate(credentials.client_id, @scope)
+      assert length(seeded_secrets(credentials.client_id)) == 2
+    end
+
+    # Rotation is not an update (`M2M-A15`) — every other field is untouched.
+    @tag action: "M2M-A11"
+    test "the client's name, scope, token validity and creation date are unchanged by rotation" do
+      assert {:ok, credentials} = M2M.create("OPS-7006", "rotate-check", 15, @scope)
+      assert {:ok, before_rotation} = M2M.fetch(credentials.client_id, @scope)
+
+      assert {:ok, _rotated} = M2M.rotate(credentials.client_id, @scope)
+      assert {:ok, after_rotation} = M2M.fetch(credentials.client_id, @scope)
+
+      assert after_rotation.client_name == before_rotation.client_name
+      assert after_rotation.scope == before_rotation.scope
+      assert after_rotation.token_validity_seconds == before_rotation.token_validity_seconds
+      assert after_rotation.created_date == before_rotation.created_date
+    end
+
+    @tag action: "M2M-A11"
+    test "emits exactly one m2m_secret_rotated, with client_name in details and the tenant set" do
+      assert {:ok, credentials} = M2M.create("OPS-7007", "rotate-check", 15, @scope)
+      assert {:ok, _rotated} = M2M.rotate(credentials.client_id, @scope)
+
+      assert_audit_event(:m2m_secret_rotated,
+        tenant: "local",
+        details: %{client_name: credentials.client_name}
+      )
+
+      assert audit_events() |> Enum.filter(&(&1.event == :m2m_secret_rotated)) |> length() == 1
+    end
+
+    @tag action: "M2M-A11"
+    test "the new secret appears in no audit record, and in no captured log output on success or failure" do
+      log =
+        capture_log(fn ->
+          {:ok, credentials} = M2M.create("OPS-7008", "rotate-check", 15, @scope)
+          {:ok, rotated} = M2M.rotate(credentials.client_id, @scope)
+          Process.put(:rotated, rotated)
+
+          M2M.rotate(@nonexistent_client_id, @scope)
+          M2M.rotate("bad id", @scope)
+        end)
+
+      rotated = Process.get(:rotated)
+      refute_audit_contains(rotated.client_secret)
+      refute log =~ rotated.client_secret
+    end
+
+    @tag action: "M2M-A11"
+    test "no m2m_client_viewed is emitted by rotation — the trail must not record a view that did not happen" do
+      assert {:ok, credentials} = M2M.create("OPS-7009", "rotate-check", 15, @scope)
+      assert {:ok, _rotated} = M2M.rotate(credentials.client_id, @scope)
+
+      assert_no_audit_event(:m2m_client_viewed)
+    end
+
+    @tag action: "M2M-A11"
+    test "a failed rotation emits no audit event" do
+      use_backend(FailingM2MClients)
+      Application.put_env(:nucleus, FailingM2MClients, :unavailable)
+
+      assert {:error, %Error{kind: :unavailable}} = M2M.rotate(@valid_client_id, @scope)
+      assert_no_audit_event(:m2m_secret_rotated)
+    end
+
+    @tag action: "M2M-A11"
+    test "rotate/2 on a malformed ID returns :invalid with zero backend calls" do
+      use_backend(ExplodingM2MClients)
+
+      assert {:error, %Error{kind: :invalid}} = M2M.rotate("../etc", @scope)
+    end
+  end
+
+  describe "rotate/2 — M2M-A14 deny-listed and out-of-tenant clients cannot be rotated" do
+    @tag action: "M2M-A14"
+    test "the seeded deny-listed client returns :not_found, rotates nothing, and emits nothing" do
+      secrets_before = seeded_secrets(@denied_client_id)
+
+      assert {:error, %Error{kind: :not_found}} = M2M.rotate(@denied_client_id, @scope)
+
+      assert seeded_secrets(@denied_client_id) == secrets_before
+      assert_no_audit_event(:m2m_secret_rotated)
+    end
+
+    @tag action: "M2M-A14"
+    test "the seeded out-of-tenant client returns :not_found, rotates nothing, and emits nothing" do
+      secrets_before = seeded_secrets(@out_of_tenant_client_id)
+
+      assert {:error, %Error{kind: :not_found}} = M2M.rotate(@out_of_tenant_client_id, @scope)
+
+      assert seeded_secrets(@out_of_tenant_client_id) == secrets_before
+      assert_no_audit_event(:m2m_secret_rotated)
     end
   end
 end

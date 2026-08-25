@@ -71,6 +71,16 @@ defmodule NucleusWeb.M2MClientsLive.CredentialsPanel do
   client that already exists (no `client_name` changes hands, no
   `ticket_id`), so its own DOM-id contract, if different, overrides these
   defaults rather than this component guessing at a second table.
+
+  ## `title` is the one piece of copy that legitimately differs by caller
+
+  Everything else below the heading — the key/value labels, the warning,
+  the dismiss button — describes the secret itself and reads identically
+  whether it was just created or just rotated. Only the heading names the
+  action that produced it, so `title` is the one attribute `M2M-S6`
+  overrides (`"Secret rotated"`) rather than forking the component for one
+  word, per the ticket's own instruction to parameterise instead of
+  copying.
   """
 
   use NucleusWeb, :html
@@ -84,6 +94,7 @@ defmodule NucleusWeb.M2MClientsLive.CredentialsPanel do
   and pushes whatever it is given.
   """
   attr :id, :string, default: "m2m-client-credentials"
+  attr :title, :string, default: "Client created"
   attr :client_id, :string, required: true
   attr :client_secret, :string, required: true
   attr :on_dismiss, Phoenix.LiveView.JS, required: true
@@ -110,7 +121,7 @@ defmodule NucleusWeb.M2MClientsLive.CredentialsPanel do
         class="modal-box relative"
       >
         <h2 id={"#{@id}-title"} class="text-lg font-semibold mb-4 pr-8">
-          Client created
+          {@title}
         </h2>
 
         <div class="space-y-4">

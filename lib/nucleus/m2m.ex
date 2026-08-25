@@ -239,6 +239,50 @@ defmodule Nucleus.M2M do
   end
 
   @doc """
+  Rotates `client_id`'s secret (`M2M-A11`), resolving through `fetch/2` —
+  never a bare `ClientId.validate/1`. `fetch/2` is the one function that
+  enforces both the format check and the deny-list/tenant gate
+  (`M2M-A14`): a rotation path that validated the ID but skipped the name
+  checks would let an operator rotate the secret of a deny-listed or
+  out-of-tenant client, which is exactly what that requirement forbids.
+
+  `fetch/2` emits nothing (M2M-S1 / #34's guarantee, restated in `view/2`'s
+  own doc), so routing through it here does not produce a spurious
+  `m2m_client_viewed` on a rotation nobody performed as a view.
+
+  `Nucleus.M2M.Clients.rotate_secret/1` owns the actual Cognito sequence
+  (list, delete the older secret if two exist, add a new one) that leaves
+  `[previous, new]` after every rotation — the "valid until the next
+  rotation" window `M2M-A11` requires. This function does not re-implement
+  or re-check that sequence; it only gates entry to it and audits the
+  outcome.
+
+  On success only, `Audit.emit(:m2m_secret_rotated, ...)` with `details:
+  %{client_name: ...}` — exactly the key `Nucleus.Audit.Event`'s catalogue
+  allowlists for this event (`lib/nucleus/audit/event.ex:122-127`). Not the
+  secret, and not the secret's id: `Clients.rotate_secret/1`'s success
+  value is matched only for the `client_name` it carries and is otherwise
+  discarded here, never interpolated into the audit details, a log, or a
+  flash. A failed rotation emits nothing — the same "audit on success
+  only" shape as `create/4`.
+  """
+  @spec rotate(client_id :: term(), scope :: Scope.t()) ::
+          {:ok, ClientCredentials.t()} | {:error, Error.t()}
+  def rotate(client_id, %Scope{} = scope) do
+    with {:ok, %ClientDetail{client_name: client_name}} <- fetch(client_id, scope),
+         {:ok, %ClientCredentials{} = credentials} <- Clients.rotate_secret(client_id) do
+      :ok =
+        Audit.emit(:m2m_secret_rotated,
+          user: Scope.audit_user(scope),
+          tenant: scope.tenant,
+          details: %{client_name: client_name}
+        )
+
+      {:ok, credentials}
+    end
+  end
+
+  @doc """
   Whether `client` belongs to this tenant and is not on the reserved
   deny-list — the shared predicate behind this module's `fetch/2` (step 4)
   and M2M-S2's list filter.

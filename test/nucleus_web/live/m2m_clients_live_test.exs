@@ -65,7 +65,10 @@ defmodule NucleusWeb.M2MClientsLiveTest do
     def create_client(_client_name, _settings), do: raise("should not be called")
 
     @impl Nucleus.M2M.Clients
-    def rotate_secret(_client_id), do: raise("should not be called")
+    def rotate_secret(_client_id) do
+      kind = Application.get_env(:nucleus, __MODULE__, :unavailable)
+      {:error, Error.new(kind, :m2m, "forced for test", %{})}
+    end
 
     @impl Nucleus.M2M.Clients
     def health_check, do: raise("should not be called")
@@ -159,6 +162,13 @@ defmodule NucleusWeb.M2MClientsLiveTest do
       doc |> LazyHTML.query("#m2m-new-client-secret") |> LazyHTML.text() |> String.trim()
 
     {client_id, client_secret}
+  end
+
+  # Direct seed inspection, the same technique `Nucleus.M2MTest` uses at the
+  # context layer — the only structural way to prove "rotates nothing" for
+  # a client this LiveView never resolves far enough to rotate.
+  defp seeded_secrets(client_id) do
+    Seed.read(:m2m) |> get_in([client_id, "secrets"])
   end
 
   describe "M2M-A01 — list the tenant's M2M clients" do
@@ -1409,6 +1419,217 @@ defmodule NucleusWeb.M2MClientsLiveTest do
 
       {:ok, denied_view, _html} = live(conn, ~p"/m2m/clients/#{@denied_client_id}")
       assert has_element?(denied_view, "#m2m-client-not-found")
+    end
+  end
+
+  describe "M2M-A12 — confirm before rotating" do
+    @tag action: "M2M-A12"
+    test "clicking #rotate-secret-button opens #rotate-secret-confirm and nothing has rotated yet",
+         %{conn: conn} do
+      secrets_before = seeded_secrets(@valid_client_id)
+
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients/#{@valid_client_id}")
+      refute has_element?(view, "#rotate-secret-confirm")
+
+      view |> element("#rotate-secret-button") |> render_click()
+
+      assert has_element?(view, "#rotate-secret-confirm")
+      assert seeded_secrets(@valid_client_id) == secrets_before
+    end
+
+    @tag action: "M2M-A12"
+    test "the confirmation copy states all three required facts", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients/#{@valid_client_id}")
+      view |> element("#rotate-secret-button") |> render_click()
+
+      modal_html = view |> element("#rotate-secret-confirm") |> render()
+
+      assert modal_html =~ "new secret will be generated"
+      assert modal_html =~ "old secret remains valid until the next rotation"
+      assert modal_html =~ "client ID will not change"
+    end
+
+    @tag action: "M2M-A12"
+    test "cancel closes the modal, rotates nothing, and emits no audit event", %{conn: conn} do
+      secrets_before = seeded_secrets(@valid_client_id)
+
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients/#{@valid_client_id}")
+      view |> element("#rotate-secret-button") |> render_click()
+      assert has_element?(view, "#rotate-secret-confirm")
+
+      view |> element("#rotate-secret-cancel") |> render_click()
+
+      refute has_element?(view, "#rotate-secret-confirm")
+      assert seeded_secrets(@valid_client_id) == secrets_before
+      assert_no_audit_event(:m2m_secret_rotated)
+    end
+
+    test "the modal's Escape wiring is present and reaches cancel_rotate", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients/#{@valid_client_id}")
+      view |> element("#rotate-secret-button") |> render_click()
+
+      doc = view |> render() |> LazyHTML.from_fragment()
+
+      assert [cancel] =
+               doc |> LazyHTML.query("#rotate-secret-confirm") |> LazyHTML.attribute("data-cancel")
+
+      assert cancel =~ "cancel_rotate"
+
+      container = LazyHTML.query(doc, "#rotate-secret-confirm-container")
+      assert LazyHTML.attribute(container, "phx-key") == ["escape"]
+      assert LazyHTML.attribute(container, "phx-window-keydown") != []
+    end
+
+    test "backdrop dismissal reaches cancel_rotate", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients/#{@valid_client_id}")
+      view |> element("#rotate-secret-button") |> render_click()
+
+      doc = view |> render() |> LazyHTML.from_fragment()
+
+      container = LazyHTML.query(doc, "#rotate-secret-confirm-container")
+      assert LazyHTML.attribute(container, "phx-click-away") != []
+
+      assert [cancel] =
+               doc |> LazyHTML.query("#rotate-secret-confirm") |> LazyHTML.attribute("data-cancel")
+
+      assert cancel =~ "cancel_rotate"
+    end
+  end
+
+  describe "M2M-A11 — rotate a client's secret" do
+    @tag action: "M2M-A11"
+    test "confirming renders #m2m-client-credentials with a new secret and the same client ID the detail view showed",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients/#{@valid_client_id}")
+      view |> element("#rotate-secret-button") |> render_click()
+      view |> element("#rotate-secret-confirm-submit") |> render_click()
+
+      refute has_element?(view, "#rotate-secret-confirm")
+      assert has_element?(view, "#m2m-client-credentials")
+
+      {client_id, client_secret} = credentials_panel_values(view)
+      assert client_id == @valid_client_id
+      assert client_secret != ""
+      assert client_secret != @valid_client_secret
+    end
+
+    @tag action: "M2M-A11"
+    test "the panel carries the same one-time warning and copy affordances as creation", %{
+      conn: conn
+    } do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients/#{@valid_client_id}")
+      view |> element("#rotate-secret-button") |> render_click()
+      view |> element("#rotate-secret-confirm-submit") |> render_click()
+
+      assert has_element?(view, "#m2m-client-credentials-warning", "will not be shown again")
+
+      {client_id, client_secret} = credentials_panel_values(view)
+      doc = view |> render() |> LazyHTML.from_fragment()
+
+      assert LazyHTML.query(doc, "#copy-m2m-client-id") |> LazyHTML.attribute("data-value") ==
+               [client_id]
+
+      assert LazyHTML.query(doc, "#copy-m2m-client-secret") |> LazyHTML.attribute("data-value") ==
+               [client_secret]
+    end
+
+    @tag action: "M2M-A11"
+    test "the panel closes only on explicit dismissal, and after dismissal the secret is absent from the rendered HTML and the socket assigns",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients/#{@valid_client_id}")
+      view |> element("#rotate-secret-button") |> render_click()
+      view |> element("#rotate-secret-confirm-submit") |> render_click()
+
+      {_client_id, client_secret} = credentials_panel_values(view)
+
+      html = view |> element("#m2m-client-credentials-dismiss") |> render_click()
+
+      refute html =~ client_secret
+      refute has_element?(view, "#m2m-client-credentials")
+      refute render(view) =~ client_secret
+    end
+
+    @tag action: "M2M-A11"
+    test "the secret is in no flash message", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients/#{@valid_client_id}")
+      view |> element("#rotate-secret-button") |> render_click()
+      html = view |> element("#rotate-secret-confirm-submit") |> render_click()
+
+      {_client_id, client_secret} = credentials_panel_values(view)
+      refute has_element?(view, "[role='alert'][id^='flash']", client_secret)
+      refute html =~ ~s(id="flash) <> "\"" <> client_secret
+    end
+
+    @tag action: "M2M-A11"
+    test "after rotation the detail view still shows the same client ID, name, scope and validity",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients/#{@valid_client_id}")
+      view |> element("#rotate-secret-button") |> render_click()
+      view |> element("#rotate-secret-confirm-submit") |> render_click()
+
+      view |> element("#m2m-client-credentials-dismiss") |> render_click()
+
+      assert has_element?(view, "#m2m-client-id", @valid_client_id)
+      assert has_element?(view, "#m2m-client-name", @valid_client_name)
+      assert has_element?(view, "#m2m-client-scope")
+      assert has_element?(view, "#m2m-client-token-validity")
+    end
+
+    @tag action: "M2M-A14"
+    test "navigating to the deny-listed client's detail URL offers no rotation control at all",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients/#{@denied_client_id}")
+
+      refute has_element?(view, "#rotate-secret-button")
+      refute has_element?(view, "#rotate-secret-confirm")
+      refute has_element?(view, "#m2m-client-credentials")
+    end
+
+    @tag action: "M2M-A11"
+    test "every Nucleus.Backend.Error kind renders without crashing when rotation fails", %{
+      conn: conn
+    } do
+      original = Application.get_env(:nucleus, :backends, [])
+      on_exit(fn -> Application.put_env(:nucleus, :backends, original) end)
+
+      for kind <- Error.kinds() do
+        # Reset to the real backend before every mount — `use_backend/1`'s
+        # `on_exit` only restores at the *end* of the test, so leaving the
+        # previous iteration's forced kind in place would fail `mount/3`
+        # itself before `#rotate-secret-button` ever renders.
+        Application.put_env(:nucleus, :backends, original)
+
+        {:ok, view, _html} = live(conn, ~p"/m2m/clients/#{@valid_client_id}")
+        view |> element("#rotate-secret-button") |> render_click()
+
+        # Swapped only after the page has already resolved the client
+        # through the real backend — this forces the failure onto the
+        # `"rotate"` call itself, not onto `mount/3`'s own resolution.
+        Application.put_env(:nucleus, :backends, Keyword.put(original, :m2m, FailingM2MClients))
+        Application.put_env(:nucleus, FailingM2MClients, kind)
+
+        view |> element("#rotate-secret-confirm-submit") |> render_click()
+        assert render(view)
+      end
+    end
+
+    @tag action: "M2M-A11"
+    test ":unavailable's copy tells the operator to reload and check, not that nothing happened",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients/#{@valid_client_id}")
+      view |> element("#rotate-secret-button") |> render_click()
+
+      use_backend(FailingM2MClients)
+      Application.put_env(:nucleus, FailingM2MClients, :unavailable)
+
+      view |> element("#rotate-secret-confirm-submit") |> render_click()
+
+      refute has_element?(view, "#rotate-secret-confirm")
+      assert has_element?(view, "#m2m-client-detail")
+
+      error_html = view |> element("#rotate-secret-error") |> render()
+      assert error_html =~ "Reload"
+      refute error_html =~ "nothing happened"
     end
   end
 end
