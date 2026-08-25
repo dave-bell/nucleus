@@ -749,6 +749,14 @@ defmodule NucleusWeb.CoreComponents do
   the button carries `phx-update="ignore"`, and putting hover state on an
   ignored element is exactly the kind of thing that stops surviving a patch.
 
+  `tooltip_position` defaults to `"top"` — daisyUI's own default, and the
+  right choice in every existing call site, all of which sit comfortably
+  inside their container. It exists as an attr, not a hardcoded class,
+  because a button sitting near a container's right edge (a narrow modal,
+  say) will have `"top"`'s horizontally-centered tooltip clip against that
+  edge; `"left"` anchors the tooltip's content away from the edge instead of
+  over it, with no change to the button itself.
+
   ## `show_label` — text only, full size, no icon
 
   `show_label` is for somewhere with room for the words and a sibling
@@ -766,16 +774,21 @@ defmodule NucleusWeb.CoreComponents do
 
       <.copy_button id="copy-arn" value={@secret.arn} label="Copy ARN" />
       <.copy_button id="copy-value" value={@secret.value} label="Copy value" show_label />
+      <.copy_button id="copy-secret" value={@secret} label="Copy secret" tooltip_position="left" />
   """
   attr :id, :string, required: true
   attr :value, :string, required: true
   attr :label, :string, default: "Copy"
   attr :show_label, :boolean, default: false
+  attr :tooltip_position, :string, default: "top", values: ~w(top bottom left right)
   attr :class, :any, default: nil
 
   def copy_button(assigns) do
     ~H"""
-    <span class={[!@show_label && "tooltip"]} data-tip={!@show_label && @label}>
+    <span
+      class={[!@show_label && "tooltip", !@show_label && tooltip_position_class(@tooltip_position)]}
+      data-tip={!@show_label && @label}
+    >
       <button
         type="button"
         id={@id}
@@ -868,6 +881,24 @@ defmodule NucleusWeb.CoreComponents do
     </script>
     """
   end
+
+  # Tailwind v4's content scanner reads this file as plain text — it cannot
+  # evaluate `"tooltip-#{position}"` at build time, so an interpolated class
+  # name never gets its CSS generated even though the DOM ends up with the
+  # right string. Each branch below spells its class out literally so the
+  # scanner has something to find.
+  #
+  # `attr ... values: ~w(top bottom left right)` only warns at compile time
+  # against a literal misuse in a template — it does not validate a value
+  # computed at runtime (an assign, an interpolated string). The catch-all
+  # below keeps a bad or future `tooltip_position` from raising
+  # `FunctionClauseError` at render time; it falls back to daisyUI's own
+  # default position rather than rendering no tooltip at all.
+  defp tooltip_position_class("top"), do: "tooltip-top"
+  defp tooltip_position_class("bottom"), do: "tooltip-bottom"
+  defp tooltip_position_class("left"), do: "tooltip-left"
+  defp tooltip_position_class("right"), do: "tooltip-right"
+  defp tooltip_position_class(_other), do: "tooltip-top"
 
   @doc """
   Translates an error message using gettext.
