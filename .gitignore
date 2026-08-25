@@ -42,3 +42,6 @@ apm_modules/
 # Per-ticket git worktrees created by bin/wt. Ignored so the parent checkout
 # stays clean and so ripgrep-backed agent search skips them.
 /.worktrees/
+
+# Scratch space for agent tooling (e.g. external-lookup's cached docs).
+/.tmp/
