@@ -132,6 +132,50 @@ defmodule NucleusWeb.M2MClientsLive.Index do
   unretrieved secret exactly as visibly as any other abandonment, never
   silently.
 
+  ## Warning before losing unsaved creation input — `M2M-A10`, #40
+
+  A colocated `.UnsavedGuard` hook arms `window.beforeunload` while the
+  creation form has unsaved input, so closing the tab or reloading warns the
+  operator before the ticket ID / purpose they typed is lost. The guard
+  element (`#m2m-unsaved-guard`) is rendered unconditionally inside this
+  `@status == :ok` block — not inside the `:if={@creating}` modal — so it is
+  mounted once for the LiveView's lifetime rather than on every open/close
+  of the create modal; a hook that mounts and unmounts with the modal would
+  call `destroyed()` (correctly disarming) and `mounted()` (re-arming from a
+  fresh, unarmed state) on every cancel/reopen, which is harmless here only
+  because `sync()` is idempotent, but is needless churn for no benefit.
+
+  The authoritative dirty flag is the `:new_client_dirty?` assign, not
+  anything computed client-side: it becomes `true` on the first
+  `validate_new_client` where `:ticket_id` or `:purpose` is non-blank
+  (regardless of validity — an invalid-but-non-empty value is still input
+  that would be lost), and `false` on `new_client` (a fresh, untouched
+  form), `cancel_new_client`, and mount. It is exposed to the hook as
+  `data-dirty={@new_client_dirty?}` — read by the hook at event time, never
+  cached at `mounted()`, matching `SEC-S3`'s `data-value` precedent, since
+  an update to this attribute must not go stale against a hook that read it
+  once.
+
+  `beforeunload` does not fire on in-app `patch`/`navigate` — `M2M-A10`'s
+  `When` names closing the tab and reloading only, so no in-app navigation
+  interceptor exists; a sidebar link click with a dirty form does not warn.
+
+  **`phx-update="ignore"` is deliberately absent** from the guard element,
+  despite `AGENTS.md`'s general rule that a hook managing its own DOM needs
+  it. This hook manages a `window` listener, not the element's DOM
+  subtree — `ignore` would freeze `data-dirty` at whatever it was on first
+  render, which is exactly the value the hook must keep re-reading.
+
+  **`:new_client_dirty?` does not clear while the one-time credentials panel
+  is showing** — it does not need to, because `create_client/2`'s `:ok`
+  branch clears it directly, in the same `assign/3` pipeline that closes the
+  modal and opens the panel (see the "Creation is a modal" section above).
+  Nothing sets `:new_client_dirty?` back to `true` while `@credentials` is
+  set: the creation form that `validate_new_client` reads from does not
+  exist in the DOM once the modal is gone, so there is no event left that
+  could re-dirty it before the panel's own dismissal (`dismiss_credentials`)
+  or a fresh `new_client` open, both of which are already covered above.
+
   The row's view control is `<.link navigate={~p"/m2m/clients/\#{client.client_id}"}>` —
   explicit `client_id` interpolation, not `~p"...\#{client}"`, since
   `Nucleus.M2M.Client` implements no `Phoenix.Param` — and needs no
@@ -168,6 +212,7 @@ defmodule NucleusWeb.M2MClientsLive.Index do
       |> assign(:name_preview, nil)
       |> assign(:create_error, nil)
       |> assign(:credentials, nil)
+      |> assign(:new_client_dirty?, false)
       |> fetch_clients()
 
     {:ok, socket}
@@ -187,6 +232,10 @@ defmodule NucleusWeb.M2MClientsLive.Index do
       # "The credentials panel and the creation modal are mutually
       # exclusive" section.
       |> assign(:credentials, nil)
+      # A freshly opened form is untouched, regardless of any previous
+      # open/cancel cycle — see the moduledoc's "Warning before losing
+      # unsaved creation input" section.
+      |> assign(:new_client_dirty?, false)
 
     {:noreply, socket}
   end
@@ -202,6 +251,7 @@ defmodule NucleusWeb.M2MClientsLive.Index do
       socket
       |> assign(:create_form, to_form(changeset, as: :new_client))
       |> assign(:name_preview, preview_name(changeset))
+      |> assign(:new_client_dirty?, dirty?(changeset))
 
     {:noreply, socket}
   end
@@ -249,6 +299,7 @@ defmodule NucleusWeb.M2MClientsLive.Index do
       |> assign(:create_form, nil)
       |> assign(:name_preview, nil)
       |> assign(:create_error, nil)
+      |> assign(:new_client_dirty?, false)
 
     {:noreply, socket}
   end
@@ -285,6 +336,12 @@ defmodule NucleusWeb.M2MClientsLive.Index do
           |> assign(:name_preview, nil)
           |> assign(:create_error, nil)
           |> assign(:credentials, credentials)
+          # `M2M-A10`: the form that had unsaved input no longer exists —
+          # see the moduledoc's "Warning before losing unsaved creation
+          # input" section. The one-time credentials panel that replaces it
+          # has its own, unrelated stakes (an uncopied secret), which
+          # `M2M-A10`'s own scope note excludes on purpose.
+          |> assign(:new_client_dirty?, false)
           # `M2M-A08`: the new client appears in the list, in sort
           # position, and `:client_count` flips the empty state — see the
           # moduledoc for why this re-lists rather than computing a stream
@@ -379,6 +436,56 @@ defmodule NucleusWeb.M2MClientsLive.Index do
           <h1 class="text-lg font-semibold">M2M Clients</h1>
           <.button id="new-m2m-client-button" phx-click="new_client">New client</.button>
         </div>
+
+        <%!--
+        `M2M-A10`: arms/disarms `window.beforeunload` while the creation
+        form has unsaved input. Rendered once here, not inside the
+        `:if={@creating}` modal — see the moduledoc's "Warning before
+        losing unsaved creation input" section for why.
+
+        No `phx-update="ignore"` — deliberate, despite `AGENTS.md`'s general
+        rule for elements with a hook. This hook manages a `window`
+        listener, not this element's own DOM subtree, and `ignore` would
+        freeze `data-dirty` at its first-render value, which is exactly
+        what the hook must keep re-reading on every patch. Do not "fix"
+        this by adding it back.
+        --%>
+        <div id="m2m-unsaved-guard" phx-hook=".UnsavedGuard" data-dirty={@new_client_dirty?}></div>
+        <script :type={Phoenix.LiveView.ColocatedHook} name=".UnsavedGuard">
+          export default {
+            mounted() { this.sync() },
+            updated() { this.sync() },
+            destroyed() { this.disarm() },
+            // Presence, not value, is the signal: a boolean HTML attribute
+            // renders valueless when true (`dataset.dirty === ""`, still
+            // falsy in JS) and is omitted entirely when false
+            // (`dataset.dirty === undefined`) — see `Phoenix.HTML`'s
+            // attribute escaping. `hasAttribute` is correct either way;
+            // `=== "true"` would never match.
+            sync() {
+              if (this.el.hasAttribute("data-dirty")) {
+                this.arm()
+              } else {
+                this.disarm()
+              }
+            },
+            arm() {
+              if (this._armed) return
+              this._armed = true
+              this._handler = (event) => {
+                event.preventDefault()
+                event.returnValue = ""
+              }
+              window.addEventListener("beforeunload", this._handler)
+            },
+            disarm() {
+              if (!this._armed) return
+              window.removeEventListener("beforeunload", this._handler)
+              this._armed = false
+              this._handler = null
+            }
+          }
+        </script>
 
         <.empty_state
           :if={@client_count == 0}
@@ -590,4 +697,15 @@ defmodule NucleusWeb.M2MClientsLive.Index do
 
   defp blank?(nil), do: true
   defp blank?(value), do: String.trim(value) == ""
+
+  # `M2M-A10`: unsaved input exists once either field is non-blank —
+  # deliberately independent of `changeset.valid?`. An invalid-but-non-empty
+  # value (a malformed ticket ID mid-typing) is still input the operator
+  # typed and would lose; validity gates the submit button, not the warning.
+  defp dirty?(changeset) do
+    ticket_id = Ecto.Changeset.get_field(changeset, :ticket_id)
+    purpose = Ecto.Changeset.get_field(changeset, :purpose)
+
+    not blank?(ticket_id) or not blank?(purpose)
+  end
 end

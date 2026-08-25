@@ -891,6 +891,193 @@ defmodule NucleusWeb.M2MClientsLiveTest do
     end
   end
 
+  describe "M2M-A10 — warn before losing unsaved creation input" do
+    # `beforeunload` itself is a browser API `Phoenix.LiveViewTest` cannot
+    # fire (`docs/adr/0008-test-strategy.md`) — these tests prove the wiring
+    # the hook depends on (the guard element, `phx-hook`, and `data-dirty`'s
+    # transitions), never that a warning dialog appears. No test below
+    # carries an `action` tag for this ID; `mix nucleus.trace` correctly
+    # reports `M2M-A10` as uncovered. See `test/README.md`'s browser-gap
+    # table.
+
+    test "the guard element is present, hooked, and never phx-update=\"ignore\"", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients")
+
+      doc = view |> render() |> LazyHTML.from_fragment()
+      guard = LazyHTML.query(doc, "#m2m-unsaved-guard")
+
+      assert [hook] = LazyHTML.attribute(guard, "phx-hook")
+      assert hook =~ "UnsavedGuard"
+      assert LazyHTML.attribute(guard, "phx-update") == []
+    end
+
+    test "data-dirty is false on mount, with the form closed", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients")
+
+      refute has_element?(view, "#m2m-unsaved-guard[data-dirty]")
+    end
+
+    test "data-dirty is false with the modal open and both fields empty", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients")
+
+      view |> element("#new-m2m-client-button") |> render_click()
+
+      refute has_element?(view, "#m2m-unsaved-guard[data-dirty]")
+    end
+
+    test "data-dirty becomes true after a non-empty ticket ID", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients")
+      view |> element("#new-m2m-client-button") |> render_click()
+
+      view
+      |> form("#new-m2m-client-form", new_client: %{"ticket_id" => "OPS-1", "purpose" => ""})
+      |> render_change()
+
+      assert has_element?(view, "#m2m-unsaved-guard[data-dirty]")
+    end
+
+    test "data-dirty becomes true after a non-empty purpose only", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients")
+      view |> element("#new-m2m-client-button") |> render_click()
+
+      view
+      |> form("#new-m2m-client-form", new_client: %{"ticket_id" => "", "purpose" => "sync"})
+      |> render_change()
+
+      assert has_element?(view, "#m2m-unsaved-guard[data-dirty]")
+    end
+
+    test "data-dirty is true even while the typed value is still invalid", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients")
+      view |> element("#new-m2m-client-button") |> render_click()
+
+      view
+      |> form("#new-m2m-client-form", new_client: %{"ticket_id" => "ops-1234", "purpose" => ""})
+      |> render_change()
+
+      assert has_element?(view, "#new-m2m-client-submit[disabled]")
+      assert has_element?(view, "#m2m-unsaved-guard[data-dirty]")
+    end
+
+    test "data-dirty returns to false after cancel_new_client", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients")
+      view |> element("#new-m2m-client-button") |> render_click()
+
+      view
+      |> form("#new-m2m-client-form", new_client: %{"ticket_id" => "OPS-1", "purpose" => "sync"})
+      |> render_change()
+
+      assert has_element?(view, "#m2m-unsaved-guard[data-dirty]")
+
+      view |> element("#new-m2m-client-cancel") |> render_click()
+
+      refute has_element?(view, "#m2m-unsaved-guard[data-dirty]")
+    end
+
+    test "reopening the form after a cancel starts clean, not carrying the prior dirty state",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients")
+      view |> element("#new-m2m-client-button") |> render_click()
+
+      view
+      |> form("#new-m2m-client-form", new_client: %{"ticket_id" => "OPS-1", "purpose" => "sync"})
+      |> render_change()
+
+      view |> element("#new-m2m-client-cancel") |> render_click()
+      view |> element("#new-m2m-client-button") |> render_click()
+
+      refute has_element?(view, "#m2m-unsaved-guard[data-dirty]")
+    end
+
+    test "data-dirty is false after a successful creation", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients")
+      view |> element("#new-m2m-client-button") |> render_click()
+
+      view
+      |> form("#new-m2m-client-form",
+        new_client: %{"ticket_id" => "OPS-9101", "purpose" => "dirty-clear-check"}
+      )
+      |> render_change()
+
+      assert has_element?(view, "#m2m-unsaved-guard[data-dirty]")
+
+      view
+      |> form("#new-m2m-client-form",
+        new_client: %{"ticket_id" => "OPS-9101", "purpose" => "dirty-clear-check"}
+      )
+      |> render_submit()
+
+      refute has_element?(view, "#m2m-unsaved-guard[data-dirty]")
+    end
+
+    test "data-dirty is false while the one-time credentials panel is showing", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients")
+      view |> element("#new-m2m-client-button") |> render_click()
+
+      view
+      |> form("#new-m2m-client-form",
+        new_client: %{"ticket_id" => "OPS-9102", "purpose" => "panel-check"}
+      )
+      |> render_submit()
+
+      assert has_element?(view, "#m2m-client-credentials")
+      refute has_element?(view, "#m2m-unsaved-guard[data-dirty]")
+    end
+
+    test "re-rendering the view repeatedly leaves exactly one guard element", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/m2m/clients")
+
+      view |> element("#new-m2m-client-button") |> render_click()
+      view |> element("#new-m2m-client-cancel") |> render_click()
+      view |> element("#new-m2m-client-button") |> render_click()
+      view |> element("#new-m2m-client-cancel") |> render_click()
+      render_click(view, "retry", %{})
+
+      doc = view |> render() |> LazyHTML.from_fragment()
+      assert Enum.count(LazyHTML.query(doc, "#m2m-unsaved-guard")) == 1
+    end
+  end
+
+  defmodule UnsavedGuardBrowserGaps do
+    @moduledoc """
+    `M2M-A10`'s actual `Then` — a warning shown when the operator tries to
+    leave the page — is a `window.beforeunload` dialog. `Phoenix.LiveViewTest`
+    has no browser to fire that event in, so it cannot be proven here at
+    all, not even partially through a `render_click/1`-driven route the way
+    `NewClientModalBrowserGaps` above proves the Cancel button.
+
+    The `M2M-A10` describe block above proves everything a browser needs to
+    exist for this to work (the guard element, the hook, `data-dirty`'s
+    transitions) — this module names the assertions a real driver would
+    make once one exists, so the intent survives even though nothing here
+    runs. See `docs/adr/0008-test-strategy.md` and `test/README.md`'s
+    browser-gap table.
+
+    Skipped unconditionally rather than by default-exclude tag, matching
+    `NewClientModalBrowserGaps`'s reasoning exactly.
+    """
+
+    use ExUnit.Case, async: true
+
+    @moduletag :browser
+    @moduletag skip: "no browser driver in this repo — see docs/adr/0008-test-strategy.md"
+
+    test "typing into the ticket ID or purpose field, then closing the tab, shows the browser's own beforeunload prompt" do
+    end
+
+    test "typing into the ticket ID or purpose field, then reloading, shows the same prompt" do
+    end
+
+    test "opening the form but typing nothing, then reloading, shows no prompt" do
+    end
+
+    test "cancelling the form, then reloading, shows no prompt" do
+    end
+
+    test "navigating away and back several times with no form open, then reloading, shows no prompt — catches a leaked listener" do
+    end
+  end
+
   defmodule NewClientModalBrowserGaps do
     @moduledoc """
     `M2M-A04`–`A07` dismissal behaviour `Phoenix.LiveViewTest` structurally

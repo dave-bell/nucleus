@@ -25,6 +25,7 @@ covered:
 | Tooltip reveal on hover / `:focus-visible` | `SEC-A02` | daisyUI `.tooltip` is CSS pseudo-element state |
 | Escape-key dismissal, focus trap, focus restoration | `SEC-A13` | Real key events and focus management need a browser |
 | Escape and backdrop-click dismissal of the reveal modal | `SEC-A04` | Both reach the server only by running the `JS` chain in `data-cancel` |
+| The `beforeunload` warning dialog itself | `M2M-A10` | `window.beforeunload` is a browser API; the hook cannot be executed |
 
 For these, assert the *wiring* (hook attached, `phx-window-keydown` bound,
 `on_cancel` set) — never tag the test `action:` for that ID, since the test
