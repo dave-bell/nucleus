@@ -40,6 +40,30 @@ defmodule NucleusWeb.M2MClientsLive.CredentialsPanel do
   is display-only, so neither value can be resubmitted to the server by an
   errant form ancestor or a copy-paste into the wrong field.
 
+  ## Warning sits below the key pair, not above it
+
+  The two values render first, the warning directly beneath them, and the
+  dismiss button last — the operator's eyes land on the ID/secret pair,
+  read the warning immediately below without a jump back up the panel, then
+  reach the button right after. Leading with the warning (as an earlier
+  revision did) forced a look-down-then-back-up round trip for no benefit;
+  the modal's own title and this component's dismiss-only design already
+  signal "this is the one chance," so the warning does not need to be seen
+  first to do its job.
+
+  ## Copy-button tooltips point left, not the default top
+
+  Each value's row ends in a `copy_button/1`, whose default tooltip is a
+  `.tooltip-top` pseudo-element centered horizontally over the icon-only
+  button. Centered-over-the-button clips against `.modal-box`'s right edge
+  regardless of how wide the box is made — the tooltip is anchored to the
+  button's center either way, and the button itself sits close to that
+  edge by design (the value it copies fills the rest of the row). Both
+  calls below pass `tooltip_position="left"` instead, which anchors the
+  tooltip's content to the left of the button — away from the edge — so
+  nothing needs to clip and the box keeps `.modal-box`'s ordinary default
+  width.
+
   ## DOM ids default to issue #38's contract, overridable for reuse
 
   The seven ids below are the ones #38's plan tabulates for the creation
@@ -89,18 +113,6 @@ defmodule NucleusWeb.M2MClientsLive.CredentialsPanel do
           Client created
         </h2>
 
-        <div
-          id={@warning_dom_id}
-          role="alert"
-          class="alert alert-warning mb-4 items-start"
-        >
-          <.icon name="hero-exclamation-triangle" class="size-5 shrink-0 mt-0.5" />
-          <span>
-            This secret will not be shown again. Copy both values now — if it's
-            lost, the only recovery is rotating the secret.
-          </span>
-        </div>
-
         <div class="space-y-4">
           <div>
             <div class="text-sm font-medium mb-1">Client ID</div>
@@ -111,7 +123,12 @@ defmodule NucleusWeb.M2MClientsLive.CredentialsPanel do
               >
                 {@client_id}
               </div>
-              <.copy_button id={@copy_client_id_dom_id} value={@client_id} label="Copy client ID" />
+              <.copy_button
+                id={@copy_client_id_dom_id}
+                value={@client_id}
+                label="Copy client ID"
+                tooltip_position="left"
+              />
             </div>
           </div>
 
@@ -128,14 +145,27 @@ defmodule NucleusWeb.M2MClientsLive.CredentialsPanel do
                 id={@copy_client_secret_dom_id}
                 value={@client_secret}
                 label="Copy secret"
+                tooltip_position="left"
               />
             </div>
           </div>
         </div>
 
+        <div
+          id={@warning_dom_id}
+          role="alert"
+          class="alert alert-warning mt-4 mb-4 items-start"
+        >
+          <.icon name="hero-exclamation-triangle" class="size-5 shrink-0 mt-0.5" />
+          <span>
+            Copy the secret now. It will not be shown again. If it's lost,
+            the only recovery is rotating the secret.
+          </span>
+        </div>
+
         <div class="modal-action">
           <.button id={@dismiss_dom_id} type="button" variant="primary" phx-click={@on_dismiss}>
-            I've copied both values — dismiss
+            Done
           </.button>
         </div>
       </.focus_wrap>
