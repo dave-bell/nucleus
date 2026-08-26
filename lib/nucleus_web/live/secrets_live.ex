@@ -594,7 +594,12 @@ defmodule NucleusWeb.SecretsLive do
   @impl Phoenix.LiveView
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope} environments={@environments}>
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      environments={@environments}
+      expanded_categories={@expanded_categories}
+    >
       <.empty_state
         :if={@environment_status == :invalid}
         id="secrets-invalid-environment"

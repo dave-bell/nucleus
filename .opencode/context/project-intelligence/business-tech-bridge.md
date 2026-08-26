@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.18 | Updated: 2026-08-25 -->
+<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.21 | Updated: 2026-08-25 -->
 
 # Business ↔ Tech Bridge
 
@@ -57,9 +57,10 @@ was added or removed, so the `ENV-A01`–`A07` / `7` count above is unchanged �
 against an older commit should read this as a wording fix, not a coverage change.
 
 **Most "Planned" columns are still unimplemented.** `NucleusWeb.Layouts` (app shell, header,
-sidebar) and `test/nucleus_web/live/shell_test.exs` now exist (EN-7) — a deliberate subset only,
-with no `@tag action:` claimed, so `NAV-A01`–`A12` coverage is still zero until the dedicated
-`NAV-*` ticket lands. `NucleusWeb.SecretsLive` and `test/nucleus_web/live/secrets_live_test.exs`
+sidebar) and `test/nucleus_web/live/shell_test.exs` now exist (EN-7) — a deliberate subset only.
+`NAV-A04`–`A07` are now claimed and covered too (`NAV-S1`/#53, see below); `NAV-A01`–`A03`,
+`A08`–`A12` remain uncovered, needing authentication and the Applications view.
+`NucleusWeb.SecretsLive` and `test/nucleus_web/live/secrets_live_test.exs`
 also now exist (SEC-S1/#9, SEC-S2/#10, SEC-S3/#11, SEC-S4/#12, SEC-S5/#13, SEC-S6/#14) —
 `SEC-A01`–`A14`, `A17` are claimed and covered; the module validates and resolves the environment,
 lists a `Nucleus.Secrets` boundary's secrets **with no value column at all** (no plaintext and no
@@ -164,7 +165,7 @@ the catalogue by one action.
 
 `NucleusWeb.EnvironmentsLive` and `test/nucleus_web/live/environments_live_test.exs` also now
 exist (ENV-S1/#52): `ENV-A02`–`A07` are claimed and covered. `ENV-A01` (sidebar category
-grouping/expand) remains unclaimed — `NAV-S1`'s job. The module mirrors `NucleusWeb.SecretsLive`'s
+grouping/expand) is now also claimed and covered — `NAV-S1`/#53, see below. The module mirrors `NucleusWeb.SecretsLive`'s
 `handle_params/3`/kind→DOM-id pattern one boundary narrower (`Nucleus.Environments.fetch/2` only,
 no `Nucleus.Secrets` boundary to also match on), renders the IRI as escaped text with a
 `<.copy_button>` alongside an `#open-iri` "open in new tab" link — `iri_href/1` only allows the
@@ -175,6 +176,72 @@ to a neutral swatch, with the raw string still shown as text. The sidebar's `#en
 link
 (`lib/nucleus_web/components/layouts.ex`) now points at this route instead of straight to
 `.../secrets`; `Manage Secrets` on the detail page is what reaches `NucleusWeb.SecretsLive` now.
+
+`NAV-A04`–`A07` are now claimed and covered too, and `ENV-A01` above is what that same work
+claims (`NAV-S1`/#53): `NucleusWeb.SidebarEnvironments.group/1`
+(`lib/nucleus_web/live/sidebar_environments.ex`, `test/nucleus_web/live/sidebar_environments_test.exs`)
+is a pure function grouping the sidebar's environments by category — multi-category environments
+duplicate into each of their groups, `categories: []` becomes a single `:uncategorized` group
+sorted last regardless of name, named groups sort case-insensitively alphabetically (the same
+`{String.downcase(x), x}` tiebreak `Nucleus.M2M.list/1` uses for client names), and each group
+carries its own `count`. This module, not `NucleusWeb.EnvironmentsHook`, now owns
+archived-exclusion too — `NAV-A04`'s acceptance bar required exclusion be unit-tested directly at
+this pure-function layer, without mounting a LiveView, so the hook stopped filtering and
+`group/1` filters instead; `@environments` now carries every environment the tenant has, archived
+included, and nothing outside this module and `NucleusWeb.Layouts` reads that assign. The flat
+`#environments-list` `layouts.ex` shipped as EN-7's deliberate stopgap (and its own
+scope-out comment) are both gone, replaced by one `<details>`-style disclosure per category —
+`#environment-category-{slug}`/`-toggle`/`-list`, `{slug}` derived from the category name or
+`uncategorized` — collapsed by default, each environment link now navigating to
+`/environments/:short_name` (the ENV-S1 detail route) rather than straight to `.../secrets`.
+
+Per-category expand/collapse state (`:expanded_categories`, a `MapSet` of slugs) lives on the
+LiveView's own socket, not client-side `JS.toggle_attribute` like the sidebar-wide
+collapse-to-icon-rail control (`toggle_sidebar/1`) — `Layouts.app` is a function component
+rendered from four different LiveViews, so a `"toggle-category"` event needs a handler reachable
+from all of them without each duplicating one. `NucleusWeb.EnvironmentsHook`'s `on_mount` now
+also calls `Phoenix.LiveView.attach_hook/4` for the `:handle_event` stage, halting the lifecycle
+for `"toggle-category"` and falling through (`{:cont, socket}`) for every other event — the
+pattern `Phoenix.LiveView`'s own docs name for "sharing event handling logic" across LiveViews via
+lifecycle hooks rather than a `LiveComponent`. This also makes `NAV-A05` and `ENV-A01` (both
+`Test layer: e2e` in the wiki, with no browser driver in this repo per `docs/adr/0008`) provable
+through a plain `render_click/1` in `Phoenix.LiveViewTest`, matching the
+`phx-click="event"`-over-`JS.exec` convention `docs/adr/0012` set — collapsed/expanded state is a
+real assign, not an unobservable client-side attribute toggle, so both are claimed as fully
+proven, not the wiring-only partial claim `SEC-A04`/`SEC-A13` carry. `mix nucleus.trace --feature NAV`
+now reports 4/12 covered (`NAV-A04`–`A07`; the rest need authentication and the Applications
+view) and `--feature ENV` reports 7/7.
+
+`layouts.ex`'s per-category DOM id was, until a post-implementation code review on this same
+branch, derived from `category_slug/1` alone — lowercase the category name, collapse every run
+of non-alphanumeric characters to `-`. `group/1` keys groups on the exact category string, so
+`"Prod East"`, `"Prod-East"`, and `"PROD_EAST"` are three distinct groups to it but one slug,
+`"prod-east"`, to the old `category_slug/1` — two categories colliding this way would render
+with the same DOM id (`Phoenix.LiveViewTest` itself raises `Duplicate id found` rather than
+tolerating it) and share `:expanded_categories` membership, so toggling one silently
+toggled the other. `NucleusWeb.SidebarEnvironments.with_slugs/1` (now what `layouts.ex` renders
+against, not a bare `category_slug/1` call per group) disambiguates only on an actual collision
+— a later duplicate in `group/1`'s own sort order gets a stable `-2`, `-3`, ... suffix, so a
+category with no colliding sibling (every category in this project's fixtures) keeps its plain
+slug and no existing `#environment-category-...` test assertion changed. See `docs/adr/0023`'s
+"Correction" subsection.
+
+`:expanded_categories` no longer lives *only* on the socket assign described above
+(`docs/adr/0024-sidebar-expand-state-survives-navigation.md`, found by manual testing on this
+same branch before this ticket's PR opened): every sidebar child link is `<.link navigate>`,
+which fully remounts `EnvironmentsLive` even when the destination is the same LiveView module —
+`on_mount` reran unconditionally and wiped the assign on every child selection, not an edge case.
+`NucleusWeb.SidebarNavState` (a `GenServer`-owned, `:protected` ETS table) now backs the assign;
+`EnvironmentsHook.on_mount/4` reads it (`SidebarNavState.get/1`, direct `:ets.lookup/2`, no
+message pass — this runs on every mount) and `"toggle-category"` writes through it
+(`SidebarNavState.toggle/2`, a `GenServer.call/2` so two tabs of the same session toggling at once
+cannot lose an update). Keyed by `nav_session_id`, a random id `NucleusWeb.Plugs.AssignScope` now
+mints into the session — deliberately not `current_scope`/user identity, since
+`AUTH_ENABLED=false` (`docs/adr/0005-deferred-authentication.md`) means every request shares one
+dev identity today. `NAV-A04`–`A07`'s own acceptance criteria are unchanged by this — it is a
+correction, not a new claim — but `shell_test.exs` gained two regression tests proving a category
+stays expanded across exactly this kind of navigation, confirmed to fail against the prior
+plain-assign implementation.
 
 Two conformance notes worth carrying forward, both recorded in
 `docs/adr/0012-secret-reveal-modal-and-icon-only-copy-affordances.md`:

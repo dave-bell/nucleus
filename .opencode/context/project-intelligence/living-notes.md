@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/notes | Priority: high | Version: 1.19 | Updated: 2026-08-25 -->
+<!-- Context: project-intelligence/notes | Priority: high | Version: 1.22 | Updated: 2026-08-25 -->
 
 # Living Notes
 
@@ -114,6 +114,12 @@ deploys it.
   `phx-click="event"` rather than a `JS.exec("data-cancel", ...)` chain — `render_click/1` can
   drive the former and not the latter. The modal's `phx-remove` still runs `hide_modal/2`, so
   focus restoration is unaffected. See `docs/adr/0012-secret-reveal-modal-and-icon-only-copy-affordances.md`.
+- `Phoenix.LiveView.attach_hook/4` on the `:handle_event` stage, added from an `on_mount` hook,
+  for an event a shared function component (`Layouts.app`) triggers but every LiveView that
+  renders it would otherwise need its own identical handler for — halt the lifecycle
+  (`{:halt, socket}`) for the event the hook owns, fall through (`{:cont, socket}`) for every
+  other event. First used for the sidebar's per-category expand/collapse toggle. See
+  `docs/adr/0023-sidebar-environment-grouping-and-category-toggle-state.md`.
 - `Nucleus.Audit.Sink.Test` falls back to `Process.get(:"$callers")` when the writing process
   has no direct `register/1` call — reaches a test's own `AuditCase` registration from inside a
   mounted LiveView, using the same ancestry chain Ecto's SQL Sandbox relies on. Any test
@@ -176,6 +182,33 @@ deploys it.
 ## Archive (Resolved Items)
 
 Moved here for historical reference.
+
+**Sidebar category collapsed on every child selection** — *was: not previously tracked — found and fixed same session, on the NAV-S1 branch before its PR opened*
+*Resolved*: 2026-08-25 by NAV-S1 (issue #53).
+*Outcome*: `:expanded_categories` (`docs/adr/0023`) was a plain socket assign, and every sidebar
+child link is `<.link navigate>` — which fully remounts `EnvironmentsLive` even to the same
+LiveView module, per `Phoenix.LiveView.push_navigate/2`'s own docs, wiping the assign on every
+click regardless of which category it came from. Replaced with `NucleusWeb.SidebarNavState`, a
+`GenServer`-owned `:protected` ETS table keyed by a random `nav_session_id`
+(`NucleusWeb.Plugs.AssignScope`), not `current_scope` — `AUTH_ENABLED=false` means every request
+shares one dev identity today, a bad persistence key. Reads bypass the `GenServer`
+(`:ets.lookup/2`); writes go through it (`GenServer.call/2`) so concurrent same-session toggles
+cannot lose an update.
+*See*: `docs/adr/0024-sidebar-expand-state-survives-navigation.md`
+
+**Category names that collide after slugification shared a DOM id and expand state** — *was: not previously tracked — found by code review of the above fix, same session, before NAV-S1's PR opened*
+*Resolved*: 2026-08-25 by NAV-S1 (issue #53).
+*Outcome*: `layouts.ex`'s per-category DOM id came from `category_slug/1` alone (lowercase,
+collapse non-alphanumerics to `-`) — free-form tenant category names with no normalization
+guarantee mean `"Prod East"`, `"Prod-East"`, and `"PROD_EAST"` are three distinct groups to
+`SidebarEnvironments.group/1` (exact-string keyed) but one slug, `"prod-east"`. Colliding
+categories rendered with the same DOM id (`Phoenix.LiveViewTest` raises `Duplicate id found`
+rather than tolerating it) and shared `:expanded_categories` membership, so toggling one
+silently toggled the other. `NucleusWeb.SidebarEnvironments.with_slugs/1` disambiguates only on
+an actual collision — a later duplicate gets a stable `-2`, `-3`, ... suffix in `group/1`'s own
+sort order — so every category with no colliding sibling (all of this project's fixtures) keeps
+its unchanged plain slug.
+*See*: `docs/adr/0023-sidebar-environment-grouping-and-category-toggle-state.md`'s "Correction" subsection
 
 **`Nucleus.Secrets.reveal/3`'s key validator was a second, weaker copy of `Environments.validate_name/1`'s deny-list** — *was: Technical Debt, Low*
 *Resolved*: 2026-08-19 by SEC-S6 (issue #14).
