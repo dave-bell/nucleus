@@ -22,16 +22,18 @@ config :nucleus, NucleusWeb.Endpoint,
 # independently — see lib/nucleus/backend.ex and
 # docs/adr/0002-backend-adapter-boundaries.md.
 #
-# These are the `real` implementations, delivered by EN-3, EN-4, and EN-10.
-# dev and test override all three to the `.Local` implementations so a fresh
-# clone needs no credentials; runtime.exs allows a per-boundary override via
-# SECRETS_BACKEND, TENANT_API_BACKEND, and M2M_BACKEND.
+# These are the `real` implementations, delivered by EN-3, EN-4, EN-10, and
+# EN-11. dev and test override all four to the `.Local` implementations so a
+# fresh clone needs no credentials; runtime.exs allows a per-boundary
+# override via SECRETS_BACKEND, TENANT_API_BACKEND, M2M_BACKEND, and
+# NOMAD_JOBS_BACKEND.
 #
 # There is deliberately no `auth` boundary. Authentication is never swappable.
 config :nucleus, :backends,
   secrets: Nucleus.Secrets.Store.Aws,
   tenant_api: Nucleus.TenantApi.Http,
-  m2m: Nucleus.M2M.Clients.Cognito
+  m2m: Nucleus.M2M.Clients.Cognito,
+  nomad_jobs: Nucleus.NomadJobs.Http
 
 # The tenant's backing API — the authority on environments. `base_url` has no
 # default on purpose: there is no sensible host to fall back to, and a boundary
@@ -74,6 +76,19 @@ config :nucleus, Nucleus.M2M.Clients.Cognito,
   role_arn: nil,
   region: nil,
   external_id: nil
+
+# The tenant's Nomad cluster — see lib/nucleus/nomad/transport.ex. Both
+# NOMAD_ADDR and NOMAD_TOKEN are documented as Required in
+# docs/requirements/Platform-Operations.md, but there is no boot-time check
+# here, matching Nucleus.TenantApi.Http's base_url reasoning: a missing value
+# surfaces as `:not_configured` on the call, never a crash and never a
+# request to a default host. NOMAD_TOKEN absent means every request omits
+# the X-Nomad-Token header entirely, never an empty one.
+config :nucleus, Nucleus.Nomad.Transport,
+  base_url: nil,
+  token: nil,
+  connect_timeout_ms: 5_000,
+  receive_timeout_ms: 10_000
 
 # Identity/scope seam (EN-6) — auth is deliberately deferred; see
 # lib/nucleus/scope.ex and docs/adr/0005-deferred-authentication.md.

@@ -104,6 +104,22 @@ defmodule Nucleus.BackendCase do
   end
 
   @doc """
+  Appends one entry to the `Nucleus.NomadJobs.Local` boundary's seeded list.
+
+  `attrs` is `%{"stub" => ..., "detail" => ...}` — the same two
+  Nomad-shaped maps `Nucleus.NomadJobs.Job.from_api/3` and `.child?/1`
+  consume, matching the seed file's own shape
+  (`Nucleus.NomadJobs.Local`'s moduledoc).
+  """
+  @spec seed_nomad_job(map()) :: :ok
+  def seed_nomad_job(%{"stub" => %{}, "detail" => %{}} = attrs) do
+    Seed.update(:nomad_jobs, fn nomad_jobs ->
+      nomad_jobs = nomad_jobs || []
+      nomad_jobs ++ [attrs]
+    end)
+  end
+
+  @doc """
   Makes every local backend implementation return `{:error, %Error{kind: kind}}`
   on its next call, via `LOCAL_FORCE_ERROR` (`Nucleus.Backend.Faults`).
 
