@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/notes | Priority: high | Version: 1.22 | Updated: 2026-08-25 -->
+<!-- Context: project-intelligence/notes | Priority: high | Version: 1.23 | Updated: 2026-08-26 -->
 
 # Living Notes
 
@@ -156,6 +156,16 @@ deploys it.
   vacuous for exactly this reason until ADR-0012's change caught it. Use
   `refute Enum.empty?(LazyHTML.query(doc, sel))`. `LazyHTML.attribute/2` **does** return a plain
   list, so `== ["ignore"]` and `== []` on an attribute result are fine.
+- **A `/` in an element id makes it unaddressable by any CSS selector, and LazyHTML *raises*
+  rather than not matching.** `has_element?(view, "#job-acme-nightly-report/periodic-1755000000")`
+  fails with `ArgumentError: got invalid css selector`, so a test written that way errors instead
+  of passing or failing — a negative assertion built this way looks like a guard and is not one.
+  Nomad child job names contain a slash by construction (`parent/periodic-<epoch>`), and
+  `Nucleus.NomadJobs.Job.name` comes straight from the API response with no allowlist, so
+  `NucleusWeb.ApplicationsLive`'s `job-<name>` row and cell ids are addressable **only** because
+  `Job.child?/1` filters those names out at the boundary. Prove a child's absence with
+  `refute html =~ child_name`, not a selector. Same class of trap as the `LazyHTML.query/2` entry
+  above. See `docs/adr/0025-applications-listing-single-module-and-name-derived-dom-ids.md`.
 - **A conditionally-rendered modal runs `JS.pop_focus/1` twice** on any dismissal route that
   goes through `data-cancel` (the X, Escape, a backdrop click): once client-side from
   `JS.exec("phx-remove")`, then again when the server removes the element and `phx-remove` fires
