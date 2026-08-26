@@ -45,4 +45,33 @@ defmodule NucleusWeb.Plugs.AssignScopeTest do
       AssignScope.call(conn, [])
     end
   end
+
+  @tag :unit
+  test "mints a nav_session_id into the session", %{conn: conn} do
+    conn = AssignScope.call(conn, [])
+
+    assert is_binary(Plug.Conn.get_session(conn, :nav_session_id))
+  end
+
+  @tag :unit
+  test "a request that already has a nav_session_id keeps it, rather than minting a new one", %{
+    conn: conn
+  } do
+    conn = Plug.Conn.put_session(conn, :nav_session_id, "existing-id")
+
+    conn = AssignScope.call(conn, [])
+
+    assert Plug.Conn.get_session(conn, :nav_session_id) == "existing-id"
+  end
+
+  @tag :unit
+  test "two separate requests get two different nav_session_ids", %{conn: conn} do
+    other_conn = Plug.Test.init_test_session(Phoenix.ConnTest.build_conn(), %{})
+
+    conn = AssignScope.call(conn, [])
+    other_conn = AssignScope.call(other_conn, [])
+
+    refute Plug.Conn.get_session(conn, :nav_session_id) ==
+             Plug.Conn.get_session(other_conn, :nav_session_id)
+  end
 end
