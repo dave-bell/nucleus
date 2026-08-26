@@ -145,6 +145,30 @@ if user_pool_id = System.get_env("COGNITO_USER_POOL_ID") do
   config :nucleus, Nucleus.M2M.Clients.Cognito, user_pool_id: user_pool_id
 end
 
+# Nomad job reads for the :nomad_jobs boundary's real implementation — read
+# only when that implementation is actually selected, same reasoning as the
+# :secrets and :m2m blocks above. Both NOMAD_ADDR and NOMAD_TOKEN are
+# documented as Required in docs/requirements/Platform-Operations.md, so a
+# real implementation with either missing raises at boot rather than
+# reaching :not_configured on the first call — a developer running fully
+# local, the dev/test default, must not have to invent either to boot the
+# app, which is exactly why this block is gated on the real implementation
+# being selected.
+if Application.get_env(:nucleus, :backends, [])[:nomad_jobs] ==
+     Nucleus.Backend.impl_for_mode!(:nomad_jobs, :real) do
+  nomad_addr =
+    System.get_env("NOMAD_ADDR") ||
+      raise "environment variable NOMAD_ADDR is missing (required when the :nomad_jobs boundary runs its real implementation)"
+
+  nomad_token =
+    System.get_env("NOMAD_TOKEN") ||
+      raise "environment variable NOMAD_TOKEN is missing (required when the :nomad_jobs boundary runs its real implementation)"
+
+  config :nucleus, Nucleus.Nomad.Transport,
+    base_url: nomad_addr,
+    token: nomad_token
+end
+
 # Audit sink overrides. AUDIT_FORMAT is "json" or "text" (see
 # Nucleus.Audit.Format); anything else raises at boot rather than silently
 # falling back — a typo here should not silently change what a compliance

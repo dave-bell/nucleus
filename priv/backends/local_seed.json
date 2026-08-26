@@ -179,5 +179,344 @@
         }
       ]
     }
-  }
+  },
+  "nomad_jobs": [
+    {
+      "stub": {
+        "ID": "acme-api",
+        "ParentID": null,
+        "Name": "acme-api",
+        "Status": "running",
+        "Periodic": false
+      },
+      "detail": {
+        "Version": 7,
+        "Periodic": null,
+        "TaskGroups": [
+          {
+            "Tasks": [
+              {
+                "Name": "migrate",
+                "Lifecycle": { "Hook": "prestart", "Sidecar": false },
+                "Leader": false,
+                "Config": { "image": "registry.example.com/acme/migrate:sha-aaa1111" }
+              },
+              {
+                "Name": "api",
+                "Lifecycle": null,
+                "Leader": true,
+                "Config": { "image": "registry.example.com/acme/api:v1.4.0" }
+              },
+              {
+                "Name": "connect-proxy-acme-api",
+                "Lifecycle": { "Hook": "prestart", "Sidecar": true },
+                "Leader": false,
+                "Config": { "image": "envoyproxy/envoy:v1.29.0" }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "stub": {
+        "ID": "acme-ingress",
+        "ParentID": null,
+        "Name": "acme-ingress",
+        "Status": "running",
+        "Periodic": false
+      },
+      "detail": {
+        "Version": 3,
+        "Periodic": null,
+        "TaskGroups": [
+          {
+            "Tasks": [
+              {
+                "Name": "connect-ingress-acme-ingress",
+                "Lifecycle": null,
+                "Leader": false,
+                "Config": { "image": "${meta.connect.gateway_image}" }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "stub": {
+        "ID": "acme-nightly-report",
+        "ParentID": null,
+        "Name": "acme-nightly-report",
+        "Status": "running",
+        "Periodic": true
+      },
+      "detail": {
+        "Version": 2,
+        "Periodic": { "Spec": "0 3 * * *", "Specs": [], "SpecType": "cron" },
+        "TaskGroups": [
+          {
+            "Tasks": [
+              {
+                "Name": "report",
+                "Lifecycle": null,
+                "Leader": true,
+                "Config": { "image": "registry.example.com/acme/report:sha-bbb2222" }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "stub": {
+        "ID": "acme-nightly-report/periodic-1755000000",
+        "ParentID": "acme-nightly-report",
+        "Name": "acme-nightly-report/periodic-1755000000",
+        "Status": "dead",
+        "Periodic": false
+      },
+      "detail": {
+        "Version": 2,
+        "Periodic": null,
+        "TaskGroups": [
+          {
+            "Tasks": [
+              {
+                "Name": "report",
+                "Lifecycle": null,
+                "Leader": true,
+                "Config": { "image": "registry.example.com/acme/report:sha-bbb2222" }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "stub": {
+        "ID": "acme-nightly-report/periodic-1755086400",
+        "ParentID": "acme-nightly-report",
+        "Name": "acme-nightly-report/periodic-1755086400",
+        "Status": "dead",
+        "Periodic": false
+      },
+      "detail": {
+        "Version": 2,
+        "Periodic": null,
+        "TaskGroups": [
+          {
+            "Tasks": [
+              {
+                "Name": "report",
+                "Lifecycle": null,
+                "Leader": true,
+                "Config": { "image": "registry.example.com/acme/report:sha-bbb2222" }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "stub": {
+        "ID": "acme-hourly-sync",
+        "ParentID": null,
+        "Name": "acme-hourly-sync",
+        "Status": "running",
+        "Periodic": true
+      },
+      "detail": {
+        "Version": 5,
+        "Periodic": { "Spec": "", "Specs": ["0 * * * *"], "SpecType": "cron" },
+        "TaskGroups": [
+          {
+            "Tasks": [
+              {
+                "Name": "sync",
+                "Lifecycle": null,
+                "Leader": true,
+                "Config": { "image": "registry.example.com/acme/sync:v3.2.1" }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "stub": {
+        "ID": "acme-batch-import",
+        "ParentID": null,
+        "Name": "acme-batch-import",
+        "Status": "running",
+        "Periodic": false
+      },
+      "detail": {
+        "Version": 1,
+        "Periodic": null,
+        "TaskGroups": [
+          {
+            "Tasks": [
+              {
+                "Name": "import",
+                "Lifecycle": null,
+                "Leader": true,
+                "Config": { "image": "registry.example.com/acme/batch-import:v2.0.0" }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "stub": {
+        "ID": "acme-batch-import/dispatch-1755000111",
+        "ParentID": "acme-batch-import",
+        "Name": "acme-batch-import/dispatch-1755000111",
+        "Status": "dead",
+        "Periodic": false
+      },
+      "detail": {
+        "Version": 1,
+        "Periodic": null,
+        "TaskGroups": [
+          {
+            "Tasks": [
+              {
+                "Name": "import",
+                "Lifecycle": null,
+                "Leader": true,
+                "Config": { "image": "registry.example.com/acme/batch-import:v2.0.0" }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "stub": {
+        "ID": "acme-batch-import/dispatch-1755000222",
+        "ParentID": "acme-batch-import",
+        "Name": "acme-batch-import/dispatch-1755000222",
+        "Status": "dead",
+        "Periodic": false
+      },
+      "detail": {
+        "Version": 1,
+        "Periodic": null,
+        "TaskGroups": [
+          {
+            "Tasks": [
+              {
+                "Name": "import",
+                "Lifecycle": null,
+                "Leader": true,
+                "Config": { "image": "registry.example.com/acme/batch-import:v2.0.0" }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "stub": {
+        "ID": "acme-adhoc-export",
+        "ParentID": null,
+        "Name": "acme-adhoc-export",
+        "Status": "running",
+        "Periodic": false
+      },
+      "detail": {
+        "Version": 1,
+        "Periodic": null,
+        "TaskGroups": [
+          {
+            "Tasks": [
+              {
+                "Name": "export",
+                "Lifecycle": null,
+                "Leader": true,
+                "Config": { "image": "registry.example.com/acme/adhoc-export:v1.0.0" }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "stub": {
+        "ID": "acme-legacy-raw-exec",
+        "ParentID": null,
+        "Name": "acme-legacy-raw-exec",
+        "Status": "running",
+        "Periodic": false
+      },
+      "detail": {
+        "Version": 1,
+        "Periodic": null,
+        "TaskGroups": [
+          {
+            "Tasks": [
+              {
+                "Name": "connect-proxy-acme-legacy-raw-exec",
+                "Lifecycle": { "Hook": "prestart", "Sidecar": true },
+                "Leader": false,
+                "Config": { "image": "envoyproxy/envoy:v1.29.0" }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "stub": {
+        "ID": "acme-worker-pending",
+        "ParentID": null,
+        "Name": "acme-worker-pending",
+        "Status": "pending",
+        "Periodic": false
+      },
+      "detail": {
+        "Version": 1,
+        "Periodic": null,
+        "TaskGroups": [
+          {
+            "Tasks": [
+              {
+                "Name": "worker",
+                "Lifecycle": null,
+                "Leader": true,
+                "Config": { "image": "registry.example.com/acme/worker:v0.9.0" }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "stub": {
+        "ID": "acme-worker-dead",
+        "ParentID": null,
+        "Name": "acme-worker-dead",
+        "Status": "dead",
+        "Periodic": false
+      },
+      "detail": {
+        "Version": 1,
+        "Periodic": null,
+        "TaskGroups": [
+          {
+            "Tasks": [
+              {
+                "Name": "worker",
+                "Lifecycle": null,
+                "Leader": true,
+                "Config": { "image": "registry.example.com/acme/worker:v0.8.0" }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
 }

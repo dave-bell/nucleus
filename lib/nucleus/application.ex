@@ -18,6 +18,11 @@ defmodule Nucleus.Application do
       # ship in the release but are never selected in production, so gating this
       # would only add a "seed owner missing" branch for readers to handle.
       Nucleus.Backend.Seed,
+      # Runs Nucleus.NomadJobs.list/1's detail fan-out unlinked from its caller
+      # (Task.Supervisor.async_nolink/2) — a crash inside the fan-out must
+      # degrade to {:error, %Error{kind: :unavailable}} within list/1's own
+      # budget, never take the calling LiveView process down with it.
+      {Task.Supervisor, name: Nucleus.TaskSupervisor},
       # Start a worker by calling: Nucleus.Worker.start_link(arg)
       # {Nucleus.Worker, arg},
       # Start to serve requests, typically the last entry
