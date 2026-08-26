@@ -56,6 +56,15 @@ state, matching `SEC-A17` and `Nucleus.Environments.fetch/2`'s `:unavailable` ki
 was added or removed, so the `ENV-A01`–`A07` / `7` count above is unchanged — a reader diffing
 against an older commit should read this as a wording fix, not a coverage change.
 
+`APP-A03`'s wording changed (APP-D1) — it now names `Job.Version` (Nomad's scheduler revision,
+read from the per-job detail call per EN-11 Decision 1) as the version source, and calls it a
+revision counter rather than a release identifier. The error matrix's "no container image
+configured" row no longer claims version is unavailable too — a missing image doesn't take the
+revision counter down with it. A new row covers the real cause: a per-job detail-fetch failure,
+which makes version, image, and cron unavailable together (EN-11 Decision 6). No action ID was
+added or removed, so the `APP-A01`–`A08` / `8` count above is unchanged — a wording fix, not a
+coverage change.
+
 **Most "Planned" columns are still unimplemented.** `NucleusWeb.Layouts` (app shell, header,
 sidebar) and `test/nucleus_web/live/shell_test.exs` now exist (EN-7) — a deliberate subset only.
 `NAV-A04`–`A07` are now claimed and covered too (`NAV-S1`/#53, see below); `NAV-A01`–`A03`,
