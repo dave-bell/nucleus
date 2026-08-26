@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.20 | Updated: 2026-08-25 -->
+<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.21 | Updated: 2026-08-25 -->
 
 # Business ↔ Tech Bridge
 
@@ -211,6 +211,20 @@ real assign, not an unobservable client-side attribute toggle, so both are claim
 proven, not the wiring-only partial claim `SEC-A04`/`SEC-A13` carry. `mix nucleus.trace --feature NAV`
 now reports 4/12 covered (`NAV-A04`–`A07`; the rest need authentication and the Applications
 view) and `--feature ENV` reports 7/7.
+
+`layouts.ex`'s per-category DOM id was, until a post-implementation code review on this same
+branch, derived from `category_slug/1` alone — lowercase the category name, collapse every run
+of non-alphanumeric characters to `-`. `group/1` keys groups on the exact category string, so
+`"Prod East"`, `"Prod-East"`, and `"PROD_EAST"` are three distinct groups to it but one slug,
+`"prod-east"`, to the old `category_slug/1` — two categories colliding this way would render
+with the same DOM id (`Phoenix.LiveViewTest` itself raises `Duplicate id found` rather than
+tolerating it) and share `:expanded_categories` membership, so toggling one silently
+toggled the other. `NucleusWeb.SidebarEnvironments.with_slugs/1` (now what `layouts.ex` renders
+against, not a bare `category_slug/1` call per group) disambiguates only on an actual collision
+— a later duplicate in `group/1`'s own sort order gets a stable `-2`, `-3`, ... suffix, so a
+category with no colliding sibling (every category in this project's fixtures) keeps its plain
+slug and no existing `#environment-category-...` test assertion changed. See `docs/adr/0023`'s
+"Correction" subsection.
 
 `:expanded_categories` no longer lives *only* on the socket assign described above
 (`docs/adr/0024-sidebar-expand-state-survives-navigation.md`, found by manual testing on this

@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/notes | Priority: high | Version: 1.21 | Updated: 2026-08-25 -->
+<!-- Context: project-intelligence/notes | Priority: high | Version: 1.22 | Updated: 2026-08-25 -->
 
 # Living Notes
 
@@ -195,6 +195,20 @@ shares one dev identity today, a bad persistence key. Reads bypass the `GenServe
 (`:ets.lookup/2`); writes go through it (`GenServer.call/2`) so concurrent same-session toggles
 cannot lose an update.
 *See*: `docs/adr/0024-sidebar-expand-state-survives-navigation.md`
+
+**Category names that collide after slugification shared a DOM id and expand state** — *was: not previously tracked — found by code review of the above fix, same session, before NAV-S1's PR opened*
+*Resolved*: 2026-08-25 by NAV-S1 (issue #53).
+*Outcome*: `layouts.ex`'s per-category DOM id came from `category_slug/1` alone (lowercase,
+collapse non-alphanumerics to `-`) — free-form tenant category names with no normalization
+guarantee mean `"Prod East"`, `"Prod-East"`, and `"PROD_EAST"` are three distinct groups to
+`SidebarEnvironments.group/1` (exact-string keyed) but one slug, `"prod-east"`. Colliding
+categories rendered with the same DOM id (`Phoenix.LiveViewTest` raises `Duplicate id found`
+rather than tolerating it) and shared `:expanded_categories` membership, so toggling one
+silently toggled the other. `NucleusWeb.SidebarEnvironments.with_slugs/1` disambiguates only on
+an actual collision — a later duplicate gets a stable `-2`, `-3`, ... suffix in `group/1`'s own
+sort order — so every category with no colliding sibling (all of this project's fixtures) keeps
+its unchanged plain slug.
+*See*: `docs/adr/0023-sidebar-environment-grouping-and-category-toggle-state.md`'s "Correction" subsection
 
 **`Nucleus.Secrets.reveal/3`'s key validator was a second, weaker copy of `Environments.validate_name/1`'s deny-list** — *was: Technical Debt, Low*
 *Resolved*: 2026-08-19 by SEC-S6 (issue #14).

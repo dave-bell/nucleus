@@ -92,6 +92,29 @@ has_element?/2` after) than as a class-attribute check, and matches the
 already-established test convention of asserting on a state attribute's
 *value* (`aria-expanded`) rather than on visual hiding.
 
+### Correction: a category slug alone is not a unique DOM id — `with_slugs/1` disambiguates
+
+Found by code review after this ADR's own implementation landed on this same branch, before
+this ticket's PR opened. `category_slug/1` (now `NucleusWeb.SidebarEnvironments.slug/1`)
+lowercases a category name and collapses every run of non-alphanumeric characters to a single
+`-`. Categories are free-form strings from the tenant API with no normalization guaranteed —
+`"Prod East"`, `"Prod-East"`, and `"PROD_EAST"` are three distinct groups to `group/1` (it keys
+on the exact string) but all three collapse to the same slug, `"prod-east"`. Rendering each
+group's DOM id and `:expanded_categories` membership key directly from `slug/1` therefore meant
+two unrelated categories could render with the same DOM id — `Phoenix.LiveViewTest` itself
+raises on this (`Duplicate id found while testing LiveView`) rather than silently tolerating it
+— and toggling one would silently expand/collapse the other, since both mapped to the same
+`MapSet` member.
+
+`NucleusWeb.SidebarEnvironments.with_slugs/1` fixes this by disambiguating only on an actual
+collision: a later duplicate in `group/1`'s own deterministic sort order keeps its base slug
+with a stable `-2`, `-3`, ... suffix appended, tracked with a `{acc, seen}` reduce over the
+group list. A category with no colliding sibling — the overwhelming common case, and every
+category in this project's seeded fixtures — keeps its plain slug unchanged, so no existing
+test's `#environment-category-...` assertion needed to change. `layouts.ex` now renders against
+`SidebarEnvironments.with_slugs(groups)` (a list of `%{group: group, slug: slug}` pairs)
+instead of computing a slug ad hoc per group with no visibility into its siblings.
+
 ## Consequences
 
 ### Positive
@@ -105,6 +128,9 @@ already-established test convention of asserting on a state attribute's
   reuse instead of inventing a new mechanism.
 - `mix nucleus.trace --feature NAV` moves from 0/12 to 4/12; `--feature ENV`
   reaches 7/7.
+- Two categories that collide on their base slug now get distinct DOM ids and independent
+  expand state, proven by `shell_test.exs`'s `CollidingCategoriesTenantApi` scenario — confirmed
+  to raise `Phoenix.LiveViewTest`'s own duplicate-id error against the pre-correction code.
 
 ### Negative
 
@@ -123,6 +149,13 @@ already-established test convention of asserting on a state attribute's
   LiveView under the `:authenticated` `live_session` that forgets this line
   silently falls back to the `MapSet.new()` default — every category
   renders collapsed and un-collapsible from that view, not a crash.
+- **A disambiguated slug's `-N` suffix is stable only for a stable set of category names** — it
+  is derived from list position among colliding siblings, so if the underlying category names
+  themselves change (one renamed or removed), which specific colliding category keeps the bare
+  slug versus a `-2`/`-3` suffix can shift. Accepted: the alternative (a content hash suffix on
+  every slug, colliding or not) would have changed every existing `#environment-category-...`
+  id and broken every test asserting one, for a problem that, absent an actual collision, does
+  not exist.
 
 ## Alternatives considered
 
