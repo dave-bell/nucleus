@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.22 | Updated: 2026-08-25 -->
+<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.23 | Updated: 2026-08-25 -->
 
 # Decisions Log
 
@@ -46,6 +46,7 @@ job and the row should point rather than paraphrase.
 | 19 | M2M client detail — `Show.mount/3` calls `fetch/2` (no audit) disconnected and `view/2` (audit) only once `connected?(socket)`, so `m2m_client_viewed` fires exactly once per open with no render flicker; `TokenValidity.humanize/1` corrected to the actual three-tier, seconds-based `M2M-A16` rule over the issue's stale hours-only draft; `Format.created_date/1` extracted so `Index`/`Show` share one formatter | 2026-08-20 | Decided | `docs/adr/0019-m2m-client-detail-mount-audit-guard-and-token-validity.md` |
 | 20 | M2M client creation — `create/4` (not the plan's stale `create/3`) threads `token_validity_minutes` through to `Clients.create_client/2`'s own structural range guard; `DenyList.suffixes/0` checked before `denied?/1` (a fail-open ordering bug caught in review, now pinned by a test); the one-time credentials panel is deliberately not `<.modal>` (no backdrop/Escape dismissal); re-lists on success and clears `:credentials` on reopen, reusing ADR-0014's patterns | 2026-08-24 | Decided | `docs/adr/0020-m2m-client-creation-and-credentials-panel.md` |
 | 21 | M2M secret rotation — `rotate/2` mirrors `create/4`'s shape (resolves through `fetch/2`, audits on success only); `CredentialsPanel` gains a `title` attribute rather than forking for rotation's wording; a failed rotation's `:unavailable` kind stays local (`#rotate-secret-error`, "reload and check") rather than collapsing to the shared page-replacing `States.unavailable/1`, since Cognito's rotate sequence can partially apply; retry means re-confirming, not a second control that skips `M2M-A12` | 2026-08-25 | Decided | `docs/adr/0021-m2m-secret-rotation-and-unavailable-copy.md` |
+| 22 | Nomad jobs adapter — `Job.Version` from the detail response not `Meta.version`; periodic run count dropped entirely; image from the `Lifecycle == nil` task not `Tasks[0]`; `ParentID` filtering covers dispatch children too; cron reads `Periodic.Specs \|\| Periodic.Spec`; one `detail_error` field covers all three detail-sourced fields; `:nomad_jobs` kept distinct from wiki `ADR-0007`'s single `NOMAD_BACKEND`; async load with a ~15s overall budget plus a 10s per-request timeout | 2026-08-25 | Decided | `docs/adr/0022-nomad-jobs-adapter.md` |
 
 No **"re-platform" decision** (fresh start) and no **inherited ADRs** — the wiki's `ADR-0001`–
 `ADR-0007` are reference only; adopting one is a decision made on its own merits.
@@ -67,7 +68,7 @@ the ADR it points at stays findable.
 
 ## Onboarding Checklist
 
-- [ ] Read the Decision Index above; `adr/0001`–`0021` are binding
+- [ ] Read the Decision Index above; `adr/0001`–`0022` are binding
 - [ ] New formal ADRs belong in `docs/adr/`, with only an index row mirrored here — the wiki's
       ADR-0001–0007 are reference only, not adopted
 - [ ] Know which decisions are pending (see `living-notes.md`)
