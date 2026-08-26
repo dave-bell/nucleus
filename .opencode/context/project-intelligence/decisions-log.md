@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.24 | Updated: 2026-08-25 -->
+<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.25 | Updated: 2026-08-25 -->
 
 # Decisions Log
 
@@ -48,6 +48,7 @@ job and the row should point rather than paraphrase.
 | 21 | M2M secret rotation — `rotate/2` mirrors `create/4`'s shape (resolves through `fetch/2`, audits on success only); `CredentialsPanel` gains a `title` attribute rather than forking for rotation's wording; a failed rotation's `:unavailable` kind stays local (`#rotate-secret-error`, "reload and check") rather than collapsing to the shared page-replacing `States.unavailable/1`, since Cognito's rotate sequence can partially apply; retry means re-confirming, not a second control that skips `M2M-A12` | 2026-08-25 | Decided | `docs/adr/0021-m2m-secret-rotation-and-unavailable-copy.md` |
 | 22 | Nomad jobs adapter — `Job.Version` from the detail response not `Meta.version`; periodic run count dropped entirely; image from the `Lifecycle == nil` task not `Tasks[0]`; `ParentID` filtering covers dispatch children too; cron reads `Periodic.Specs \|\| Periodic.Spec`; one `detail_error` field covers all three detail-sourced fields; `:nomad_jobs` kept distinct from wiki `ADR-0007`'s single `NOMAD_BACKEND`; async load with a ~15s overall budget plus a 10s per-request timeout | 2026-08-25 | Decided | `docs/adr/0022-nomad-jobs-adapter.md` |
 | 23 | Sidebar environment grouping — `NucleusWeb.SidebarEnvironments.group/1` (not `EnvironmentsHook`) now owns archived-exclusion, unit-tested directly; per-category expand/collapse is a socket assign toggled via `Phoenix.LiveView.attach_hook/4` on `:handle_event` (this codebase's first use), not client-side `JS`, since `Layouts.app` is a function component shared across four LiveViews and the toggle must be provable via `render_click/1` | 2026-08-25 | Decided | `docs/adr/0023-sidebar-environment-grouping-and-category-toggle-state.md` |
+| 24 | Sidebar expand/collapse survives navigation — `NucleusWeb.SidebarNavState` (a supervised `GenServer` owning a `:protected` ETS table) backs `:expanded_categories` instead of a plain assign, since `<.link navigate>` always remounts `EnvironmentsHook`'s `on_mount`, even to the same LiveView module; keyed by a random `nav_session_id` (`AssignScope`), not `current_scope`, since auth is deferred and every request shares one dev identity; reads bypass the `GenServer` (`:ets.lookup/2` direct), writes go through it (`GenServer.call/2`) so concurrent same-session toggles cannot lose an update | 2026-08-25 | Decided | `docs/adr/0024-sidebar-expand-state-survives-navigation.md` |
 
 No **"re-platform" decision** (fresh start) and no **inherited ADRs** — the wiki's `ADR-0001`–
 `ADR-0007` are reference only; adopting one is a decision made on its own merits.
@@ -69,7 +70,7 @@ the ADR it points at stays findable.
 
 ## Onboarding Checklist
 
-- [ ] Read the Decision Index above; `adr/0001`–`0023` are binding
+- [ ] Read the Decision Index above; `adr/0001`–`0024` are binding
 - [ ] New formal ADRs belong in `docs/adr/`, with only an index row mirrored here — the wiki's
       ADR-0001–0007 are reference only, not adopted
 - [ ] Know which decisions are pending (see `living-notes.md`)

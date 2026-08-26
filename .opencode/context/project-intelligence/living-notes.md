@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/notes | Priority: high | Version: 1.20 | Updated: 2026-08-25 -->
+<!-- Context: project-intelligence/notes | Priority: high | Version: 1.21 | Updated: 2026-08-25 -->
 
 # Living Notes
 
@@ -182,6 +182,19 @@ deploys it.
 ## Archive (Resolved Items)
 
 Moved here for historical reference.
+
+**Sidebar category collapsed on every child selection** — *was: not previously tracked — found and fixed same session, on the NAV-S1 branch before its PR opened*
+*Resolved*: 2026-08-25 by NAV-S1 (issue #53).
+*Outcome*: `:expanded_categories` (`docs/adr/0023`) was a plain socket assign, and every sidebar
+child link is `<.link navigate>` — which fully remounts `EnvironmentsLive` even to the same
+LiveView module, per `Phoenix.LiveView.push_navigate/2`'s own docs, wiping the assign on every
+click regardless of which category it came from. Replaced with `NucleusWeb.SidebarNavState`, a
+`GenServer`-owned `:protected` ETS table keyed by a random `nav_session_id`
+(`NucleusWeb.Plugs.AssignScope`), not `current_scope` — `AUTH_ENABLED=false` means every request
+shares one dev identity today, a bad persistence key. Reads bypass the `GenServer`
+(`:ets.lookup/2`); writes go through it (`GenServer.call/2`) so concurrent same-session toggles
+cannot lose an update.
+*See*: `docs/adr/0024-sidebar-expand-state-survives-navigation.md`
 
 **`Nucleus.Secrets.reveal/3`'s key validator was a second, weaker copy of `Environments.validate_name/1`'s deny-list** — *was: Technical Debt, Low*
 *Resolved*: 2026-08-19 by SEC-S6 (issue #14).

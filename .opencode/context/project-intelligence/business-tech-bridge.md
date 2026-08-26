@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.19 | Updated: 2026-08-25 -->
+<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.20 | Updated: 2026-08-25 -->
 
 # Business ↔ Tech Bridge
 
@@ -211,6 +211,23 @@ real assign, not an unobservable client-side attribute toggle, so both are claim
 proven, not the wiring-only partial claim `SEC-A04`/`SEC-A13` carry. `mix nucleus.trace --feature NAV`
 now reports 4/12 covered (`NAV-A04`–`A07`; the rest need authentication and the Applications
 view) and `--feature ENV` reports 7/7.
+
+`:expanded_categories` no longer lives *only* on the socket assign described above
+(`docs/adr/0024-sidebar-expand-state-survives-navigation.md`, found by manual testing on this
+same branch before this ticket's PR opened): every sidebar child link is `<.link navigate>`,
+which fully remounts `EnvironmentsLive` even when the destination is the same LiveView module —
+`on_mount` reran unconditionally and wiped the assign on every child selection, not an edge case.
+`NucleusWeb.SidebarNavState` (a `GenServer`-owned, `:protected` ETS table) now backs the assign;
+`EnvironmentsHook.on_mount/4` reads it (`SidebarNavState.get/1`, direct `:ets.lookup/2`, no
+message pass — this runs on every mount) and `"toggle-category"` writes through it
+(`SidebarNavState.toggle/2`, a `GenServer.call/2` so two tabs of the same session toggling at once
+cannot lose an update). Keyed by `nav_session_id`, a random id `NucleusWeb.Plugs.AssignScope` now
+mints into the session — deliberately not `current_scope`/user identity, since
+`AUTH_ENABLED=false` (`docs/adr/0005-deferred-authentication.md`) means every request shares one
+dev identity today. `NAV-A04`–`A07`'s own acceptance criteria are unchanged by this — it is a
+correction, not a new claim — but `shell_test.exs` gained two regression tests proving a category
+stays expanded across exactly this kind of navigation, confirmed to fail against the prior
+plain-assign implementation.
 
 Two conformance notes worth carrying forward, both recorded in
 `docs/adr/0012-secret-reveal-modal-and-icon-only-copy-affordances.md`:
