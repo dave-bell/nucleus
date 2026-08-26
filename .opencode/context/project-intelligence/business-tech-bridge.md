@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.21 | Updated: 2026-08-25 -->
+<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.22 | Updated: 2026-08-26 -->
 
 # Business ↔ Tech Bridge
 
@@ -64,6 +64,16 @@ revision counter down with it. A new row covers the real cause: a per-job detail
 which makes version, image, and cron unavailable together (EN-11 Decision 6). No action ID was
 added or removed, so the `APP-A01`–`A08` / `8` count above is unchanged — a wording fix, not a
 coverage change.
+
+`APP-A04`'s wording changed (APP-D2) — retitled from "See scheduling information for periodic
+applications" to "See the schedule of periodic applications," and its `Then the number of
+scheduled runs it has produced is shown alongside the schedule` clause is deleted outright, not
+reworded. Nomad's job GC (`job_gc_threshold`, default 4h) permanently deletes terminal periodic
+children, so no available reading is a real lifetime total (EN-11 Decision 2,
+`docs/adr/0022-nomad-jobs-adapter.md`). `periodic_run_count` is also dropped from the
+`GET /api/nomad/jobs` API contract row, and the now-vacuous "zero runs so far" edge-case row is
+deleted. No action ID was added or removed, so the `APP-A01`–`A08` / `8` count above is
+unchanged — a wording fix, not a coverage change.
 
 **Most "Planned" columns are still unimplemented.** `NucleusWeb.Layouts` (app shell, header,
 sidebar) and `test/nucleus_web/live/shell_test.exs` now exist (EN-7) — a deliberate subset only.
