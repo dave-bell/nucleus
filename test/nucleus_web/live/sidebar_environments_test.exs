@@ -79,4 +79,49 @@ defmodule NucleusWeb.SidebarEnvironmentsTest do
   test "zero environments in, zero groups out" do
     assert SidebarEnvironments.group([]) == []
   end
+
+  describe "with_slugs/1" do
+    test "a category with no colliding sibling keeps its plain slug" do
+      groups = SidebarEnvironments.group([env("prod", ["Pre-Production"])])
+
+      assert [%{group: %{category: "Pre-Production"}, slug: "pre-production"}] =
+               SidebarEnvironments.with_slugs(groups)
+    end
+
+    test "categories that differ only by case or punctuation get disambiguated, later ones suffixed" do
+      # group/1 keeps these as three distinct groups (it keys on the exact
+      # string) — all three would otherwise render with the same DOM id and
+      # share expand/collapse state, since slug/1 alone collapses all three
+      # to "prod-east".
+      groups = [
+        %{category: "Prod East", environments: [], count: 0},
+        %{category: "Prod-East", environments: [], count: 0},
+        %{category: "PROD_EAST", environments: [], count: 0}
+      ]
+
+      slugs = SidebarEnvironments.with_slugs(groups) |> Enum.map(& &1.slug)
+
+      assert slugs == ["prod-east", "prod-east-2", "prod-east-3"]
+      assert length(Enum.uniq(slugs)) == 3
+    end
+
+    test "disambiguation is scoped to :uncategorized's own base slug too" do
+      groups = [
+        %{category: :uncategorized, environments: [], count: 0},
+        %{category: "uncategorized", environments: [], count: 0}
+      ]
+
+      slugs = SidebarEnvironments.with_slugs(groups) |> Enum.map(& &1.slug)
+
+      assert slugs == ["uncategorized", "uncategorized-2"]
+    end
+
+    test "each slugged entry still carries its original group unchanged" do
+      prod = env("prod", ["Regulated"])
+      groups = SidebarEnvironments.group([prod])
+
+      assert [%{group: %{category: "Regulated", environments: [^prod], count: 1}}] =
+               SidebarEnvironments.with_slugs(groups)
+    end
+  end
 end

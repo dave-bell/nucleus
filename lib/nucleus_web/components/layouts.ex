@@ -137,25 +137,23 @@ defmodule NucleusWeb.Layouts do
                   <% else %>
                     <ul class="flex flex-col gap-1">
                       <li
-                        :for={group <- groups}
-                        id={"environment-category-#{category_slug(group.category)}"}
+                        :for={%{group: group, slug: slug} <- SidebarEnvironments.with_slugs(groups)}
+                        id={"environment-category-#{slug}"}
                       >
                         <button
                           type="button"
-                          id={"environment-category-#{category_slug(group.category)}-toggle"}
+                          id={"environment-category-#{slug}-toggle"}
                           class="w-full flex items-center justify-between gap-2 px-2 py-1 rounded-md text-sm hover:bg-base-200"
                           phx-click="toggle-category"
-                          phx-value-category={category_slug(group.category)}
-                          aria-expanded={
-                            to_string(category_expanded?(@expanded_categories, group.category))
-                          }
+                          phx-value-category={slug}
+                          aria-expanded={to_string(category_expanded?(@expanded_categories, slug))}
                         >
                           <span class="flex items-center gap-1.5">
                             <.icon
                               name="hero-chevron-right"
                               class={[
                                 "size-3.5 transition-transform",
-                                category_expanded?(@expanded_categories, group.category) &&
+                                category_expanded?(@expanded_categories, slug) &&
                                   "rotate-90"
                               ]}
                             />
@@ -164,8 +162,8 @@ defmodule NucleusWeb.Layouts do
                           <span class="badge badge-sm badge-ghost">{group.count}</span>
                         </button>
                         <ul
-                          :if={category_expanded?(@expanded_categories, group.category)}
-                          id={"environment-category-#{category_slug(group.category)}-list"}
+                          :if={category_expanded?(@expanded_categories, slug)}
+                          id={"environment-category-#{slug}-list"}
                           class="menu menu-sm p-0 pl-4"
                         >
                           <li :for={env <- group.environments}>
@@ -309,25 +307,20 @@ defmodule NucleusWeb.Layouts do
     JS.toggle_attribute(js, {"data-collapsed", "true"}, to: "#shell")
   end
 
-  # Sidebar Environments category disclosure (`NAV-A04`/`NAV-A05`) — a DOM-safe
-  # id fragment, the human-facing label, and whether the category is currently
-  # expanded, all derived from a `NucleusWeb.SidebarEnvironments.group/1`
-  # entry's `:category` field (either a category name or `:uncategorized`).
-
-  defp category_slug(:uncategorized), do: "uncategorized"
-
-  defp category_slug(category) when is_binary(category) do
-    category
-    |> String.downcase()
-    |> String.replace(~r/[^a-z0-9]+/, "-")
-    |> String.trim("-")
-  end
+  # Sidebar Environments category disclosure (`NAV-A04`/`NAV-A05`) — the
+  # human-facing label and whether the category is currently expanded, both
+  # derived from a `NucleusWeb.SidebarEnvironments.group/1` entry's
+  # `:category` field (either a category name or `:uncategorized`). The
+  # DOM-safe, collision-disambiguated id itself comes from
+  # `NucleusWeb.SidebarEnvironments.with_slugs/1`, not from `:category`
+  # directly — see that function's moduledoc for why a category name alone
+  # is not a safe, unique DOM id.
 
   defp category_label(:uncategorized), do: "Uncategorized"
   defp category_label(category) when is_binary(category), do: category
 
-  defp category_expanded?(expanded_categories, category) do
-    MapSet.member?(expanded_categories, category_slug(category))
+  defp category_expanded?(expanded_categories, slug) do
+    MapSet.member?(expanded_categories, slug)
   end
 
   @doc """

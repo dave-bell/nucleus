@@ -47,6 +47,8 @@ defmodule NucleusWeb.SidebarEnvironments do
           count: non_neg_integer()
         }
 
+  @type slugged_group :: %{group: group(), slug: String.t()}
+
   @doc """
   Groups `environments` by category, archived environments excluded.
 
@@ -62,6 +64,66 @@ defmodule NucleusWeb.SidebarEnvironments do
     |> Enum.reduce(%{}, &put_categories/2)
     |> Enum.map(&build_group/1)
     |> Enum.sort_by(&sort_key/1)
+  end
+
+  @doc """
+  Pairs each of `groups` with a DOM-safe, unique slug derived from its
+  `:category`.
+
+  `slug/1` alone is not injective: categories are free-form strings from the
+  tenant API (no normalization guaranteed upstream), and two distinct
+  categories that differ only by case or punctuation — `"Prod East"`,
+  `"Prod-East"`, `"PROD_EAST"` — all lowercase-and-collapse to the same
+  `"prod-east"`. `group/1` itself treats them as distinct groups (it keys on
+  the exact string), so handing `layouts.ex` a colliding, non-unique slug for
+  each would mean two unrelated categories render with the same DOM id and
+  toggling one silently expands/collapses the other, since
+  `NucleusWeb.EnvironmentsHook`'s `:expanded_categories` is a `MapSet` of
+  slugs, not of category names.
+
+  Disambiguates only when a collision actually occurs — appending `-2`,
+  `-3`, ... to a later duplicate's base slug, in `groups`' own order (already
+  deterministic per `group/1`'s sort). A category with no colliding sibling
+  keeps its plain slug, unchanged from before this function existed. The
+  suffix is stable across renders for a stable set of category names — it
+  only shifts if the underlying categories themselves change, the same as
+  any id derived from list position.
+
+      iex> east = %{category: "Prod East", environments: [], count: 0}
+      iex> dash = %{category: "Prod-East", environments: [], count: 0}
+      iex> NucleusWeb.SidebarEnvironments.with_slugs([east, dash]) |> Enum.map(& &1.slug)
+      ["prod-east", "prod-east-2"]
+  """
+  @spec with_slugs([group()]) :: [slugged_group()]
+  def with_slugs(groups) do
+    {slugged, _seen} =
+      Enum.reduce(groups, {[], %{}}, fn group, {acc, seen} ->
+        base = slug(group.category)
+        count = Map.get(seen, base, 0) + 1
+        unique_slug = if count == 1, do: base, else: "#{base}-#{count}"
+
+        {[%{group: group, slug: unique_slug} | acc], Map.put(seen, base, count)}
+      end)
+
+    Enum.reverse(slugged)
+  end
+
+  @doc """
+  The DOM-safe id fragment for a single category — `:uncategorized`, or a
+  binary category name lowercased with every run of non-alphanumeric
+  characters collapsed to a single `-`.
+
+  Not guaranteed unique on its own across a list of categories — see
+  `with_slugs/1`, which is what `layouts.ex` actually renders against.
+  """
+  @spec slug(String.t() | :uncategorized) :: String.t()
+  def slug(:uncategorized), do: "uncategorized"
+
+  def slug(category) when is_binary(category) do
+    category
+    |> String.downcase()
+    |> String.replace(~r/[^a-z0-9]+/, "-")
+    |> String.trim("-")
   end
 
   defp put_categories(%Environment{categories: []} = environment, acc) do

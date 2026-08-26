@@ -18,6 +18,30 @@ defmodule NucleusWeb.ShellTest do
     def health_check, do: :ok
   end
 
+  defmodule CollidingCategoriesTenantApi do
+    @moduledoc """
+    Stands in for a tenant whose category names differ only by case or
+    punctuation ("Prod East", "Prod-East", "PROD_EAST") — three distinct
+    groups per `NucleusWeb.SidebarEnvironments.group/1`, which would collide
+    on the same `category_slug`-derived DOM id (`"prod-east"`) without
+    `SidebarEnvironments.with_slugs/1`'s disambiguation.
+    """
+    @behaviour Nucleus.TenantApi
+
+    @impl Nucleus.TenantApi
+    def list_environments(_token) do
+      {:ok,
+       [
+         %Nucleus.TenantApi.Environment{short_name: "east-1", categories: ["Prod East"]},
+         %Nucleus.TenantApi.Environment{short_name: "east-2", categories: ["Prod-East"]},
+         %Nucleus.TenantApi.Environment{short_name: "east-3", categories: ["PROD_EAST"]}
+       ]}
+    end
+
+    @impl Nucleus.TenantApi
+    def health_check, do: :ok
+  end
+
   setup do
     original_backends = Application.get_env(:nucleus, :backends)
 
@@ -100,6 +124,27 @@ defmodule NucleusWeb.ShellTest do
     # itself must not exist, not merely be empty.
     refute has_element?(view, "#environment-category-deprecated-toggle")
     refute has_element?(view, "[id^=environment-category-]", "Legacy QA")
+  end
+
+  @tag :unit
+  @tag action: "NAV-A04"
+  test "categories differing only by case or punctuation get distinct DOM ids and independent expand state",
+       %{conn: conn} do
+    put_tenant_api(CollidingCategoriesTenantApi)
+
+    {:ok, view, _html} = live(conn, ~p"/environments/prod/secrets")
+
+    render_async(view)
+
+    assert has_element?(view, "#environment-category-prod-east-toggle", "Prod East")
+    assert has_element?(view, "#environment-category-prod-east-2-toggle", "Prod-East")
+    assert has_element?(view, "#environment-category-prod-east-3-toggle", "PROD_EAST")
+
+    render_click(element(view, "#environment-category-prod-east-toggle"))
+
+    assert has_element?(view, "#environment-category-prod-east-list", "east-1")
+    refute has_element?(view, "#environment-category-prod-east-2-list")
+    refute has_element?(view, "#environment-category-prod-east-3-list")
   end
 
   @tag :unit
