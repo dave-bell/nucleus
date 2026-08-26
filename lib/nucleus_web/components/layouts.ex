@@ -76,17 +76,19 @@ defmodule NucleusWeb.Layouts do
               Tenant
             </p>
             <%!--
-              NAV-A03 (active-section highlighting) is out of scope: these
-              tenant-wide features don't exist yet, so they render as
-              visibly disabled placeholders rather than dead links.
-              M2M Clients (M2M-S2, #35) is the first of these three to ship
-              a real view — replaced with a working link, not a placeholder.
+              NAV-A03 (active-section highlighting) is out of scope for
+              every item here, shipped or not.
+              M2M Clients (M2M-S2, #35) and Applications (APP-S1, #58) have
+              shipped their real views — replaced with working links, not
+              placeholders. Data Export's feature doesn't exist yet, so it
+              still renders as a visibly disabled placeholder rather than a
+              dead link, until its own future ticket.
             --%>
             <ul class="menu menu-sm p-0 group-data-[collapsed=true]:hidden">
               <li>
-                <span class="opacity-40 cursor-not-allowed" aria-disabled="true">
+                <.link navigate={~p"/applications"}>
                   Applications
-                </span>
+                </.link>
               </li>
               <li>
                 <span class="opacity-40 cursor-not-allowed" aria-disabled="true">
