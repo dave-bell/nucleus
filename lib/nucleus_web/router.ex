@@ -55,6 +55,10 @@ defmodule NucleusWeb.Router do
       # replaces its body without touching this route or `Index`.
       live "/m2m/clients", M2MClientsLive.Index, :index
       live "/m2m/clients/:client_id", M2MClientsLive.Show, :show
+
+      # Single module, no Index/Show split — APP-S1 (#58), see
+      # `NucleusWeb.ApplicationsLive`'s moduledoc.
+      live "/applications", ApplicationsLive, :index
     end
   end
 

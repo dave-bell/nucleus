@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.22 | Updated: 2026-08-26 -->
+<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.23 | Updated: 2026-08-26 -->
 
 # Business ↔ Tech Bridge
 
@@ -269,6 +269,33 @@ always reads "View" and the modal's dismiss controls are the hide affordance. `S
 are each claimed on their modal's plain-`phx-click` dismiss control only (Close, Cancel) — the
 one dismissal route `Phoenix.LiveViewTest` can drive; Escape and a backdrop click are wiring-only
 browser gaps for both modals.
+
+`APP-A01`, `APP-A06`, `APP-A07`, and `APP-A08` are now claimed and covered (`APP-S1`/#58):
+`NucleusWeb.ApplicationsLive` (single module, no Index/Show split — Applications has no
+per-item detail route to justify `docs/adr/0018`'s M2M precedent) lists every parent job from
+`Nucleus.NomadJobs.list/1`, sorted name-ascending with a case-insensitive tiebreak — the same
+`{String.downcase(&1.name), &1.name}` `Nucleus.M2M.list/1` uses, since
+`Nucleus.NomadJobs.Local.list_jobs/1` returns seed-file order, not a stable sort. Periodic and
+dispatch children are already excluded by `Nucleus.NomadJobs.Job.child?/1` before this module
+ever sees them (`APP-A01`'s own requirement) — a LiveView-level test still asserts no seeded
+child (`acme-nightly-report/*`, `acme-batch-import/*`) ever renders, so a future
+`Nucleus.NomadJobs` regression is caught at the rendering boundary too, not only at EN-11's own
+context-level test. `stream/3` plus a separate `:job_count` assign, mirroring
+`NucleusWeb.M2MClientsLive.Index` exactly, drives the empty state (`APP-A06`, `#applications-empty`).
+`NucleusWeb.ApplicationsLive.States` collapses every `Nucleus.Backend.Error.kinds/0` value to the
+same three named states `NucleusWeb.M2MClientsLive.States` established —
+`#applications-misconfigured`, `#applications-unavailable` (with retry), `#applications-auth-expired`
+— plus a generic fallback for the three kinds `list/1` has no reason to return today (`APP-A07`).
+`APP-A08`'s read-only guard is enforced one layer below the UI already (`Nucleus.NomadJobs`
+defines no create/update/delete callback of any kind) and reproven by a negative test asserting
+no create/edit/delete/restart/redeploy control or text exists inside `#applications-table`.
+Every column's DOM id is fixed now, even Version/Image/Schedule, which render as empty
+placeholder cells — `APP-S2`/#59 fills in their content without touching this ticket's markup,
+the same service `docs/adr/0010`/`docs/adr/0018` performed for `SEC-S3`–`S6` and the M2M
+listing. The sidebar's Applications entry (`layouts.ex`) is now a real `<.link navigate>`,
+replacing the disabled placeholder EN-7 shipped; `NAV-A03`'s active-section highlighting remains
+unclaimed, matching `M2M-S2`'s identical precedent for its own sidebar link — the view existing
+does not by itself satisfy `NAV-A03`'s "selected item is visually distinguished" clause.
 
 ## Tagging Convention
 
