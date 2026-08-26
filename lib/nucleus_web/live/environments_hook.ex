@@ -42,16 +42,23 @@ defmodule NucleusWeb.EnvironmentsHook do
 
   ## Per-category expand/collapse state (`NAV-A05`)
 
-  `:expanded_categories`, a `MapSet` of category slugs, starts empty (every
-  category collapsed by default) and is toggled by a `"toggle-category"`
-  event handled here via `Phoenix.LiveView.attach_hook/4` rather than in
-  each LiveView under the shell — `Layouts.app` is a function component
-  rendered from four different LiveViews (`SecretsLive`, `EnvironmentsLive`,
-  both `M2MClientsLive` views), and none of them should have to duplicate a
-  handler for a shell-level concern they don't otherwise know about. The
-  hook halts the `:handle_event` lifecycle stage for the one event it owns
-  and falls through (`{:cont, socket}`) for every other event, so each
-  LiveView's own `handle_event/3` clauses are unaffected.
+  `:expanded_categories`, a `MapSet` of category slugs, is toggled by a
+  `"toggle-category"` event handled here via `Phoenix.LiveView.attach_hook/4`
+  rather than in each LiveView under the shell — `Layouts.app` is a function
+  component rendered from four different LiveViews (`SecretsLive`,
+  `EnvironmentsLive`, both `M2MClientsLive` views), and none of them should
+  have to duplicate a handler for a shell-level concern they don't otherwise
+  know about. The hook halts the `:handle_event` lifecycle stage for the one
+  event it owns and falls through (`{:cont, socket}`) for every other event,
+  so each LiveView's own `handle_event/3` clauses are unaffected.
+
+  The state itself is not carried purely by the socket assign — see
+  `NucleusWeb.SidebarNavState`'s moduledoc for why a plain assign cannot
+  survive a sidebar child link's `navigate` (it always remounts, even to
+  the same LiveView module, wiping any plain assign) and why the fix is a
+  small ETS-backed store keyed by `nav_session_id`
+  (`NucleusWeb.Plugs.AssignScope`), read here on every mount and written to
+  on every toggle.
   """
 
   import Phoenix.Component, only: [assign: 3]
@@ -59,11 +66,13 @@ defmodule NucleusWeb.EnvironmentsHook do
 
   alias Nucleus.Scope
   alias Nucleus.TenantApi
+  alias NucleusWeb.SidebarNavState
 
   @spec on_mount(:assign, map(), map(), Phoenix.LiveView.Socket.t()) ::
           {:cont, Phoenix.LiveView.Socket.t()}
-  def on_mount(:assign, _params, _session, socket) do
+  def on_mount(:assign, _params, session, socket) do
     token = scope_token(socket)
+    nav_session_id = nav_session_id(session)
 
     socket =
       socket
@@ -76,21 +85,15 @@ defmodule NucleusWeb.EnvironmentsHook do
 
         {:ok, %{environments: environments}}
       end)
-      |> assign(:expanded_categories, MapSet.new())
+      |> assign(:nav_session_id, nav_session_id)
+      |> assign(:expanded_categories, SidebarNavState.get(nav_session_id))
       |> attach_hook(:sidebar_environments, :handle_event, &toggle_category/3)
 
     {:cont, socket}
   end
 
   defp toggle_category("toggle-category", %{"category" => slug}, socket) do
-    expanded = socket.assigns.expanded_categories
-
-    updated =
-      if MapSet.member?(expanded, slug) do
-        MapSet.delete(expanded, slug)
-      else
-        MapSet.put(expanded, slug)
-      end
+    updated = SidebarNavState.toggle(socket.assigns.nav_session_id, slug)
 
     {:halt, assign(socket, :expanded_categories, updated)}
   end
@@ -103,4 +106,12 @@ defmodule NucleusWeb.EnvironmentsHook do
       _ -> nil
     end
   end
+
+  # Falls back to a freshly generated id when the session predates
+  # `NucleusWeb.Plugs.AssignScope` minting one (mirrors `NucleusWeb.ScopeHook`'s
+  # own fallback for a session with no scope) — this id just won't be
+  # stable across a later real remount from a fresh session in that edge
+  # case, only for the lifetime of this one mount.
+  defp nav_session_id(%{"nav_session_id" => id}) when is_binary(id), do: id
+  defp nav_session_id(_session), do: Base.url_encode64(:crypto.strong_rand_bytes(16))
 end

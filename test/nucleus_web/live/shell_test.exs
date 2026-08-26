@@ -201,6 +201,93 @@ defmodule NucleusWeb.ShellTest do
   end
 
   @tag :unit
+  test "a category stays expanded after selecting one of its children — the child link remounts the LiveView, which must not collapse it",
+       %{conn: conn} do
+    # A real browser's `navigate` never repeats the `:assign_scope` plug — the
+    # session (and so `nav_session_id`) is fixed as of the socket's original
+    # HTTP page load, before the websocket ever connects. `follow_redirect/2`
+    # simulates a `navigate` as an entirely fresh HTTP request through the
+    # router, so this primes `conn` with that same cookie first — otherwise
+    # the simulated "remount" would look like a brand new browser with no
+    # session at all, which no real navigate ever produces.
+    conn = get(conn, ~p"/environments/prod/secrets")
+
+    {:ok, view, _html} = live(conn, ~p"/environments/prod/secrets")
+
+    render_async(view)
+
+    render_click(element(view, "#environment-category-pre-production-toggle"))
+
+    assert {:ok, detail_view, _html} =
+             view
+             |> element("#environment-category-pre-production-list a", "Staging")
+             |> render_click()
+             |> follow_redirect(conn, ~p"/environments/staging")
+
+    render_async(detail_view)
+
+    assert has_element?(
+             detail_view,
+             ~s(#environment-category-pre-production-toggle[aria-expanded="true"])
+           )
+
+    assert has_element?(detail_view, "#environment-category-pre-production-list", "Staging")
+  end
+
+  @tag :unit
+  test "a second category expanded before navigating is also still expanded after", %{
+    conn: conn
+  } do
+    conn = get(conn, ~p"/environments/prod/secrets")
+
+    {:ok, view, _html} = live(conn, ~p"/environments/prod/secrets")
+
+    render_async(view)
+
+    render_click(element(view, "#environment-category-pre-production-toggle"))
+    render_click(element(view, "#environment-category-experimental-toggle"))
+
+    assert {:ok, detail_view, _html} =
+             view
+             |> element("#environment-category-pre-production-list a", "Staging")
+             |> render_click()
+             |> follow_redirect(conn, ~p"/environments/staging")
+
+    render_async(detail_view)
+
+    assert has_element?(
+             detail_view,
+             ~s(#environment-category-experimental-toggle[aria-expanded="true"])
+           )
+
+    assert has_element?(detail_view, "#environment-category-experimental-list", "Sandbox")
+  end
+
+  @tag :unit
+  test "two independent browser sessions never share expanded-category state", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/environments/prod/secrets")
+
+    render_async(view)
+
+    render_click(element(view, "#environment-category-pre-production-toggle"))
+
+    other_conn = Phoenix.ConnTest.build_conn()
+    {:ok, other_view, _html} = live(other_conn, ~p"/environments/prod/secrets")
+
+    render_async(other_view)
+
+    assert has_element?(
+             view,
+             ~s(#environment-category-pre-production-toggle[aria-expanded="true"])
+           )
+
+    assert has_element?(
+             other_view,
+             ~s(#environment-category-pre-production-toggle[aria-expanded="false"])
+           )
+  end
+
+  @tag :unit
   test "an archived environment stays reachable by direct URL, even though hidden from the sidebar",
        %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/environments/legacy-qa/secrets")

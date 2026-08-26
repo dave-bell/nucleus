@@ -23,6 +23,10 @@ defmodule Nucleus.Application do
       # degrade to {:error, %Error{kind: :unavailable}} within list/1's own
       # budget, never take the calling LiveView process down with it.
       {Task.Supervisor, name: Nucleus.TaskSupervisor},
+      # Owns the ETS table backing the sidebar's per-session expand/collapse
+      # state — see NucleusWeb.SidebarNavState's moduledoc for why this
+      # exists outside any single LiveView process.
+      NucleusWeb.SidebarNavState,
       # Start a worker by calling: Nucleus.Worker.start_link(arg)
       # {Nucleus.Worker, arg},
       # Start to serve requests, typically the last entry
