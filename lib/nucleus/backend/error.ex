@@ -14,30 +14,51 @@ defmodule Nucleus.Backend.Error do
 
   ## Kinds
 
-  The six kinds cover the failure modes the requirements describe. Requirement
-  status codes are binding as *behaviour*, not as literal HTTP responses (see
-  `business-tech-bridge.md`), so each kind carries the meaning rather than the
-  number.
+  The seven kinds cover the failure modes the requirements describe.
+  Requirement status codes are binding as *behaviour*, not as literal HTTP
+  responses (see `business-tech-bridge.md`), so each kind carries the meaning
+  rather than the number.
 
   | `kind` | Meaning | Requirement status code |
   |---|---|---|
   | `:invalid` | Caller-supplied input rejected before any backend call | 400 |
   | `:not_found` | Well-formed identifier, no such resource | 404 |
   | `:already_exists` | Create conflicted with an existing resource | 409 |
+  | `:conflict` | Update conflicted with a concurrent change (stale CAS) | 409 |
   | `:auth_expired` | Server-side credentials for the backend expired | 401 |
   | `:unavailable` | Backend unreachable, timed out, or errored | 503 / 502 |
   | `:not_configured` | This boundary has no usable configuration | 503 |
 
+  `:already_exists` and `:conflict` are both 409s but distinct meanings — a
+  create that collided with an existing resource is not the same failure as
+  an update that raced another writer's already-applied change. Collapsing
+  them into one kind would make a caller's `case` unable to tell "make a new
+  name" from "reload and retry" apart.
+
   `:auth_expired` is about *Nucleus's* credentials for a backend (an expired
-  assumed role, say), not about the end user's session. Adding a seventh kind
-  means revisiting every `case` that matches on one, which is what
-  `kinds/0` and its test exist to force.
+  assumed role, say), not about the end user's session. Adding a kind (as
+  `:conflict` did here) means revisiting every `case` that matches on one,
+  which is what `kinds/0` and its test exist to force.
   """
 
-  @kinds [:not_found, :already_exists, :auth_expired, :unavailable, :not_configured, :invalid]
+  @kinds [
+    :not_found,
+    :already_exists,
+    :conflict,
+    :auth_expired,
+    :unavailable,
+    :not_configured,
+    :invalid
+  ]
 
   @type kind ::
-          :not_found | :already_exists | :auth_expired | :unavailable | :not_configured | :invalid
+          :not_found
+          | :already_exists
+          | :conflict
+          | :auth_expired
+          | :unavailable
+          | :not_configured
+          | :invalid
 
   @type t :: %__MODULE__{
           kind: kind(),

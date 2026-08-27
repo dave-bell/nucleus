@@ -47,6 +47,10 @@ defmodule Nucleus.Nomad.TransportTest do
     Transport.request(:get, path, Keyword.merge([boundary: @boundary], opts))
   end
 
+  defp put(path, opts) do
+    Transport.request(:put, path, Keyword.merge([boundary: @boundary], opts))
+  end
+
   defp capture_info(fun) do
     original = Logger.level()
     Logger.configure(level: :info)
@@ -139,10 +143,44 @@ defmodule Nucleus.Nomad.TransportTest do
 
       assert message =~ "not JSON"
     end
+
+    test "an empty body succeeds with an empty map, distinct from an undecodable one" do
+      configure()
+      respond(200, "")
+
+      assert {:ok, %{}} = request("/v1/jobs")
+    end
+  end
+
+  describe "a request with a :json body" do
+    test "sends the encoded body and content-type" do
+      configure()
+
+      stub(fn conn ->
+        assert Plug.Conn.get_req_header(conn, "content-type") == ["application/json"]
+        {:ok, raw_body, conn} = Plug.Conn.read_body(conn)
+        assert Jason.decode!(raw_body) == %{"Items" => %{"key" => "value"}}
+        assert conn.method == "PUT"
+        Req.Test.json(conn, %{})
+      end)
+
+      assert {:ok, %{}} = put("/v1/var/some/path", json: %{"Items" => %{"key" => "value"}})
+    end
+
+    test "is omitted entirely when no :json option is given" do
+      configure()
+
+      stub(fn conn ->
+        assert Plug.Conn.get_req_header(conn, "content-type") == []
+        Req.Test.json(conn, [])
+      end)
+
+      assert {:ok, []} = request("/v1/jobs")
+    end
   end
 
   describe "status mapping" do
-    for status <- [400, 404, 429, 500, 502, 503, 418] do
+    for status <- [400, 429, 500, 502, 503, 418] do
       test "#{status} maps to :unavailable" do
         configure()
         respond(unquote(status), "{}")
@@ -162,6 +200,38 @@ defmodule Nucleus.Nomad.TransportTest do
         assert {:error, %Error{kind: :auth_expired, details: %{status: unquote(status)}}} =
                  request("/v1/jobs")
       end
+    end
+
+    test "404 maps to :not_found" do
+      configure()
+      respond(404, "{}")
+
+      assert {:error, %Error{kind: :not_found, boundary: :nomad_jobs, details: details}} =
+               request("/v1/jobs")
+
+      assert details.status == 404
+    end
+
+    test "409 maps to :conflict, carrying the response body's ModifyIndex in details" do
+      configure()
+      respond_json(409, %{"ModifyIndex" => 42})
+
+      assert {:error, %Error{kind: :conflict, boundary: :nomad_jobs, details: details}} =
+               put("/v1/var/some/path", json: %{"Items" => %{}})
+
+      assert details.status == 409
+      assert details.modify_index == 42
+    end
+
+    test "409 with a body that carries no ModifyIndex still maps to :conflict" do
+      configure()
+      respond(409, "")
+
+      assert {:error, %Error{kind: :conflict, boundary: :nomad_jobs, details: details}} =
+               put("/v1/var/some/path", json: %{"Items" => %{}})
+
+      assert details.status == 409
+      refute Map.has_key?(details, :modify_index)
     end
 
     test "a transport error maps to :unavailable" do

@@ -29,8 +29,8 @@ defmodule Nucleus.BackendTest do
 
   describe "boundaries/0" do
     @tag :unit
-    test "covers secrets, tenant_api, m2m, and nomad_jobs, and no auth boundary" do
-      assert Backend.boundaries() == [:m2m, :nomad_jobs, :secrets, :tenant_api]
+    test "covers secrets, tenant_api, m2m, nomad_jobs, and nomad_vars, and no auth boundary" do
+      assert Backend.boundaries() == [:m2m, :nomad_jobs, :nomad_vars, :secrets, :tenant_api]
       refute :auth in Backend.boundaries()
     end
   end
@@ -53,7 +53,9 @@ defmodule Nucleus.BackendTest do
       error = assert_raise ArgumentError, fn -> Backend.impl_for(unknown) end
 
       assert error.message =~ "unknown backend boundary: :nomad"
-      assert error.message =~ "Known boundaries: [:m2m, :nomad_jobs, :secrets, :tenant_api]"
+
+      assert error.message =~
+               "Known boundaries: [:m2m, :nomad_jobs, :nomad_vars, :secrets, :tenant_api]"
     end
 
     @tag :unit
@@ -112,6 +114,7 @@ defmodule Nucleus.BackendTest do
       assert Backend.env_var(:tenant_api) == "TENANT_API_BACKEND"
       assert Backend.env_var(:m2m) == "M2M_BACKEND"
       assert Backend.env_var(:nomad_jobs) == "NOMAD_JOBS_BACKEND"
+      assert Backend.env_var(:nomad_vars) == "NOMAD_VARS_BACKEND"
     end
   end
 
@@ -132,6 +135,7 @@ defmodule Nucleus.BackendTest do
       assert log =~ "tenant_api -> Nucleus.TenantApi.Local (TENANT_API_BACKEND=local)"
       assert log =~ "m2m -> Nucleus.M2M.Clients.Local (M2M_BACKEND=local)"
       assert log =~ "nomad_jobs -> Nucleus.NomadJobs.Local (NOMAD_JOBS_BACKEND=local)"
+      assert log =~ "nomad_vars -> Nucleus.NomadVars.Store.Local (NOMAD_VARS_BACKEND=local)"
     end
 
     @tag :unit
@@ -183,6 +187,7 @@ defmodule Nucleus.BackendTest do
                  :invalid,
                  :not_found,
                  :already_exists,
+                 :conflict,
                  :auth_expired,
                  :unavailable,
                  :not_configured

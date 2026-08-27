@@ -517,6 +517,45 @@
           }
         ]
       }
+    },
+    {
+      "stub": {
+        "ID": "local-data_export",
+        "ParentID": null,
+        "Name": "local-data_export",
+        "Status": "running",
+        "Periodic": true
+      },
+      "detail": {
+        "Version": 3,
+        "Periodic": {
+          "Spec": "0 3 * * *",
+          "Specs": [],
+          "SpecType": "cron"
+        },
+        "TaskGroups": [
+          {
+            "Tasks": [
+              {
+                "Name": "export",
+                "Lifecycle": null,
+                "Leader": true,
+                "Config": { "image": "registry.example.com/acme/data-export:sha-ccc3333" }
+              }
+            ]
+          }
+        ]
+      }
     }
-  ]
+  ],
+  "nomad_vars": {
+    "path": "nomad/jobs/local-data_export",
+    "items": {
+      "description": "Nightly export of tenant usage metrics to the shared analytics bucket.",
+      "env_names": "prod,staging",
+      "destination_bucket": "acme-analytics-prod"
+    },
+    "modify_index": 42,
+    "modified_at": "2026-08-01T03:00:00Z"
+  }
 }

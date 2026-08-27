@@ -44,10 +44,14 @@ defmodule Nucleus.Nomad.Transport do
   ## Assumed response shape
 
   A top-level JSON object or array, per Nomad's own HTTP API. This is
-  asserted rather than guessed at: an undecodable or absent body on a `200` is
+  asserted rather than guessed at: an undecodable body on a `200` is
   `:unavailable`, not a best-effort parse. Shape-specific validation (is this
   actually a list of jobs?) is the calling boundary's job, not this
   transport's — `request/3` hands back whatever `Jason.decode/1` produces.
+
+  A genuinely **empty** `200` body is a distinct, legitimate case — Nomad
+  Variables writes return no body on success — and decodes to `{:ok, %{}}`
+  rather than erroring; an empty body is not the same as an undecodable one.
   """
 
   require Logger
@@ -62,14 +66,25 @@ defmodule Nucleus.Nomad.Transport do
 
   ## Options
 
-    * `:boundary` (required) — the calling boundary (`:nomad_jobs` today, a
-      future `:nomad_vars`), attributed on every `Nucleus.Backend.Error` this
-      call can return.
+    * `:boundary` (required) — the calling boundary (`:nomad_jobs`,
+      `:nomad_vars`), attributed on every `Nucleus.Backend.Error` this call
+      can return.
     * `:query` — a keyword list of query parameters, URL-encoded by `Req`.
+    * `:json` — when present, sent as the request body, JSON-encoded by
+      `Req`'s own `:json` step (which also sets the `content-type` header).
+      Omitted entirely (no `:json` key added to the `Req.new/1` opts) when
+      not given, so the existing `:get` call sites are unaffected.
 
-  Status mapping is an explicit `case`, never a default-to-success: `200`
-  decodes the body; `401`/`403` map to `:auth_expired`; every other status,
-  and any transport-level failure, maps to `:unavailable`.
+  Status mapping is an explicit `case`, never a default-to-success:
+
+    * `200` decodes the body (an empty body decodes to `%{}`)
+    * `401`/`403` map to `:auth_expired`
+    * `404` maps to `:not_found` — the path/resource does not exist
+    * `409` maps to `:conflict` — a stale `cas` value on a write; the
+      response body's current `ModifyIndex`, if present, is carried in
+      `details.modify_index` so a caller can retry with the fresh value
+    * every other status, and any transport-level failure, maps to
+      `:unavailable`
   """
   @spec request(method :: atom(), path :: String.t(), opts :: keyword()) ::
           {:ok, map() | list()} | {:error, Error.t()}
@@ -77,14 +92,15 @@ defmodule Nucleus.Nomad.Transport do
       when is_atom(method) and is_binary(path) and is_list(opts) do
     boundary = Keyword.fetch!(opts, :boundary)
     query = Keyword.get(opts, :query, [])
+    json = Keyword.get(opts, :json)
     request_id = request_id()
 
     with {:ok, url} <- url(path, boundary) do
-      perform(method, url, path, query, boundary, request_id)
+      perform(method, url, path, query, json, boundary, request_id)
     end
   end
 
-  defp perform(method, url, path, query, boundary, request_id) do
+  defp perform(method, url, path, query, json, boundary, request_id) do
     request =
       Req.new(
         [
@@ -97,7 +113,9 @@ defmodule Nucleus.Nomad.Transport do
           decode_body: false,
           receive_timeout: timeout(:receive_timeout_ms, @default_receive_timeout_ms),
           connect_options: [timeout: timeout(:connect_timeout_ms, @default_connect_timeout_ms)]
-        ] ++ Keyword.take(config(), [:plug])
+        ] ++
+          json_opt(json) ++
+          Keyword.take(config(), [:plug])
       )
 
     case Req.request(request) do
@@ -113,6 +131,26 @@ defmodule Nucleus.Nomad.Transport do
            status: status,
            request_id: request_id
          })}
+
+      {:ok, %Req.Response{status: 404}} ->
+        log(:warning, method, path, 404, request_id)
+
+        {:error,
+         error(boundary, :not_found, "nomad reports no such resource", %{
+           status: 404,
+           request_id: request_id
+         })}
+
+      {:ok, %Req.Response{status: 409, body: body}} ->
+        log(:warning, method, path, 409, request_id)
+
+        {:error,
+         error(
+           boundary,
+           :conflict,
+           "nomad rejected the write: the modify index is stale",
+           conflict_details(body, request_id)
+         )}
 
       {:ok, %Req.Response{status: status}} ->
         log(:warning, method, path, status, request_id)
@@ -137,8 +175,18 @@ defmodule Nucleus.Nomad.Transport do
     end
   end
 
-  defp decode(body, boundary, request_id) when is_binary(body) do
-    case Jason.decode(body) do
+  defp json_opt(nil), do: []
+  defp json_opt(body), do: [json: body]
+
+  defp decode(body, boundary, request_id) do
+    case normalize_body(body) do
+      "" -> {:ok, %{}}
+      binary -> decode_json(binary, boundary, request_id)
+    end
+  end
+
+  defp decode_json(binary, boundary, request_id) do
+    case Jason.decode(binary) do
       {:ok, decoded} ->
         {:ok, decoded}
 
@@ -153,8 +201,24 @@ defmodule Nucleus.Nomad.Transport do
     end
   end
 
-  defp decode(_body, boundary, request_id) do
-    {:error, error(boundary, :unavailable, "nomad returned no body", %{request_id: request_id})}
+  # A successful Nomad Variables write can return a genuinely empty body —
+  # distinct from an undecodable one, and not an error.
+  defp normalize_body(body) when is_binary(body), do: body
+  defp normalize_body(_absent), do: ""
+
+  defp conflict_details(body, request_id) do
+    base = %{status: 409, request_id: request_id}
+
+    case normalize_body(body) do
+      "" ->
+        base
+
+      binary ->
+        case Jason.decode(binary) do
+          {:ok, %{"ModifyIndex" => modify_index}} -> Map.put(base, :modify_index, modify_index)
+          _not_a_modify_index_map -> base
+        end
+    end
   end
 
   defp url(path, boundary) do

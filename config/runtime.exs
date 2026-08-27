@@ -145,24 +145,29 @@ if user_pool_id = System.get_env("COGNITO_USER_POOL_ID") do
   config :nucleus, Nucleus.M2M.Clients.Cognito, user_pool_id: user_pool_id
 end
 
-# Nomad job reads for the :nomad_jobs boundary's real implementation — read
-# only when that implementation is actually selected, same reasoning as the
-# :secrets and :m2m blocks above. Both NOMAD_ADDR and NOMAD_TOKEN are
+# Nomad access for either Nomad-backed boundary's real implementation —
+# :nomad_jobs (job reads) or :nomad_vars (Variables read+write) — both share
+# Nucleus.Nomad.Transport (docs/adr/0022-nomad-jobs-adapter.md, Decision 7),
+# so either one alone running real needs NOMAD_ADDR/NOMAD_TOKEN configured;
+# neither boundary running real means neither is asked to reach Nomad at
+# all, same reasoning as the :secrets and :m2m blocks above. Both are
 # documented as Required in docs/requirements/Platform-Operations.md, so a
 # real implementation with either missing raises at boot rather than
 # reaching :not_configured on the first call — a developer running fully
 # local, the dev/test default, must not have to invent either to boot the
-# app, which is exactly why this block is gated on the real implementation
+# app, which is exactly why this block is gated on a real implementation
 # being selected.
 if Application.get_env(:nucleus, :backends, [])[:nomad_jobs] ==
-     Nucleus.Backend.impl_for_mode!(:nomad_jobs, :real) do
+     Nucleus.Backend.impl_for_mode!(:nomad_jobs, :real) or
+     Application.get_env(:nucleus, :backends, [])[:nomad_vars] ==
+       Nucleus.Backend.impl_for_mode!(:nomad_vars, :real) do
   nomad_addr =
     System.get_env("NOMAD_ADDR") ||
-      raise "environment variable NOMAD_ADDR is missing (required when the :nomad_jobs boundary runs its real implementation)"
+      raise "environment variable NOMAD_ADDR is missing (required when the :nomad_jobs or :nomad_vars boundary runs its real implementation)"
 
   nomad_token =
     System.get_env("NOMAD_TOKEN") ||
-      raise "environment variable NOMAD_TOKEN is missing (required when the :nomad_jobs boundary runs its real implementation)"
+      raise "environment variable NOMAD_TOKEN is missing (required when the :nomad_jobs or :nomad_vars boundary runs its real implementation)"
 
   config :nucleus, Nucleus.Nomad.Transport,
     base_url: nomad_addr,
