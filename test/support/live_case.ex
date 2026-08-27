@@ -66,4 +66,16 @@ defmodule NucleusWeb.LiveCase do
       Phoenix.LiveViewTest.live(unquote(conn), "/environments/#{unquote(environment)}")
     end
   end
+
+  @doc """
+  Mounts `NucleusWeb.DataExportLive`, the `/data-export` route the sidebar
+  links to (`DEX-S1`, #73).
+
+  A macro for the same reason as `live_secrets/2` above.
+  """
+  defmacro live_data_export(conn) do
+    quote do
+      Phoenix.LiveViewTest.live(unquote(conn), "/data-export")
+    end
+  end
 end

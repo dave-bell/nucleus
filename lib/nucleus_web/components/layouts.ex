@@ -78,11 +78,9 @@ defmodule NucleusWeb.Layouts do
             <%!--
               NAV-A03 (active-section highlighting) is out of scope for
               every item here, shipped or not.
-              M2M Clients (M2M-S2, #35) and Applications (APP-S1, #58) have
-              shipped their real views — replaced with working links, not
-              placeholders. Data Export's feature doesn't exist yet, so it
-              still renders as a visibly disabled placeholder rather than a
-              dead link, until its own future ticket.
+              M2M Clients (M2M-S2, #35), Applications (APP-S1, #58), and
+              Data Export (DEX-S1, #73) have shipped their real views —
+              replaced with working links, not placeholders.
             --%>
             <ul class="menu menu-sm p-0 group-data-[collapsed=true]:hidden">
               <li>
@@ -91,9 +89,9 @@ defmodule NucleusWeb.Layouts do
                 </.link>
               </li>
               <li>
-                <span class="opacity-40 cursor-not-allowed" aria-disabled="true">
+                <.link navigate={~p"/data-export"}>
                   Data Export
-                </span>
+                </.link>
               </li>
               <li>
                 <.link navigate={~p"/m2m/clients"}>

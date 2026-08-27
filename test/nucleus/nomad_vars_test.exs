@@ -33,13 +33,23 @@ defmodule Nucleus.NomadVars.FakeStore do
 end
 
 defmodule Nucleus.NomadVarsTest do
-  # Swaps the configured implementation, application-global.
-  use ExUnit.Case, async: false
+  # Swaps the configured implementation, application-global (the Store
+  # dispatch tests below), plus seeds/faults the local backend and asserts
+  # on emitted audit records (the Nucleus.NomadVars context tests, DEX-S1)
+  # — composed the same way Nucleus.M2MTest is, both pinned to
+  # async: false to match Nucleus.BackendCase's constraint.
+  use Nucleus.BackendCase, async: false
+  use Nucleus.AuditCase, async: false
 
   alias Nucleus.Backend
+  alias Nucleus.Backend.Error
+  alias Nucleus.NomadVars
   alias Nucleus.NomadVars.FakeStore
   alias Nucleus.NomadVars.Store
   alias Nucleus.NomadVars.VariableSet
+  alias Nucleus.Scope
+
+  @scope %Scope{tenant: "local", user: %{email: "a@b.com", username: nil}}
 
   setup do
     original_backends = Application.get_env(:nucleus, :backends)
@@ -98,6 +108,84 @@ defmodule Nucleus.NomadVarsTest do
     @tag :unit
     test "health_check/0 resolves to the configured implementation" do
       assert Store.health_check() == :ok
+    end
+  end
+
+  describe "Nucleus.NomadVars.fetch/1 — no audit, ever" do
+    test "returns {:ok, var_set} for the seeded enabled fixture, with no audit emission" do
+      assert {:ok, %VariableSet{} = var_set} = NomadVars.fetch(@scope)
+
+      assert var_set.path == "nomad/jobs/local-data_export"
+      assert_no_audit_event(:nomad_vars_listed)
+    end
+
+    test "a :not_found tenant emits nothing either" do
+      Backend.Seed.write(:nomad_vars, false)
+
+      assert {:error, %Error{kind: :not_found}} = NomadVars.fetch(@scope)
+      assert_no_audit_event(:nomad_vars_listed)
+    end
+  end
+
+  describe "Nucleus.NomadVars.list/1 — DEX-A03 the seeded enabled fixture" do
+    @tag action: "DEX-A03"
+    test "returns {:ok, var_set} with every seeded key/value" do
+      assert {:ok, %VariableSet{} = var_set} = NomadVars.list(@scope)
+
+      assert var_set.path == "nomad/jobs/local-data_export"
+      assert var_set.items["description"] =~ "Nightly export"
+      assert var_set.items["env_names"] == "prod,staging"
+      assert is_integer(var_set.modify_index)
+    end
+
+    @tag action: "DEX-A03"
+    test "emits exactly one nomad_vars_listed, with the path in details and the tenant set" do
+      assert {:ok, var_set} = NomadVars.list(@scope)
+
+      assert_audit_event(:nomad_vars_listed,
+        tenant: "local",
+        details: %{path: var_set.path}
+      )
+
+      assert audit_events() |> Enum.filter(&(&1.event == :nomad_vars_listed)) |> length() == 1
+    end
+  end
+
+  describe "Nucleus.NomadVars.list/1 — no audit on any error" do
+    @tag action: "DEX-A01"
+    test "a tenant with no Data Export variable path (:not_found) emits nothing" do
+      Backend.Seed.write(:nomad_vars, false)
+
+      assert {:error, %Error{kind: :not_found}} = NomadVars.list(@scope)
+      assert_no_audit_event(:nomad_vars_listed)
+    end
+
+    test "an unconfigured boundary (:not_configured) emits nothing" do
+      Backend.Seed.write(:nomad_vars, nil)
+
+      assert {:error, %Error{kind: :not_configured}} = NomadVars.list(@scope)
+      assert_no_audit_event(:nomad_vars_listed)
+    end
+
+    test "an unavailable backend emits nothing" do
+      force_error(:nomad_vars, :unavailable)
+
+      assert {:error, %Error{kind: :unavailable}} = NomadVars.list(@scope)
+      assert_no_audit_event(:nomad_vars_listed)
+    end
+  end
+
+  describe "Nucleus.NomadVars.list/1 — every Error.kind() passes through unchanged" do
+    for kind <- Error.kinds() do
+      @tag kind: kind
+      test "#{kind} is returned unflattened, :not_found included, with no translation", %{
+        kind: kind
+      } do
+        force_error(:nomad_vars, kind)
+
+        assert {:error, %Error{kind: ^kind, boundary: :nomad_vars}} = NomadVars.list(@scope)
+        assert_no_audit_event(:nomad_vars_listed)
+      end
     end
   end
 end
