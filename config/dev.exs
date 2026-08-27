@@ -48,12 +48,13 @@ config :nucleus, dev_routes: true
 # Run every boundary against its local implementation, so a fresh clone starts
 # with no AWS role and no tenant API reachable. Override per boundary with
 # SECRETS_BACKEND=real / TENANT_API_BACKEND=real / M2M_BACKEND=real /
-# NOMAD_JOBS_BACKEND=real (see config/runtime.exs).
+# NOMAD_JOBS_BACKEND=real / NOMAD_VARS_BACKEND=real (see config/runtime.exs).
 config :nucleus, :backends,
   secrets: Nucleus.Secrets.Store.Local,
   tenant_api: Nucleus.TenantApi.Local,
   m2m: Nucleus.M2M.Clients.Local,
-  nomad_jobs: Nucleus.NomadJobs.Local
+  nomad_jobs: Nucleus.NomadJobs.Local,
+  nomad_vars: Nucleus.NomadVars.Store.Local
 
 # Deploy-time cluster/deployment segments of the Parameter Store path (see
 # lib/nucleus/secrets/path.ex). Hardcoded here rather than sourced from an env

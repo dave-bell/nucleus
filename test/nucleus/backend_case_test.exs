@@ -12,6 +12,7 @@ defmodule Nucleus.BackendCaseTest do
   use Nucleus.BackendCase, async: false
 
   alias Nucleus.Backend.Error
+  alias Nucleus.NomadVars.Store, as: NomadVarsStore
   alias Nucleus.Secrets.Store
   alias Nucleus.TenantApi
 
@@ -41,6 +42,27 @@ defmodule Nucleus.BackendCaseTest do
   test "the previous test's seeded environment does not leak into this one" do
     assert {:ok, environments} = TenantApi.list_environments(nil)
     refute Enum.any?(environments, &(&1.short_name == "backend-case-test-env"))
+  end
+
+  @tag :unit
+  test "seed_nomad_var replaces the local nomad_vars section the store reads back" do
+    seed_nomad_var(%{
+      "path" => "nomad/jobs/backend-case-test-data_export",
+      "items" => %{"description" => "backend case test fixture"},
+      "modify_index" => 7,
+      "modified_at" => "2026-01-01T00:00:00Z"
+    })
+
+    assert {:ok, variable_set} = NomadVarsStore.read()
+    assert variable_set.path == "nomad/jobs/backend-case-test-data_export"
+    assert variable_set.items == %{"description" => "backend case test fixture"}
+    assert variable_set.modify_index == 7
+  end
+
+  @tag :unit
+  test "the previous test's seeded nomad_vars section does not leak into this one" do
+    assert {:ok, variable_set} = NomadVarsStore.read()
+    assert variable_set.path == "nomad/jobs/local-data_export"
   end
 
   @tag :unit

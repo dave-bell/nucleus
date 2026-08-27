@@ -22,18 +22,19 @@ config :nucleus, NucleusWeb.Endpoint,
 # independently — see lib/nucleus/backend.ex and
 # docs/adr/0002-backend-adapter-boundaries.md.
 #
-# These are the `real` implementations, delivered by EN-3, EN-4, EN-10, and
-# EN-11. dev and test override all four to the `.Local` implementations so a
-# fresh clone needs no credentials; runtime.exs allows a per-boundary
-# override via SECRETS_BACKEND, TENANT_API_BACKEND, M2M_BACKEND, and
-# NOMAD_JOBS_BACKEND.
+# These are the `real` implementations, delivered by EN-3, EN-4, EN-10, EN-11,
+# and EN-12. dev and test override all five to the `.Local` implementations so
+# a fresh clone needs no credentials; runtime.exs allows a per-boundary
+# override via SECRETS_BACKEND, TENANT_API_BACKEND, M2M_BACKEND,
+# NOMAD_JOBS_BACKEND, and NOMAD_VARS_BACKEND.
 #
 # There is deliberately no `auth` boundary. Authentication is never swappable.
 config :nucleus, :backends,
   secrets: Nucleus.Secrets.Store.Aws,
   tenant_api: Nucleus.TenantApi.Http,
   m2m: Nucleus.M2M.Clients.Cognito,
-  nomad_jobs: Nucleus.NomadJobs.Http
+  nomad_jobs: Nucleus.NomadJobs.Http,
+  nomad_vars: Nucleus.NomadVars.Store.Http
 
 # The tenant's backing API — the authority on environments. `base_url` has no
 # default on purpose: there is no sensible host to fall back to, and a boundary

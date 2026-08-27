@@ -120,6 +120,23 @@ defmodule Nucleus.BackendCase do
   end
 
   @doc """
+  Replaces the `Nucleus.NomadVars.Store.Local` boundary's seeded section.
+
+  `attrs` is `%{"path" => ..., "items" => ..., "modify_index" => ...,
+  "modified_at" => ...}` — the same shape `Nucleus.NomadVars.Store.Http`
+  decodes from a real `GET /v1/var/:path` response, matching the seed
+  file's own shape (`Nucleus.NomadVars.Store.Local`'s moduledoc).
+
+  Replaces rather than appends — unlike `seed_nomad_job/1`'s list, this
+  boundary's section is a single object, one path per tenant.
+  """
+  @spec seed_nomad_var(map()) :: :ok
+  def seed_nomad_var(%{"path" => path, "items" => %{}, "modify_index" => modify_index} = attrs)
+      when is_binary(path) and is_integer(modify_index) do
+    Seed.write(:nomad_vars, attrs)
+  end
+
+  @doc """
   Makes every local backend implementation return `{:error, %Error{kind: kind}}`
   on its next call, via `LOCAL_FORCE_ERROR` (`Nucleus.Backend.Faults`).
 

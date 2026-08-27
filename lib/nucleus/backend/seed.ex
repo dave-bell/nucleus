@@ -119,6 +119,46 @@ defmodule Nucleus.Backend.Seed do
   end
 
   @doc """
+  Atomically inspects and replaces `boundary`'s section in one step, handing
+  back whatever `fun` computes.
+
+  `update/3` always succeeds and returns `:ok` — it has no way to report a
+  decision made while inside the `Agent`. `fun` here receives the section's
+  current value and returns `{result, new_section}`; both the decision (e.g.
+  a check-and-set comparison against an expected version) and the write
+  happen inside the same `Agent.get_and_update/2` call, so no concurrent
+  caller can read a value, have this one write, and still have its own,
+  now-stale decision take effect. A boundary whose write contract is
+  unconditional (`Nucleus.Secrets.Store.Local`, `Nucleus.M2M.Clients.Local`)
+  has no need for this — plain `update/3`, with the whole read-modify-write
+  inside its callback, is enough. `Nucleus.NomadVars.Store.Local.write/2`
+  needs this one: it is the only local boundary with a check-and-set
+  contract, and computing the CAS decision from a value read *before*
+  calling `Seed` — then writing a value computed from that stale read — is
+  not atomic no matter how quickly the two calls follow each other.
+
+      Nucleus.Backend.Seed.get_and_update(:nomad_vars, fn section ->
+        case section do
+          %{"modify_index" => ^expected} = current ->
+            {{:ok, current}, %{current | "modify_index" => expected + 1}}
+
+          other ->
+            {{:error, :conflict}, other}
+        end
+      end)
+
+  """
+  @spec get_and_update(atom(), (term() -> {result, term()}), GenServer.server()) :: result
+        when result: term()
+  def get_and_update(boundary, fun, server \\ __MODULE__)
+      when is_atom(boundary) and is_function(fun, 1) do
+    Agent.get_and_update(server, fn %{document: document} = state ->
+      {result, new_section} = fun.(Map.get(document, key(boundary)))
+      {result, %{state | document: Map.put(document, key(boundary), new_section)}}
+    end)
+  end
+
+  @doc """
   Re-reads the seed file, discarding every runtime mutation.
 
   The seed is mutable and the owner outlives a single test, so a test that
