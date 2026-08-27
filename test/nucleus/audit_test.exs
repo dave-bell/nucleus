@@ -122,24 +122,24 @@ defmodule Nucleus.AuditTest do
 
     @tag :unit
     test "an unknown key inside details raises — the per-event details allowlist" do
-      # nomad_var_viewed does support :details, so this exercises the inner
+      # nomad_var_updated does support :details, so this exercises the inner
       # key allowlist itself, not the outer :details rejection above.
       error =
         assert_raise ArgumentError, fn ->
-          Audit.emit(:nomad_var_viewed,
+          Audit.emit(:nomad_var_updated,
             tenant: "acme",
             details: %{path: "/api/secrets", key: "DATABASE_URL", value: "super-secret"}
           )
         end
 
-      assert error.message =~ "unknown detail :value for audit event :nomad_var_viewed"
+      assert error.message =~ "unknown detail :value for audit event :nomad_var_updated"
     end
 
     @tag :unit
     test "a required detail key raises when missing" do
       error =
         assert_raise ArgumentError, fn ->
-          Audit.emit(:nomad_var_viewed, tenant: "acme", details: %{key: "DATABASE_URL"})
+          Audit.emit(:nomad_var_updated, tenant: "acme", details: %{key: "DATABASE_URL"})
         end
 
       assert error.message =~ "missing required field(s)"
