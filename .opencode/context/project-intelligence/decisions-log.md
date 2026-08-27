@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.29 | Updated: 2026-08-27 -->
+<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.30 | Updated: 2026-08-27 -->
 
 # Decisions Log
 
