@@ -107,6 +107,18 @@ deploys it.
 ### Code Patterns Worth Preserving
 - `@tag action: "SEC-A03"` on tests, enabling `mix test --only action:SEC-A03` — see
   `business-tech-bridge.md`.
+- For a `Local` boundary implementation whose write contract has a decision to make against the
+  *current* value (check-and-set, or anything else that isn't an unconditional replace), do the
+  read, the decision, and the write all inside the callback passed to
+  `Nucleus.Backend.Seed.get_and_update/3` — never a separate `Seed.read/1` followed by
+  `Seed.update/2`, which lets two concurrent callers both read the same value, both decide
+  independently, and have the second silently clobber the first. `Nucleus.NomadVars.Store.Local.write/2`
+  shipped exactly that bug on its first pass, caught in review, not by any test that existed at
+  the time. `update/3` (whole read-modify-write inside its own callback, but no result to hand
+  back) is still correct and sufficient for a boundary whose write is unconditional
+  (`Nucleus.Secrets.Store.Local`, `Nucleus.M2M.Clients.Local`) — reach for `get_and_update/3`
+  only when there is an actual decision that must not be interleaved. See
+  `docs/adr/0027-nomad-vars-adapter.md`.
 - Stack `on_mount` hooks at the `live_session` level, in a fixed order, when one hook's
   assign depends on another's (`EnvironmentsHook` reads `current_scope.token` after
   `ScopeHook` assigns it) — see `docs/adr/0006-application-shell-and-live-session-composition.md`.

@@ -145,6 +145,43 @@ local would previously boot successfully and then have every `:nomad_vars`
 call fail as `:not_configured` — the gate now fires when *either* boundary
 resolves to real.
 
+### Implementation-time correction: `Local`'s check-and-set was not actually atomic
+
+Caught in review, not on the issue thread. The first pass of
+`Nucleus.NomadVars.Store.Local.write/2` read the current section
+(`Seed.read/1`), compared `expected_modify_index` against it in the caller's
+own process, computed the new section, and only then called
+`Seed.update/2` with a transform that ignored the value it was handed and
+substituted the value already computed outside the `Agent`. `Seed.update/2`'s
+atomicity guarantee — "a read-modify-write from two processes cannot
+interleave" — only holds for a callback that actually reads the value it
+receives; this one did not, so the guarantee did not apply. Two concurrent
+writers presenting the same `expected_modify_index` both passed the check
+and both succeeded, with the second silently overwriting the first — exactly
+the outcome Decision 6 says check-and-set exists to prevent, and the
+opposite of what the module's own moduledoc claimed. Confirmed by directly
+running two overlapping writes against the same modify index before the fix
+landed: both returned `{:ok, ...}`, no `:conflict`, and one write vanished.
+
+Fixed by adding `Nucleus.Backend.Seed.get_and_update/3` — a new primitive,
+alongside `read/2`/`write/3`/`update/3`, that runs `Agent.get_and_update/2`
+under the hood: the callback receives the section's current value and
+returns `{result, new_section}`, with both the CAS decision and the write
+happening inside one `Agent` call. `write/2` now builds this callback
+directly rather than composing a separate read, check, and write.
+`Nucleus.Secrets.Store.Local` and `Nucleus.M2M.Clients.Local` needed no
+equivalent fix — their writes are unconditional, so there is no decision to
+make atomically with the write; plain `update/3`, with the whole
+read-modify-write already inside its callback, was correct for both from the
+start. `:nomad_vars` is the first local boundary with a genuine
+check-and-set contract, which is what exposed the gap.
+`test/nucleus/nomad_vars/store/local_test.exs` gained a regression test
+that fires 20 concurrent writers at the same modify index and asserts
+exactly one succeeds — confirmed to fail (2 successes instead of 1) against
+the pre-fix implementation, and `test/nucleus/backend/seed_test.exs` gained
+direct coverage of `get_and_update/3` itself, including a 50-writer
+concurrent-increment test.
+
 ## Consequences
 
 ### Positive
@@ -160,8 +197,19 @@ resolves to real.
 - The `:not_configured`/`:not_found` distinction `Nucleus.NomadVars.Store.Local`
   now enforces gives DEX-S1 a real enablement signal to build against locally,
   with no Nomad ACL token required.
+- `Nucleus.Backend.Seed.get_and_update/3` is now available to every boundary,
+  not just `:nomad_vars` — the next boundary that needs an atomic
+  check-and-set (or any other decide-then-write) against the shared seed has
+  a primitive to reach for rather than reproducing this ticket's original
+  bug.
 
 ### Negative
+
+- **The first pass of `Nucleus.NomadVars.Store.Local.write/2` shipped a lost-update
+  race** (see the Implementation-time correction above) — its own moduledoc
+  claimed the exact guarantee the code did not provide. Caught in review
+  before merge, not by any test that existed at the time; the regression
+  test added alongside the fix is what makes this durable.
 
 - **`Nucleus.Backend.Seed`'s `nil`-collapses-absence-and-null limitation is
   now load-bearing for one boundary's correctness**, worked around at the
@@ -208,7 +256,8 @@ here as binding on this ticket too.
   shape, and the seventh-kind warning this ticket triggers
 - `docs/adr/0003-shared-local-backend-seed.md` — `Nucleus.Backend.Seed`,
   whose `nil`-collapsing behaviour this ticket works around rather than
-  changes
+  changes, and which this ticket extends with `get_and_update/3` for the
+  atomic check-and-set `write/2` needs
 - `docs/adr/0007-secrets-store-adapter.md` — the read+write boundary shape,
   and the pure path/value-validator precedent `Nucleus.NomadVars.Path`/`Value`
   follow
