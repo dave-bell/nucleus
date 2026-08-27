@@ -309,11 +309,11 @@ schedule text identically (`"not available"`), including a degraded periodic job
 one of the three fields `Job.t()`'s own invariant says are unknown together. The Version
 column is retitled "Job revision" (`APP-D1`'s wording, `docs/adr/0022` Decision 1); the DOM id
 stays `#job-{name}-version` since `docs/adr/0025`'s contract names the field, not the header
-text. The status badge class lands on the existing `#job-{name}-status` cell directly rather
-than a nested pill, keeping this ticket's markup diff to cell content only, per its own scope
-note. The rendered status *colour* itself (as opposed to the CSS class) joins `test/README.md`'s
-gap table alongside `M2M-A10`/`SEC-A04`, rather than reopening `docs/adr/0008` — see
-`docs/adr/0026-applications-row-formatters-and-status-colour-test-gap.md`.
+text. The status badge is a `<span>` nested inside the `#job-{name}-status` cell, carrying the
+id itself, with `align-middle` on the `<td>` so the pill sits centered in the row rather than
+coloring the whole cell. The rendered status *colour* itself (as opposed to the CSS class)
+joins `test/README.md`'s gap table alongside `M2M-A10`/`SEC-A04`, rather than reopening
+`docs/adr/0008` — see `docs/adr/0026-applications-row-formatters-and-status-colour-test-gap.md`.
 
 ## Tagging Convention
 

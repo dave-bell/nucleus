@@ -68,19 +68,30 @@ neither state renders blank, but the two remain distinct conditions in the
 struct; the shared text is a display choice, not a claim that they mean the
 same thing.
 
-### The status badge class lands on the existing `#job-{name}-status` cell directly
+### The status badge is a nested pill, vertically centered in its cell
 
-`docs/adr/0025` fixed the status cell's id at the `<td>`. Rather than nest a
-new `<span>` inside it to carry a daisyUI `.badge` pill (visually tidier,
-but a markup-structure change `APP-S2`'s own scope note rules out — "fill in
-the existing cells, no markup-structure change needed"), `status_class/1`'s
-`"badge badge-{success,warning,error,neutral}"` string is applied as the
-`<td>`'s own `class`. This keeps the ticket a content-only change and
-matches the issue's own test snippet
-(`has_element?(view, "#job-...-status.badge-success")`, same element
-carrying both the id and the class) literally. Revisit with a nested pill
-if a future design pass wants the visual polish and is willing to own a
-markup change.
+`docs/adr/0025` fixed the status cell's id at the `<td>`. The first pass
+kept that literally — `status_class/1`'s `"badge badge-{success,warning,error,neutral}"`
+string applied as the `<td>`'s own `class`, so the id and class stayed on
+one element and the diff touched no new nodes. Caught in review: a `<td>`
+carrying `.badge` doesn't read as a pill — the badge fills the cell's full
+height rather than sitting as a centered, inline-sized chip, which is what
+`APP-A02`'s "visually distinguished... in addition to the status text"
+actually calls for. The id and class move onto a `<span>` nested inside the
+`<td>` (`<td class="align-middle"><span id="job-{name}-status" class="badge
+badge-...">...</span></td>`), with `align-middle` on the `<td>` so the pill
+centers vertically in the row regardless of the row's height. This is the
+"nested `<span>`" alternative the first pass rejected as a markup-structure
+change outside scope — accepted after all, since "content-only" was never
+meant to block a one-ticket-old placeholder cell from gaining the child
+node its own content needs to render correctly, and the DOM id contract
+(`#job-{name}-status` exists, addressable, carries the class) is unchanged
+regardless of which element holds it.
+
+Existing and new tests are unaffected: `has_element?/2` matches by id
+regardless of tag, so every `#job-{name}-status`-based assertion
+(`APP-A01`'s existence check, `APP-A02`'s class checks) passes against the
+`<span>` exactly as it did against the `<td>`.
 
 ### The Version column is retitled "Job revision"
 
@@ -119,11 +130,6 @@ gap.
 
 ### Negative
 
-- The status badge classing an entire `<td>` rather than an inline pill is
-  a visual compromise made to keep this ticket's markup diff to cell
-  content only, per its own explicit scope. A future design pass that wants
-  a nested pill will need to move the id, which is a small but real markup
-  change against `docs/adr/0025`'s fixed contract.
 - No seed fixture exercises a `detail_error`-degraded row through the
   LiveView end-to-end; the condition is proven only at the formatter's pure
   unit-test layer. Revisit if `Nucleus.NomadJobs.Local` ever grows a
@@ -132,10 +138,12 @@ gap.
 
 ## Alternatives considered
 
-**A nested `<span class="badge ...">` inside the status `<td>`, moving the
-fixed id onto the span.** Rejected — see the Decision above. Visually
-better, but a markup-structure change this ticket's own scope note
-explicitly rules out.
+**The badge class on the `<td>` itself, no nested `<span>`.** The first
+pass, and the more literal reading of `APP-S2`'s "content-only" scope note.
+Rejected on review — see the Decision above — because a `<td>` carrying
+`.badge` doesn't render as a pill, it colors the whole cell, which reads as
+a bigger visual change than the nested-span alternative it was chosen to
+avoid.
 
 **A fourth `*_error`-style clause per formatter, matching each field's own
 nil-ness independently of `detail_error`.** Rejected — `Job.t()`'s own

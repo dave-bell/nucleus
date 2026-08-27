@@ -75,7 +75,7 @@ defmodule NucleusWeb.ApplicationsLive do
   | Column | Content |
   |---|---|
   | Name | full text |
-  | Status | raw status text, plus a `JobFormat.status_class/1` badge class (`APP-A02`) |
+  | Status | raw status text inside a `JobFormat.status_class/1` badge pill, vertically centered in the row (`APP-A02`) — the pill carries the `#job-{name}-status` id, not the enclosing `<td>` |
   | Job revision | `JobFormat.version_text/1` — Nomad's scheduler revision, not a release identifier (`APP-A03`) |
   | Image | `JobFormat.image_text/1` — `name:tag`, or "not available" (`APP-A03`) |
   | Schedule | `JobFormat.schedule_text/1` — cron spec, or "No schedule" (`APP-A04`, `APP-A05`) |
@@ -174,8 +174,10 @@ defmodule NucleusWeb.ApplicationsLive do
             <tbody id="applications-table-body" phx-update="stream">
               <tr :for={{dom_id, job} <- @streams.jobs} id={dom_id} data-job-name={job.name}>
                 <td class="font-medium">{job.name}</td>
-                <td id={cell_id(job.name, "status")} class={JobFormat.status_class(job)}>
-                  {JobFormat.status_text(job)}
+                <td class="align-middle">
+                  <span id={cell_id(job.name, "status")} class={JobFormat.status_class(job)}>
+                    {JobFormat.status_text(job)}
+                  </span>
                 </td>
                 <td id={cell_id(job.name, "version")}>{JobFormat.version_text(job)}</td>
                 <td id={cell_id(job.name, "image")}>{JobFormat.image_text(job)}</td>
