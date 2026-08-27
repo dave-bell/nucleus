@@ -7,7 +7,7 @@ defmodule Nucleus.Audit.Event do
   cannot pass a secret value through by accident. `resource` carries *what was
   accessed* (a path or key), never the value itself.
 
-  The `event` type union covers all eleven events from the wiki's
+  The `event` type union covers all ten events from the wiki's
   [Audit & Compliance](https://github.com/dave-bell/nucleus/wiki/Audit-and-Compliance)
   catalogue, so later features do not each invent their own spelling. Only the
   three Secrets events (`:secret_created`, `:secret_viewed`, `:secret_updated`)
@@ -24,7 +24,6 @@ defmodule Nucleus.Audit.Event do
   @type event ::
           :auth_failure
           | :nomad_vars_listed
-          | :nomad_var_viewed
           | :nomad_var_updated
           | :env_names_updated
           | :secret_created
@@ -70,12 +69,6 @@ defmodule Nucleus.Audit.Event do
       required: [:tenant],
       details_allowed: [:path],
       details_required: [:path]
-    },
-    nomad_var_viewed: %{
-      allowed: [:user, :tenant, :details],
-      required: [:tenant],
-      details_allowed: [:path, :key],
-      details_required: [:path, :key]
     },
     nomad_var_updated: %{
       allowed: [:user, :tenant, :details],

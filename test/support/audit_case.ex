@@ -68,7 +68,7 @@ defmodule Nucleus.AuditCase do
   keys it cares about).
 
       assert_audit_event(:secret_viewed, tenant: "acme", resource: "/prod/API_KEY")
-      assert_audit_event(:nomad_var_viewed, details: %{key: "FEATURE_FLAG"})
+      assert_audit_event(:nomad_var_updated, details: %{key: "FEATURE_FLAG"})
 
   Fails with the full list of emitted events when there is no match, so a
   failure shows what was actually recorded rather than just "not found".
