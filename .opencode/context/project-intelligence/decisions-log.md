@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.27 | Updated: 2026-08-26 -->
+<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.28 | Updated: 2026-08-26 -->
 
 # Decisions Log
 
@@ -50,6 +50,7 @@ job and the row should point rather than paraphrase.
 | 23 | Sidebar environment grouping — `NucleusWeb.SidebarEnvironments.group/1` (not `EnvironmentsHook`) now owns archived-exclusion, unit-tested directly; per-category expand/collapse is a socket assign toggled via `Phoenix.LiveView.attach_hook/4` on `:handle_event` (this codebase's first use), not client-side `JS`, since `Layouts.app` is a function component shared across four LiveViews and the toggle must be provable via `render_click/1`; corrected post-review — `with_slugs/1` disambiguates category names that collapse to the same DOM-id slug (e.g. `"Prod East"` vs `"Prod-East"`), which `group/1` treats as distinct but `slug/1` alone did not | 2026-08-25 | Decided | `docs/adr/0023-sidebar-environment-grouping-and-category-toggle-state.md` |
 | 24 | Sidebar expand/collapse survives navigation — `NucleusWeb.SidebarNavState` (a supervised `GenServer` owning a `:protected` ETS table) backs `:expanded_categories` instead of a plain assign, since `<.link navigate>` always remounts `EnvironmentsHook`'s `on_mount`, even to the same LiveView module; keyed by a random `nav_session_id` (`AssignScope`), not `current_scope`, since auth is deferred and every request shares one dev identity; reads bypass the `GenServer` (`:ets.lookup/2` direct), writes go through it (`GenServer.call/2`) so concurrent same-session toggles cannot lose an update | 2026-08-25 | Decided | `docs/adr/0024-sidebar-expand-state-survives-navigation.md` |
 | 25 | Applications listing — one `NucleusWeb.ApplicationsLive` module, bounding `docs/adr/0018`'s Index/Show split to *match the module count to the route count* (no detail route here); row and cell DOM ids derive from the unhashed `Job.name`, resolving the ticket's unreferenced `#job-{id}-*` contract to `name` — safe **only** because `Job.child?/1` filters `/`-bearing child names out at the boundary, since `Job.name` has no validating allowlist and LazyHTML rejects a `/` in a selector outright; the name-ascending sort stays in the LiveView rather than expanding `list/1`'s contract; version/image/schedule ship as empty cells at their final ids so `APP-S2` is content-only | 2026-08-26 | Decided | `docs/adr/0025-applications-listing-single-module-and-name-derived-dom-ids.md` |
+| 26 | Applications row formatters — shared `NucleusWeb.Nomad.JobFormat` (`status_class/1`, `status_text/1`, `version_text/1`, `image_text/1`, `schedule_text/1`) over `Job.t()`, unblocking DEX-S5; `detail_error` degrades version/image/schedule text identically, including a degraded periodic job's cron; status badge class lands on the existing `#job-{name}-status` `<td>` directly rather than a nested pill, to stay content-only against `docs/adr/0025`'s fixed markup; Version column retitled "Job revision"; rendered status colour (not the CSS class) recorded as a `test/README.md` gap, following `M2M-A10`/`SEC-A04`'s precedent of not reopening `docs/adr/0008` itself | 2026-08-26 | Decided | `docs/adr/0026-applications-row-formatters-and-status-colour-test-gap.md` |
 
 No **"re-platform" decision** (fresh start) and no **inherited ADRs** — the wiki's `ADR-0001`–
 `ADR-0007` are reference only; adopting one is a decision made on its own merits.
@@ -71,7 +72,7 @@ the ADR it points at stays findable.
 
 ## Onboarding Checklist
 
-- [ ] Read the Decision Index above; `adr/0001`–`0025` are binding
+- [ ] Read the Decision Index above; `adr/0001`–`0026` are binding
 - [ ] New formal ADRs belong in `docs/adr/`, with only an index row mirrored here — the wiki's
       ADR-0001–0007 are reference only, not adopted
 - [ ] Know which decisions are pending (see `living-notes.md`)

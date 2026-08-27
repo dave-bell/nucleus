@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.23 | Updated: 2026-08-26 -->
+<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.24 | Updated: 2026-08-26 -->
 
 # Business ↔ Tech Bridge
 
@@ -296,6 +296,24 @@ listing. The sidebar's Applications entry (`layouts.ex`) is now a real `<.link n
 replacing the disabled placeholder EN-7 shipped; `NAV-A03`'s active-section highlighting remains
 unclaimed, matching `M2M-S2`'s identical precedent for its own sidebar link — the view existing
 does not by itself satisfy `NAV-A03`'s "selected item is visually distinguished" clause.
+
+`APP-A02`–`APP-A05` are now claimed and covered too (`APP-S2`/#59), completing all eight
+`APP-A*` actions. The three placeholder cells `APP-S1` left empty, plus the status text it
+already rendered, are now driven by a new shared module, `NucleusWeb.Nomad.JobFormat`
+(`status_class/1`, `status_text/1`, `version_text/1`, `image_text/1`, `schedule_text/1`) —
+the `Format.created_date/1` precedent applied to `Job.t()`, and the second known consumer,
+DEX-S5 (#77)'s deployment-status panel, is unblocked by its existence rather than by this
+ticket reaching into `Job` fields on its own. `detail_error` degrades version, image, *and*
+schedule text identically (`"not available"`), including a degraded periodic job's cron —
+`periodic?` itself stays accurate (list-stub field, not detail-sourced), but the cron spec is
+one of the three fields `Job.t()`'s own invariant says are unknown together. The Version
+column is retitled "Job revision" (`APP-D1`'s wording, `docs/adr/0022` Decision 1); the DOM id
+stays `#job-{name}-version` since `docs/adr/0025`'s contract names the field, not the header
+text. The status badge class lands on the existing `#job-{name}-status` cell directly rather
+than a nested pill, keeping this ticket's markup diff to cell content only, per its own scope
+note. The rendered status *colour* itself (as opposed to the CSS class) joins `test/README.md`'s
+gap table alongside `M2M-A10`/`SEC-A04`, rather than reopening `docs/adr/0008` — see
+`docs/adr/0026-applications-row-formatters-and-status-colour-test-gap.md`.
 
 ## Tagging Convention
 
