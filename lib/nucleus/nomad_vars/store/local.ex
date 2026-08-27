@@ -55,14 +55,19 @@ defmodule Nucleus.NomadVars.Store.Local do
 
   See `docs/adr/0027-nomad-vars-adapter.md` for the full record.
 
-  ## Check-and-set is enforced here too
+  ## Check-and-set is enforced here too — atomically, not read-then-write
 
   `write/2` compares `expected_modify_index` against the seed's own stored
   index before writing anything — a stale value is `{:error, %Error{kind:
   :conflict}}`, the same contract `Nucleus.NomadVars.Store.Http` gives
-  against a real `409`. A successful write bumps the stored index by one and
-  replaces `modified_at`, mirroring how `Nucleus.Secrets.Store.Local` and
-  `Nucleus.M2M.Clients.Local` write through the shared `Seed` `Agent`.
+  against a real `409`. Unlike `Nucleus.Secrets.Store.Local`'s and
+  `Nucleus.M2M.Clients.Local`'s writes, which are unconditional (nothing to
+  race), this comparison and the resulting write both happen inside a single
+  `Nucleus.Backend.Seed.get_and_update/3` call — not a `Seed.read/1` followed
+  by a separate `Seed.update/2`, which would let two concurrent writers both
+  read the same current index, both pass the check, and have the second
+  silently overwrite the first. A successful write bumps the stored index by
+  one and replaces `modified_at`.
 
   ## Faults come first
 
@@ -89,10 +94,16 @@ defmodule Nucleus.NomadVars.Store.Local do
 
   @impl Store
   def write(items, expected_modify_index) do
-    with :ok <- Faults.maybe_fault(Store.boundary()),
-         {:ok, section} <- section(),
-         :ok <- ensure_matching_index(section, expected_modify_index) do
-      {:ok, put_section(section, items)}
+    with :ok <- Faults.maybe_fault(Store.boundary()) do
+      Seed.get_and_update(Store.boundary(), fn raw ->
+        with {:ok, section} <- interpret(raw),
+             :ok <- ensure_matching_index(section, expected_modify_index) do
+          updated = bump(section, items)
+          {{:ok, variable_set(updated)}, updated}
+        else
+          {:error, _reason} = error -> {error, raw}
+        end
+      end)
     end
   end
 
@@ -116,7 +127,11 @@ defmodule Nucleus.NomadVars.Store.Local do
   end
 
   defp section do
-    case Seed.read(Store.boundary()) do
+    Store.boundary() |> Seed.read() |> interpret()
+  end
+
+  defp interpret(raw) do
+    case raw do
       false ->
         {:error, error(:not_found, "this tenant does not have Data Export enabled", %{})}
 
@@ -126,9 +141,9 @@ defmodule Nucleus.NomadVars.Store.Local do
            seed_path: Seed.default_path()
          })}
 
-      %{"path" => path, "items" => items, "modify_index" => modify_index} = raw
+      %{"path" => path, "items" => items, "modify_index" => modify_index} = valid
       when is_binary(path) and is_map(items) and is_integer(modify_index) ->
-        {:ok, raw}
+        {:ok, valid}
 
       other ->
         {:error,
@@ -149,17 +164,13 @@ defmodule Nucleus.NomadVars.Store.Local do
      })}
   end
 
-  defp put_section(current, items) do
-    updated = %{
+  defp bump(current, items) do
+    %{
       current
       | "items" => items,
         "modify_index" => current["modify_index"] + 1,
         "modified_at" => DateTime.to_iso8601(DateTime.utc_now())
     }
-
-    Seed.update(Store.boundary(), fn _current -> updated end)
-
-    variable_set(updated)
   end
 
   defp variable_set(%{"path" => path, "items" => items, "modify_index" => modify_index} = section) do

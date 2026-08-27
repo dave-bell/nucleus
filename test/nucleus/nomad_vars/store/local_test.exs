@@ -57,6 +57,31 @@ defmodule Nucleus.NomadVars.Store.LocalTest do
       assert details.modify_index == current
       assert {:ok, %VariableSet{items: ^original_items}} = Local.read()
     end
+
+    test "two concurrent writers against the same expected_modify_index — exactly one wins" do
+      # Regression test: write/2 must perform its CAS check and its write
+      # inside the same atomic step (Nucleus.Backend.Seed.get_and_update/3),
+      # not a Seed.read/1 followed by a separate Seed.update/2 — the latter
+      # lets two callers both read the same current index, both pass the
+      # check, and have the second silently clobber the first with neither
+      # ever seeing a :conflict.
+      assert {:ok, %VariableSet{modify_index: current}} = Local.read()
+
+      results =
+        1..20
+        |> Task.async_stream(fn i -> Local.write(%{"description" => "writer #{i}"}, current) end)
+        |> Enum.map(fn {:ok, result} -> result end)
+
+      successes = Enum.filter(results, &match?({:ok, _}, &1))
+      conflicts = Enum.filter(results, &match?({:error, %Error{kind: :conflict}}, &1))
+
+      assert length(successes) == 1
+      assert length(conflicts) == 19
+
+      # The stored index only advanced by the one write that actually won.
+      assert {:ok, %VariableSet{modify_index: final_index}} = Local.read()
+      assert final_index == current + 1
+    end
   end
 
   describe "state resets between tests" do

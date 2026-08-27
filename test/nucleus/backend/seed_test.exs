@@ -67,6 +67,58 @@ defmodule Nucleus.Backend.SeedTest do
 
       assert Seed.read(:brand_new, seed) == %{"created" => true}
     end
+
+    test "get_and_update/3 replaces the section and returns fun's own result" do
+      seed = isolated_seed()
+
+      result =
+        Seed.get_and_update(
+          :secrets,
+          fn secrets -> {Map.keys(secrets), Map.put(secrets, "staging", %{})} end,
+          seed
+        )
+
+      assert result == ["prod"]
+      assert Seed.read(:secrets, seed) == %{"prod" => %{"KEY" => "value"}, "staging" => %{}}
+    end
+
+    test "get_and_update/3 can leave the section untouched while still returning a result" do
+      seed = isolated_seed()
+
+      result = Seed.get_and_update(:secrets, fn secrets -> {:unchanged, secrets} end, seed)
+
+      assert result == :unchanged
+      assert Seed.read(:secrets, seed) == @fixture["secrets"]
+    end
+
+    test "get_and_update/3 on an absent section is handed nil" do
+      seed = isolated_seed()
+
+      result =
+        Seed.get_and_update(:brand_new, fn nil -> {:was_nil, %{"created" => true}} end, seed)
+
+      assert result == :was_nil
+      assert Seed.read(:brand_new, seed) == %{"created" => true}
+    end
+
+    test "get_and_update/3 serialises concurrent callers — no interleaved read-modify-write" do
+      seed = isolated_seed(Jason.encode!(%{"counter" => %{"value" => 0}}))
+
+      1..50
+      |> Task.async_stream(
+        fn _ ->
+          Seed.get_and_update(
+            :counter,
+            fn %{"value" => value} -> {:ok, %{"value" => value + 1}} end,
+            seed
+          )
+        end,
+        max_concurrency: 10
+      )
+      |> Stream.run()
+
+      assert Seed.read(:counter, seed) == %{"value" => 50}
+    end
   end
 
   describe "reset/1" do
