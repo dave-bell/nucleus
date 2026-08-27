@@ -94,6 +94,105 @@ defmodule NucleusWeb.ApplicationsLiveTest do
     end
   end
 
+  describe "APP-A02 — distinguish job status at a glance" do
+    @tag action: "APP-A02"
+    test "running, pending, and dead rows carry distinct status classes", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/applications")
+
+      assert has_element?(view, "#job-acme-api-status.badge-success")
+      assert has_element?(view, "#job-acme-worker-pending-status.badge-warning")
+      assert has_element?(view, "#job-acme-worker-dead-status.badge-error")
+    end
+
+    @tag action: "APP-A02"
+    test "status text is present in every case, alongside — not replaced by — the class", %{
+      conn: conn
+    } do
+      {:ok, view, _html} = live(conn, ~p"/applications")
+
+      assert view |> element("#job-acme-api-status") |> render() =~ "running"
+      assert view |> element("#job-acme-worker-pending-status") |> render() =~ "pending"
+      assert view |> element("#job-acme-worker-dead-status") |> render() =~ "dead"
+    end
+  end
+
+  describe "APP-A03 — see the explicit version and image of each deployed application" do
+    @tag action: "APP-A03"
+    test "a job with an image renders both an explicit version and image:tag, as two distinct cells",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/applications")
+
+      version_text = view |> element("#job-acme-api-version") |> render()
+      image_text = view |> element("#job-acme-api-image") |> render()
+
+      refute version_text =~ "not available"
+      refute image_text =~ "not available"
+      assert version_text != image_text
+    end
+
+    @tag action: "APP-A03"
+    test "the seeded no-image fixture renders 'not available' in both cells, row layout intact",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/applications")
+
+      assert view |> element("#job-acme-legacy-raw-exec-image") |> render() =~ "not available"
+
+      # Version is its own condition, not derived from the image's — a job
+      # with no image still has a revision.
+      refute view |> element("#job-acme-legacy-raw-exec-version") |> render() =~
+               "not available"
+
+      # Adjacent cells (name, status) are unaffected.
+      assert has_element?(view, "#applications-table-body", "acme-legacy-raw-exec")
+      assert has_element?(view, "#job-acme-legacy-raw-exec-status")
+    end
+
+    @tag action: "APP-A03"
+    test "the seeded template-variable-image fixture renders the literal unresolved string", %{
+      conn: conn
+    } do
+      {:ok, view, _html} = live(conn, ~p"/applications")
+
+      assert view |> element("#job-acme-ingress-image") |> render() =~
+               "${meta.connect.gateway_image}"
+    end
+  end
+
+  describe "APP-A04 — see the schedule of periodic applications" do
+    @tag action: "APP-A04"
+    test "a periodic job renders its cron spec", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/applications")
+
+      assert view |> element("#job-acme-nightly-report-schedule") |> render() =~ "*"
+      refute view |> element("#job-acme-nightly-report-schedule") |> render() =~ "No schedule"
+    end
+
+    @tag action: "APP-A04"
+    test "the modern crons block (Periodic.Specs) also renders its cron spec", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/applications")
+
+      refute view |> element("#job-acme-hourly-sync-schedule") |> render() =~ "No schedule"
+    end
+  end
+
+  describe "APP-A05 — non-scheduled applications show no schedule" do
+    @tag action: "APP-A05"
+    test "the seeded non-periodic job renders an explicit 'No schedule' string, never blank", %{
+      conn: conn
+    } do
+      {:ok, view, _html} = live(conn, ~p"/applications")
+
+      assert view |> element("#job-acme-api-schedule") |> render() =~ "No schedule"
+    end
+
+    @tag action: "APP-A05"
+    test "a parameterized parent with zero dispatches also renders 'No schedule'", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/applications")
+
+      assert view |> element("#job-acme-adhoc-export-schedule") |> render() =~ "No schedule"
+    end
+  end
+
   describe "APP-A06 — empty state" do
     @tag action: "APP-A06"
     test "zero seeded jobs renders #applications-empty, not the table", %{conn: conn} do

@@ -26,13 +26,21 @@ covered:
 | Escape-key dismissal, focus trap, focus restoration | `SEC-A13` | Real key events and focus management need a browser |
 | Escape and backdrop-click dismissal of the reveal modal | `SEC-A04` | Both reach the server only by running the `JS` chain in `data-cancel` |
 | The `beforeunload` warning dialog itself | `M2M-A10` | `window.beforeunload` is a browser API; the hook cannot be executed |
+| The rendered status colour itself (as opposed to the CSS class) | `APP-A02` | Actual pixel colour is not observable through `Phoenix.LiveViewTest`; only the class attribute is |
 
 For these, assert the *wiring* (hook attached, `phx-window-keydown` bound,
 `on_cancel` set) — never tag the test `action:` for that ID, since the test
-does not prove the requirement's `Then` clauses. `SEC-A04` is the one partial
-case: its `Then` *is* proven, through the modal's Close button, which pushes a
-plain event a `render_click/1` can drive. The tag is claimed there and only
-there — see `docs/adr/0012-secret-reveal-modal-and-icon-only-copy-affordances.md`.
+does not prove the requirement's `Then` clauses. `SEC-A04` and `APP-A02` are
+partial cases: each `Then` *is* proven through a mechanism `Phoenix.LiveViewTest`
+can drive — `SEC-A04` through the modal's Close button (a plain event
+`render_click/1` can push), `APP-A02` through the per-status CSS class
+(`has_element?(view, "#job-...-status.badge-success")`, asserted pairwise
+distinct across `running`/`pending`/`dead`) — so the tag is claimed there and
+only the un-drivable remainder (backdrop/Escape dismissal; the rendered
+pixel) stays an open gap. See
+`docs/adr/0012-secret-reveal-modal-and-icon-only-copy-affordances.md` and
+`docs/adr/0026-applications-row-formatters-and-status-colour-test-gap.md`
+respectively.
 
 ## Tag vocabulary
 

@@ -65,18 +65,20 @@ defmodule NucleusWeb.ApplicationsLive do
   `@job_count == 0` conditional is used for consistency with that module's
   established pattern rather than because anything here needs it.
 
-  ## Row cells this ticket fills in, and the placeholders `APP-S2` (#59) replaces
+  ## Row cells — `APP-S2` (#59) fills in content only
 
-  Every column's DOM id is fixed now, even the ones this ticket doesn't
-  finish styling (`docs/adr/0010`, `docs/adr/0018`):
+  Every column's DOM id was fixed by `APP-S1` (`docs/adr/0010`,
+  `docs/adr/0018`, `docs/adr/0025`); this ticket touches no markup
+  structure, only cell content, via the shared `NucleusWeb.Nomad.JobFormat`
+  formatter (`APP-A02`–`APP-A05`):
 
-  | Column | This ticket | `APP-S2` (#59) adds |
-  |---|---|---|
-  | Name | full text | — |
-  | Status | raw status text | colour distinction (`APP-A02`) |
-  | Version | placeholder cell, DOM id fixed | explicit version text (`APP-A03`) |
-  | Image | placeholder cell, DOM id fixed | image name:tag (`APP-A03`) |
-  | Schedule | placeholder cell, DOM id fixed | cron text / explicit "no schedule" (`APP-A04`, `APP-A05`) |
+  | Column | Content |
+  |---|---|
+  | Name | full text |
+  | Status | raw status text inside a `JobFormat.status_class/1` badge pill, vertically centered in the row (`APP-A02`) — the pill carries the `#job-{name}-status` id, not the enclosing `<td>` |
+  | Job revision | `JobFormat.version_text/1` — Nomad's scheduler revision, not a release identifier (`APP-A03`) |
+  | Image | `JobFormat.image_text/1` — `name:tag`, or "not available" (`APP-A03`) |
+  | Schedule | `JobFormat.schedule_text/1` — cron spec, or "No schedule" (`APP-A04`, `APP-A05`) |
 
   ## `APP-A08` — no mutating affordance anywhere
 
@@ -97,6 +99,7 @@ defmodule NucleusWeb.ApplicationsLive do
   alias Nucleus.NomadJobs
   alias Nucleus.NomadJobs.Job
   alias NucleusWeb.ApplicationsLive.States
+  alias NucleusWeb.Nomad.JobFormat
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
@@ -163,7 +166,7 @@ defmodule NucleusWeb.ApplicationsLive do
               <tr>
                 <th>Name</th>
                 <th>Status</th>
-                <th>Version</th>
+                <th>Job revision</th>
                 <th>Image</th>
                 <th>Schedule</th>
               </tr>
@@ -171,10 +174,14 @@ defmodule NucleusWeb.ApplicationsLive do
             <tbody id="applications-table-body" phx-update="stream">
               <tr :for={{dom_id, job} <- @streams.jobs} id={dom_id} data-job-name={job.name}>
                 <td class="font-medium">{job.name}</td>
-                <td id={cell_id(job.name, "status")}>{job.status}</td>
-                <td id={cell_id(job.name, "version")}></td>
-                <td id={cell_id(job.name, "image")}></td>
-                <td id={cell_id(job.name, "schedule")}></td>
+                <td class="align-middle">
+                  <span id={cell_id(job.name, "status")} class={JobFormat.status_class(job)}>
+                    {JobFormat.status_text(job)}
+                  </span>
+                </td>
+                <td id={cell_id(job.name, "version")}>{JobFormat.version_text(job)}</td>
+                <td id={cell_id(job.name, "image")}>{JobFormat.image_text(job)}</td>
+                <td id={cell_id(job.name, "schedule")}>{JobFormat.schedule_text(job)}</td>
               </tr>
             </tbody>
           </table>
