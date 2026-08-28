@@ -421,7 +421,7 @@ defmodule NucleusWeb.DataExportLive do
                       :if={key != "env_names"}
                       id={"var-#{key}-edit"}
                       type="button"
-                      class="btn btn-xs"
+                      class="btn btn-sm"
                       phx-click="edit"
                       phx-value-key={key}
                     >
