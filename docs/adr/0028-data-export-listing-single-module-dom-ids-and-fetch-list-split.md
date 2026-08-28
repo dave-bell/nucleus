@@ -119,6 +119,19 @@ event for a listing in the first place (per each boundary's own moduledoc).
 *does* audit, which is what makes the gate — and therefore the split —
 necessary here and not there.
 
+**This does not generalize to a future listing of sensitive data.** The
+split is safe only because Data Export configuration is not secret data —
+`DEX-A03` states this explicitly, the same premise `Nucleus.M2M.fetch/2`'s
+own split rests on for a client list. An unaudited `fetch/1`-shaped
+counterpart, added specifically so the disconnected render has something
+real to show, is itself an unaudited path to whatever it reads — that is
+true regardless of whether a human ever actually loads the page
+disconnected. A future listing over sensitive data cannot copy this pattern
+by rote; it needs either unconditional auditing (both the disconnected and
+connected calls) or a disconnected render that shows no real content at
+all, accepting the blank-shell cost this ADR spent its Context section
+arguing against.
+
 ### The enablement gate is a state, not a filtered error
 
 `{:error, %Error{kind: :not_found}}` from `Nucleus.NomadVars.list/1`/`fetch/1`
@@ -166,6 +179,15 @@ not seen that correction.
   sync (itself, and `NucleusWeb.DataExportLive.mount/3`'s disconnected
   branch) where before there was one function and one call site. A future
   change to `fetch/1`'s contract must be checked against both.
+- **The `fetch/1`/`list/1` split reads as a general "how to fix a blank
+  disconnected render" recipe if lifted out of context — it is not one.**
+  It is sound here only because the underlying data (Data Export
+  configuration) is not sensitive; the same fix applied to a future
+  sensitive-data listing would introduce an unaudited read of that data.
+  Caught in review on this ticket's own PR, not by any test — recorded here
+  and in `living-notes.md`'s Gotchas so the next listing checks data
+  sensitivity before reusing this pattern rather than pattern-matching on
+  "audited call gated behind `connected?/1`" alone.
 - The generic error fallback folds `:already_exists`, `:conflict`, and
   `:invalid` into `#data-export-unavailable`, the same trade ADR-0010,
   ADR-0018, and ADR-0025 already accept for their own boundaries.

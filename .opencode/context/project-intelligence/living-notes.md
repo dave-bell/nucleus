@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/notes | Priority: high | Version: 1.26 | Updated: 2026-08-27 -->
+<!-- Context: project-intelligence/notes | Priority: high | Version: 1.27 | Updated: 2026-08-27 -->
 
 # Living Notes
 
@@ -211,10 +211,16 @@ deploys it.
   `live/2` test. Fixed by giving the context module a second, non-auditing function (`fetch/1`)
   for the disconnected pass, called disconnected while the auditing `list/1` runs only once
   connected — the same split `NucleusWeb.M2MClientsLive.Show` already uses
-  (`M2M.fetch/2`/`view/2`, `docs/adr/0019`), applied to a listing for the first time. If a future
-  context function needs to audit and is called from `mount/3`, check whether its LiveView gates
-  the whole call behind `connected?/1` — if so, it needs the same split, and a test that drives
-  a real disconnected HTTP request, not just `live/2`. See
+  (`M2M.fetch/2`/`view/2`, `docs/adr/0019`), applied to a listing for the first time. **This split
+  is safe here only because neither Data Export configuration nor an M2M client list is
+  sensitive** — `DEX-A03` says so explicitly for the former, and the latter is a client list, not
+  secret data. It does not generalize to a future audited listing of secret/sensitive data: an
+  unaudited `fetch/1`-style counterpart added specifically to populate the disconnected render
+  would then be an unaudited path to that data, regardless of whether a human ever actually sees
+  the disconnected pass — the audit requirement does not care who's watching. Check whether the
+  listed data is sensitive before reaching for this pattern; if it is, audit unconditionally (both
+  the disconnected and connected calls) or accept a blank/loading disconnected render instead of
+  serving real content unaudited. See
   `docs/adr/0028-data-export-listing-single-module-dom-ids-and-fetch-list-split.md`.
 - **A key/field with no validating allowlist used in a DOM id is a per-case examination, not a
   fact you can inherit from a sibling ADR.** `docs/adr/0025`'s `Job.name` and `Nucleus.NomadVars`'
