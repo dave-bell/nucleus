@@ -347,14 +347,16 @@ defmodule NucleusWeb.DataExportLiveTest do
       |> element("#var-description-edit")
       |> render_click()
 
-      assert has_element?(view, "#var-description-edit-form")
+      assert has_element?(view, "#data-export-edit-modal")
+      assert has_element?(view, "#data-export-edit-form")
+      assert view |> element("#data-export-edit-modal") |> render() =~ "description"
 
       view
-      |> form("#var-description-edit-form", value: %{"value" => "Updated description."})
+      |> form("#data-export-edit-form", value: %{"value" => "Updated description."})
       |> render_submit()
 
       assert has_element?(view, "#var-description-value", "Updated description.")
-      refute has_element?(view, "#var-description-edit-form")
+      refute has_element?(view, "#data-export-edit-modal")
       assert has_element?(view, "#flash-info")
     end
 
@@ -367,7 +369,7 @@ defmodule NucleusWeb.DataExportLiveTest do
       view |> element("#var-description-edit") |> render_click()
 
       view
-      |> form("#var-description-edit-form", value: %{"value" => "Nightly export v2."})
+      |> form("#data-export-edit-form", value: %{"value" => "Nightly export v2."})
       |> render_submit()
 
       assert {:ok, %{items: %{"description" => "Nightly export v2."}}} =
@@ -394,7 +396,7 @@ defmodule NucleusWeb.DataExportLiveTest do
       view |> element("#var-destination_bucket-edit") |> render_click()
 
       view
-      |> form("#var-destination_bucket-edit-form", value: %{"value" => "acme-analytics-v2"})
+      |> form("#data-export-edit-form", value: %{"value" => "acme-analytics-v2"})
       |> render_submit()
 
       assert has_element?(view, "#var-destination_bucket-value", "acme-analytics-v2")
@@ -406,15 +408,15 @@ defmodule NucleusWeb.DataExportLiveTest do
       {:ok, view, _html} = live_data_export(conn)
 
       view |> element("#var-destination_bucket-edit") |> render_click()
-      assert has_element?(view, "#var-destination_bucket-edit-form")
+      assert has_element?(view, "#data-export-edit-modal")
 
       view
-      |> form("#var-destination_bucket-edit-form", value: %{"value" => "not-going-to-be-saved"})
+      |> form("#data-export-edit-form", value: %{"value" => "not-going-to-be-saved"})
       |> render_change()
 
-      view |> element("#var-destination_bucket-cancel-edit") |> render_click()
+      view |> element("#data-export-cancel-edit") |> render_click()
 
-      refute has_element?(view, "#var-destination_bucket-edit-form")
+      refute has_element?(view, "#data-export-edit-modal")
       assert has_element?(view, "#var-destination_bucket-value", "acme-analytics-prod")
       assert NomadVarsWriteSpy.write_calls() == 0
       assert_no_audit_event(:nomad_var_updated)
@@ -423,7 +425,7 @@ defmodule NucleusWeb.DataExportLiveTest do
 
   describe "DEX-A06 — a failed save is never silent" do
     @tag action: "DEX-A06"
-    test "a forced :unavailable save shows an explicit error, form stays open, value not shown as saved",
+    test "a forced :unavailable save shows an explicit error, modal stays open, value not shown as saved",
          %{conn: conn} do
       {:ok, view, _html} = live_data_export(conn)
 
@@ -432,11 +434,11 @@ defmodule NucleusWeb.DataExportLiveTest do
 
       html =
         view
-        |> form("#var-description-edit-form", value: %{"value" => "will not save"})
+        |> form("#data-export-edit-form", value: %{"value" => "will not save"})
         |> render_submit()
 
-      assert has_element?(view, "#var-description-edit-form")
-      assert has_element?(view, "#var-description-edit-error")
+      assert has_element?(view, "#data-export-edit-modal")
+      assert has_element?(view, "#data-export-edit-error")
       assert html =~ "will not save"
 
       clear_faults()
@@ -460,20 +462,20 @@ defmodule NucleusWeb.DataExportLiveTest do
       force_error(:nomad_vars, :conflict)
 
       view
-      |> form("#var-description-edit-form", value: %{"value" => "racing edit"})
+      |> form("#data-export-edit-form", value: %{"value" => "racing edit"})
       |> render_submit()
 
-      conflict_html = view |> element("#var-description-edit-error") |> render()
+      conflict_html = view |> element("#data-export-edit-error") |> render()
       assert conflict_html =~ "changed since you loaded it"
 
       clear_faults()
       force_error(:nomad_vars, :unavailable)
 
       view
-      |> form("#var-description-edit-form", value: %{"value" => "racing edit"})
+      |> form("#data-export-edit-form", value: %{"value" => "racing edit"})
       |> render_submit()
 
-      unavailable_html = view |> element("#var-description-edit-error") |> render()
+      unavailable_html = view |> element("#data-export-edit-error") |> render()
       refute unavailable_html =~ "changed since you loaded it"
     end
 
@@ -485,19 +487,19 @@ defmodule NucleusWeb.DataExportLiveTest do
       force_error(:nomad_vars, :unavailable)
 
       view
-      |> form("#var-description-edit-form", value: %{"value" => "retry me"})
+      |> form("#data-export-edit-form", value: %{"value" => "retry me"})
       |> render_submit()
 
-      assert has_element?(view, "#var-description-edit-error")
+      assert has_element?(view, "#data-export-edit-error")
 
       clear_faults()
 
       view
-      |> form("#var-description-edit-form", value: %{"value" => "retry me"})
+      |> form("#data-export-edit-form", value: %{"value" => "retry me"})
       |> render_submit()
 
       assert has_element?(view, "#var-description-value", "retry me")
-      refute has_element?(view, "#var-description-edit-form")
+      refute has_element?(view, "#data-export-edit-modal")
     end
 
     @tag action: "DEX-A06"
@@ -508,14 +510,14 @@ defmodule NucleusWeb.DataExportLiveTest do
       force_error(:nomad_vars, :unavailable)
 
       view
-      |> form("#var-description-edit-form", value: %{"value" => "abandoned edit"})
+      |> form("#data-export-edit-form", value: %{"value" => "abandoned edit"})
       |> render_submit()
 
-      assert has_element?(view, "#var-description-edit-error")
+      assert has_element?(view, "#data-export-edit-error")
 
-      view |> element("#var-description-cancel-edit") |> render_click()
+      view |> element("#data-export-cancel-edit") |> render_click()
 
-      refute has_element?(view, "#var-description-edit-form")
+      refute has_element?(view, "#data-export-edit-modal")
       refute has_element?(view, "#var-description-value", "abandoned edit")
     end
   end
@@ -528,7 +530,7 @@ defmodule NucleusWeb.DataExportLiveTest do
       {:ok, view, _html} = live_data_export(conn)
 
       view |> element("#var-destination_bucket-edit") |> render_click()
-      assert has_element?(view, "#var-destination_bucket-edit-form")
+      assert has_element?(view, "#data-export-edit-modal")
 
       render_click(view, "save_edit", %{
         "key" => "description",
@@ -537,8 +539,8 @@ defmodule NucleusWeb.DataExportLiveTest do
 
       assert NomadVarsWriteSpy.write_calls() == 0
       assert_no_audit_event(:nomad_var_updated)
-      # the originally open row's form is untouched by the rejected attempt.
-      assert has_element?(view, "#var-destination_bucket-edit-form")
+      # the originally open row's modal is untouched by the rejected attempt.
+      assert has_element?(view, "#data-export-edit-modal")
     end
 
     test "save_edit dispatched with no row open at all is rejected, no adapter call", %{
@@ -557,7 +559,7 @@ defmodule NucleusWeb.DataExportLiveTest do
     end
   end
 
-  describe "env_names never renders an inline edit form here" do
+  describe "env_names never renders an edit modal here" do
     @tag action: "DEX-A14"
     test "no edit trigger exists on the env_names row", %{conn: conn} do
       {:ok, view, _html} = live_data_export(conn)
@@ -565,12 +567,12 @@ defmodule NucleusWeb.DataExportLiveTest do
       refute has_element?(view, "#var-env_names-edit")
     end
 
-    test "dispatching \"edit\" directly for env_names opens no form", %{conn: conn} do
+    test "dispatching \"edit\" directly for env_names opens no modal", %{conn: conn} do
       {:ok, view, _html} = live_data_export(conn)
 
       render_click(view, "edit", %{"key" => "env_names"})
 
-      refute has_element?(view, "#var-env_names-edit-form")
+      refute has_element?(view, "#data-export-edit-modal")
     end
   end
 end
