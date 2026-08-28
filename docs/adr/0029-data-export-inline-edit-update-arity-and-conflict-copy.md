@@ -1,4 +1,4 @@
-# ADR-0029: Data Export Inline Edit — `update/5` Not `update/4`, Row-Scoped Forms Not a Modal, and `:conflict`'s Own Copy
+# ADR-0029: Data Export Edit — `update/5` Not `update/4`, a Modal for Symmetry with Secrets, and `:conflict`'s Own Copy
 
 ## Status
 
@@ -8,22 +8,29 @@ Decided on [DEX-S2](https://github.com/dave-bell/nucleus/issues/74). Builds on
 `0027-nomad-vars-adapter.md` (`Nucleus.NomadVars.Store.write/2`'s
 whole-map-replacement, CAS-enforced contract) and
 `0028-data-export-listing-single-module-dom-ids-and-fetch-list-split.md`
-(the `#var-{key}-value` cell this ticket edits inside of, and the
-unhashed-key DOM-id convention this ticket's new ids extend). Follows
-`0013-secret-edit-in-modal-and-value-form.md`'s form *mechanics*
-(`embedded_schema` + `Ecto.Changeset`, `validate_change/3` delegating to a
-shape validator, `to_form/2` wiring) without adopting its modal
-choreography, per `DEX-A03`'s "this is configuration, not secret data."
+(the `#var-{key}-value` cell this ticket's Edit trigger lives inside of,
+and the unhashed-key DOM-id convention this ticket's new ids extend).
+Follows `0013-secret-edit-in-modal-and-value-form.md`'s modal *and* form
+mechanics (`embedded_schema` + `Ecto.Changeset`, `validate_change/3`
+delegating to a shape validator, `to_form/2` wiring, the single
+conditionally-rendered `<.modal>`) directly — revised into that shape from
+this same PR's first pass, which had followed `DEX-A03`'s "this is
+configuration, not secret data" into skipping the modal entirely. See the
+"row-scoped form swap" decision below for why that reasoning held at
+first and was overridden after review, before merge.
 
 ## Context
 
-DEX-A04/A05/A06 require inline edit, save, and cancel for every
-configuration key except `env_names`, with a failed save that is never
-silent. The issue's own plan specified the write function's contract, the
-form mechanics to mirror, and the kind-to-copy mapping for a failed save —
-but its literal `@spec` for the write function omitted a parameter its own
-prose required, discovered only once the CAS contract it builds on
-(`Nucleus.NomadVars.Store.write/2`) was read closely.
+DEX-A04/A05/A06 require edit, save, and cancel for every configuration key
+except `env_names`, with a failed save that is never silent. The issue's
+own plan specified the write function's contract, the form mechanics to
+mirror, and the kind-to-copy mapping for a failed save — but its literal
+`@spec` for the write function omitted a parameter its own prose required,
+discovered only once the CAS contract it builds on
+(`Nucleus.NomadVars.Store.write/2`) was read closely. Separately, the first
+implementation's choice to skip a modal — reasoned correctly against
+`DEX-A03` in isolation — was overridden after review specifically for
+consistency with `SecretsLive`'s edit experience, before this PR merged.
 
 ## Decision
 
@@ -49,26 +56,35 @@ coverage off `@tag action: "..."` strings in tests, never function arity —
 so this correction has no effect on requirement traceability, only on the
 acceptance criteria's literal (and now corrected) function name.
 
-### Row-scoped form swap inside `#var-{key}-value`, not a modal
+### A single edit modal, mirroring `SecretsLive`, for symmetry — not a row-scoped form swap
 
-Unlike `SecretsLive`'s reveal-then-edit modal, `DataExportLive` has no
-reveal gate to begin with (`DEX-A03`: values are shown unmasked from the
-first render) and no per-row detail view to host a modal's content. The
-edit form swaps in place inside the same cell the value renders in,
-conditioned on `@editing_key == key`, mirroring `SecretsLive.EditForm`'s
-form *mechanics* — `embedded_schema`, `changeset/2` delegating to
-`Nucleus.NomadVars.Value.validate/1` via `validate_change/3`, `to_form/2`
-— without any of ADR-0013's modal-specific machinery (no `focusStack`
-concern arises, because there is no second `<.modal>` to stack against
-none).
+This ticket's first implementation reasoned: unlike `SecretsLive`'s
+reveal-then-edit modal, `DataExportLive` has no reveal gate to begin with
+(`DEX-A03`: values are shown unmasked from the first render) and no
+per-row detail view to host a modal's content, so the edit form should
+swap in place inside the same cell the value renders in — no modal, no
+`focusStack` concern, because there would be no second `<.modal>` to stack
+against none. That reasoning is sound on its own terms and shipped first.
+
+It was overridden after review, before this PR merged: the two views sit
+side by side in the same product, and a reviewer's stated preference for
+one consistent edit experience — always a modal — outweighs the row-swap's
+narrower justification. `DataExportLive` still has no reveal gate, so the
+modal here opens directly into the edit form; there is no display-mode
+content to toggle inside it the way `SecretsLive`'s modal toggles between
+plaintext and its edit form. `:editing_key` (a key or `nil`) alone gates
+the modal's `:if`, playing the role `:revealed` plays for `SecretsLive`;
+`:editing_value` holds the value as it was when the modal opened, kept
+only for the save button's dirty-check, never rewritten by a failed save.
 
 At most one row is open at a time: `:editing_key` is a single key or `nil`,
 not a set. Clicking "Edit" on a different row while one is already open
-simply moves `:editing_key`, discarding whatever unsaved text was in the
-row that closes — there is no cross-row unsaved-changes guard. No
-requirement asks for one, and the alternative (a confirmation dialog, or
-disabling every other row's Edit button while one is open) is unrequested
-complexity for a low-stakes discard (the value was never sent anywhere).
+simply replaces `:editing_key`/`:editing_value`, discarding whatever
+unsaved text was in the row that closes — there is no cross-row
+unsaved-changes guard. No requirement asks for one, and the alternative (a
+confirmation dialog, or disabling every other row's Edit button while one
+is open) is unrequested complexity for a low-stakes discard (the value was
+never sent anywhere).
 
 ### The server-side re-check pattern-matches, mirroring `SecretsLive`'s own gate
 
@@ -100,9 +116,9 @@ save this value right now, try again shortly" message — the same trade
 `handle_event("edit", %{"key" => "env_names"}, socket)` is its own clause,
 returning the socket unchanged — a direct `render_click(view, "edit",
 %{"key" => "env_names"})` (bypassing whatever the template renders) opens
-no form, the same "hiding a button is not a gate" reasoning applied to a
+no modal, the same "hiding a button is not a gate" reasoning applied to a
 key rather than to reveal state. DEX-S3/S4's picker is `env_names`'s only
-edit path; this ticket's own inline form must never become a second one.
+edit path; this ticket's own edit modal must never become a second one.
 
 ### `update/5` validates `value`'s shape itself, not only via the LiveView's changeset
 
@@ -138,9 +154,10 @@ gate directly.
 - `Nucleus.NomadVars.update/5`'s corrected arity is settled before DEX-S3/S4
   need to call it for `env_names`'s bulk update, rather than each
   discovering the same gap independently.
-- No new `focusStack`/modal-stacking risk — `DataExportLive` has no modal at
-  all, so ADR-0012's gotcha does not apply here by construction, not by
-  mitigation.
+- One edit experience across `SecretsLive` and `DataExportLive` — a future
+  reader learns the modal's assigns/DOM-id shape once and recognizes it in
+  both views, rather than reconciling two different edit choreographies for
+  what is, mechanically, the same operation.
 - The kind-to-copy mapping and the server-side re-check both reuse
   `SecretsLive`'s already-reviewed shapes rather than inventing new ones.
 - `update/5` now has the same defense-in-depth `Secrets.update/4` and
@@ -154,6 +171,11 @@ gate directly.
   A reviewer checking the checklist item literally against the code will
   find `update/5` and this ADR, not a fifth positional argument silently
   folded into one of the other four.
+- **The issue's plan describes a row-level inline form, not a modal**, and
+  this ADR's own first-pass reasoning agreed with it. The modal is a
+  same-PR revision made after review, for UI consistency with
+  `SecretsLive` — not a correction of a mistake in the original reasoning,
+  which remains valid on its own terms; it was simply outweighed.
 - No cross-row unsaved-changes guard means switching which row is open
   silently discards unsaved text in the row that closes — acceptable here
   (nothing was ever sent to the server), but worth naming since a future
@@ -176,10 +198,15 @@ that happened during the save request, not one that happened while the
 user had the form open, which is the actual concurrent-edit case `DEX-A06`
 exists for.
 
-**A per-row modal, mirroring `SecretsLive` literally.** Rejected — `DEX-A03`
-states values are not masked, so there is no reveal-gate reason for a
-modal to exist in the first place; a modal here would add dismissal/focus
-machinery with no problem for it to solve.
+**The row-scoped inline form swap this ticket shipped first**, reasoned
+directly from `DEX-A03`: values are not masked, so there is no
+reveal-gate reason for a modal to exist, and a modal would add
+dismissal/focus machinery with no problem for it to solve. Not rejected on
+its own terms — overridden after review in favor of matching
+`SecretsLive`'s modal for consistency across the two views. Recorded here
+rather than silently discarded, since the reasoning itself remains
+available should a future ticket need it (e.g. a view with no sibling
+modal to stay consistent with).
 
 **Leaving value validation entirely to `NucleusWeb.DataExportLive.EditForm`'s
 changeset, since `save_edit` already gates on `changeset.valid?` before
@@ -196,12 +223,14 @@ to get the shape guarantee `Value.validate/1` is supposed to provide.
 - `docs/adr/0027-nomad-vars-adapter.md` — `Store.write/2`'s whole-map-replacement
   CAS contract that forces `update/5`'s arity
 - `docs/adr/0028-data-export-listing-single-module-dom-ids-and-fetch-list-split.md`
-  — the `#var-{key}-value` cell this ticket's form swaps inside of, and
-  `@variables`'s sorted-list (not map) shape
-- `docs/adr/0013-secret-edit-in-modal-and-value-form.md` — the form
-  mechanics this ticket follows, explicitly without its modal choreography
+  — the `#var-{key}-value` cell this ticket's Edit trigger lives inside of,
+  and `@variables`'s sorted-list (not map) shape
+- `docs/adr/0013-secret-edit-in-modal-and-value-form.md` — the modal and
+  form mechanics this ticket now follows directly
 - `lib/nucleus_web/live/secrets_live.ex:378-398` — the `save_edit`
   server-side re-check this ticket's own gate mirrors
+- `lib/nucleus_web/live/secrets_live.ex:701-782` — the reveal/edit modal
+  shape this ticket's own modal mirrors
 - `lib/nucleus/secrets.ex:222-237` — `Secrets.update/4`'s `with` chain,
   the defense-in-depth pattern `update/5`'s validation fix follows
 - `lib/nucleus/m2m.ex:159,176-181` — `M2M.create_client/2`'s
@@ -210,4 +239,5 @@ to get the shape guarantee `Value.validate/1` is supposed to provide.
 - DEX-S3 (#75), DEX-S4 (#76) — expected to call `Nucleus.NomadVars.update/5`
   unchanged for `env_names`'s bulk update, swapping only the audit event at
   the call site
+
 </content>
