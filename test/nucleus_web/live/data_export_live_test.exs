@@ -6,10 +6,55 @@ defmodule NucleusWeb.DataExportLiveTest do
 
   alias Nucleus.Backend.Error
   alias Nucleus.Backend.Seed
+  alias Nucleus.NomadVars
 
   # Seeded in priv/backends/local_seed.json under TENANT_NAMESPACE = "local".
   @seeded_path "nomad/jobs/local-data_export"
   @seeded_keys ["description", "env_names", "destination_bucket"]
+
+  defmodule NomadVarsWriteSpy do
+    @moduledoc """
+    Delegates `read/0` and `health_check/0` to the real
+    `Nucleus.NomadVars.Store.Local`, and counts `write/2` calls via
+    `Nucleus.Backend.Seed` — for proving *no* adapter call happened (cancel,
+    and the server-side re-check's mismatched-key rejection). `LOCAL_FORCE_ERROR`
+    (`Nucleus.Backend.Faults`) cannot prove a negative like this — forcing an
+    error still lets a call through, it just makes that call fail — so this
+    swaps the boundary's implementation instead, the same technique
+    `NucleusWeb.SecretsLiveTest.FailingSecretsStore` uses, per `M2M-S1`'s
+    established reasoning against the node-global fault for a targeted
+    assertion.
+    """
+    @behaviour Nucleus.NomadVars.Store
+
+    @counter :nomad_vars_write_spy_calls
+
+    @impl Nucleus.NomadVars.Store
+    def read, do: Nucleus.NomadVars.Store.Local.read()
+
+    @impl Nucleus.NomadVars.Store
+    def write(items, expected_modify_index) do
+      Seed.update(@counter, fn count -> (count || 0) + 1 end)
+      Nucleus.NomadVars.Store.Local.write(items, expected_modify_index)
+    end
+
+    @impl Nucleus.NomadVars.Store
+    def health_check, do: Nucleus.NomadVars.Store.Local.health_check()
+
+    @spec write_calls() :: non_neg_integer()
+    def write_calls, do: Seed.read(@counter) || 0
+  end
+
+  defp use_write_spy do
+    original = Application.get_env(:nucleus, :backends, [])
+    on_exit(fn -> Application.put_env(:nucleus, :backends, original) end)
+
+    Application.put_env(
+      :nucleus,
+      :backends,
+      Keyword.put(original, :nomad_vars, NomadVarsWriteSpy)
+    )
+  end
 
   describe "DEX-A01 — detect whether Data Export is enabled" do
     @tag action: "DEX-A01"
@@ -291,5 +336,241 @@ defmodule NucleusWeb.DataExportLiveTest do
     |> LazyHTML.from_fragment()
     |> LazyHTML.query("#data-export-table-body [data-var-key]")
     |> LazyHTML.attribute("data-var-key")
+  end
+
+  describe "DEX-A04 — edit the description" do
+    @tag action: "DEX-A04"
+    test "editing and saving description reflects the new value immediately", %{conn: conn} do
+      {:ok, view, _html} = live_data_export(conn)
+
+      view
+      |> element("#var-description-edit")
+      |> render_click()
+
+      assert has_element?(view, "#var-description-edit-form")
+
+      view
+      |> form("#var-description-edit-form", value: %{"value" => "Updated description."})
+      |> render_submit()
+
+      assert has_element?(view, "#var-description-value", "Updated description.")
+      refute has_element?(view, "#var-description-edit-form")
+      assert has_element?(view, "#flash-info")
+    end
+
+    @tag action: "DEX-A04"
+    test "the underlying store reflects the new value, and the audit event carries no value", %{
+      conn: conn
+    } do
+      {:ok, view, _html} = live_data_export(conn)
+
+      view |> element("#var-description-edit") |> render_click()
+
+      view
+      |> form("#var-description-edit-form", value: %{"value" => "Nightly export v2."})
+      |> render_submit()
+
+      assert {:ok, %{items: %{"description" => "Nightly export v2."}}} =
+               NomadVars.fetch(%Nucleus.Scope{
+                 tenant: "local",
+                 user: %{email: "a@b.com", username: nil}
+               })
+
+      event =
+        assert_audit_event(:nomad_var_updated,
+          tenant: "local",
+          details: %{path: @seeded_path, key: "description"}
+        )
+
+      refute Map.has_key?(event.details, :value)
+    end
+  end
+
+  describe "DEX-A05 — edit an arbitrary configuration value" do
+    @tag action: "DEX-A05"
+    test "a non-description, non-env_names key edits and saves the same way", %{conn: conn} do
+      {:ok, view, _html} = live_data_export(conn)
+
+      view |> element("#var-destination_bucket-edit") |> render_click()
+
+      view
+      |> form("#var-destination_bucket-edit-form", value: %{"value" => "acme-analytics-v2"})
+      |> render_submit()
+
+      assert has_element?(view, "#var-destination_bucket-value", "acme-analytics-v2")
+    end
+
+    @tag action: "DEX-A05"
+    test "cancel discards the edit; original value remains, no adapter call", %{conn: conn} do
+      use_write_spy()
+      {:ok, view, _html} = live_data_export(conn)
+
+      view |> element("#var-destination_bucket-edit") |> render_click()
+      assert has_element?(view, "#var-destination_bucket-edit-form")
+
+      view
+      |> form("#var-destination_bucket-edit-form", value: %{"value" => "not-going-to-be-saved"})
+      |> render_change()
+
+      view |> element("#var-destination_bucket-cancel-edit") |> render_click()
+
+      refute has_element?(view, "#var-destination_bucket-edit-form")
+      assert has_element?(view, "#var-destination_bucket-value", "acme-analytics-prod")
+      assert NomadVarsWriteSpy.write_calls() == 0
+      assert_no_audit_event(:nomad_var_updated)
+    end
+  end
+
+  describe "DEX-A06 — a failed save is never silent" do
+    @tag action: "DEX-A06"
+    test "a forced :unavailable save shows an explicit error, form stays open, value not shown as saved",
+         %{conn: conn} do
+      {:ok, view, _html} = live_data_export(conn)
+
+      view |> element("#var-description-edit") |> render_click()
+      force_error(:nomad_vars, :unavailable)
+
+      html =
+        view
+        |> form("#var-description-edit-form", value: %{"value" => "will not save"})
+        |> render_submit()
+
+      assert has_element?(view, "#var-description-edit-form")
+      assert has_element?(view, "#var-description-edit-error")
+      assert html =~ "will not save"
+
+      clear_faults()
+
+      assert {:ok, %{items: %{"description" => original}}} =
+               NomadVars.fetch(%Nucleus.Scope{
+                 tenant: "local",
+                 user: %{email: "a@b.com", username: nil}
+               })
+
+      assert original =~ "Nightly export"
+      assert_no_audit_event(:nomad_var_updated)
+    end
+
+    @tag action: "DEX-A06"
+    test "a forced :conflict save shows conflict-specific copy, distinct from the generic failure copy",
+         %{conn: conn} do
+      {:ok, view, _html} = live_data_export(conn)
+
+      view |> element("#var-description-edit") |> render_click()
+      force_error(:nomad_vars, :conflict)
+
+      view
+      |> form("#var-description-edit-form", value: %{"value" => "racing edit"})
+      |> render_submit()
+
+      conflict_html = view |> element("#var-description-edit-error") |> render()
+      assert conflict_html =~ "changed since you loaded it"
+
+      clear_faults()
+      force_error(:nomad_vars, :unavailable)
+
+      view
+      |> form("#var-description-edit-form", value: %{"value" => "racing edit"})
+      |> render_submit()
+
+      unavailable_html = view |> element("#var-description-edit-error") |> render()
+      refute unavailable_html =~ "changed since you loaded it"
+    end
+
+    @tag action: "DEX-A06"
+    test "after a failed save, the user can retry (resubmit) and succeed", %{conn: conn} do
+      {:ok, view, _html} = live_data_export(conn)
+
+      view |> element("#var-description-edit") |> render_click()
+      force_error(:nomad_vars, :unavailable)
+
+      view
+      |> form("#var-description-edit-form", value: %{"value" => "retry me"})
+      |> render_submit()
+
+      assert has_element?(view, "#var-description-edit-error")
+
+      clear_faults()
+
+      view
+      |> form("#var-description-edit-form", value: %{"value" => "retry me"})
+      |> render_submit()
+
+      assert has_element?(view, "#var-description-value", "retry me")
+      refute has_element?(view, "#var-description-edit-form")
+    end
+
+    @tag action: "DEX-A06"
+    test "after a failed save, the user can cancel instead of retrying", %{conn: conn} do
+      {:ok, view, _html} = live_data_export(conn)
+
+      view |> element("#var-description-edit") |> render_click()
+      force_error(:nomad_vars, :unavailable)
+
+      view
+      |> form("#var-description-edit-form", value: %{"value" => "abandoned edit"})
+      |> render_submit()
+
+      assert has_element?(view, "#var-description-edit-error")
+
+      view |> element("#var-description-cancel-edit") |> render_click()
+
+      refute has_element?(view, "#var-description-edit-form")
+      refute has_element?(view, "#var-description-value", "abandoned edit")
+    end
+  end
+
+  describe "server-side re-check — a mismatched phx-value-key is rejected" do
+    @tag action: "DEX-A06"
+    test "save_edit for a key other than the row currently open is rejected, no adapter call",
+         %{conn: conn} do
+      use_write_spy()
+      {:ok, view, _html} = live_data_export(conn)
+
+      view |> element("#var-destination_bucket-edit") |> render_click()
+      assert has_element?(view, "#var-destination_bucket-edit-form")
+
+      render_click(view, "save_edit", %{
+        "key" => "description",
+        "value" => %{"value" => "attacker-value"}
+      })
+
+      assert NomadVarsWriteSpy.write_calls() == 0
+      assert_no_audit_event(:nomad_var_updated)
+      # the originally open row's form is untouched by the rejected attempt.
+      assert has_element?(view, "#var-destination_bucket-edit-form")
+    end
+
+    test "save_edit dispatched with no row open at all is rejected, no adapter call", %{
+      conn: conn
+    } do
+      use_write_spy()
+      {:ok, view, _html} = live_data_export(conn)
+
+      render_click(view, "save_edit", %{
+        "key" => "description",
+        "value" => %{"value" => "attacker-value"}
+      })
+
+      assert NomadVarsWriteSpy.write_calls() == 0
+      assert_no_audit_event(:nomad_var_updated)
+    end
+  end
+
+  describe "env_names never renders an inline edit form here" do
+    @tag action: "DEX-A14"
+    test "no edit trigger exists on the env_names row", %{conn: conn} do
+      {:ok, view, _html} = live_data_export(conn)
+
+      refute has_element?(view, "#var-env_names-edit")
+    end
+
+    test "dispatching \"edit\" directly for env_names opens no form", %{conn: conn} do
+      {:ok, view, _html} = live_data_export(conn)
+
+      render_click(view, "edit", %{"key" => "env_names"})
+
+      refute has_element?(view, "#var-env_names-edit-form")
+    end
   end
 end
