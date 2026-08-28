@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.30 | Updated: 2026-08-27 -->
+<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.31 | Updated: 2026-08-27 -->
 
 # Decisions Log
 
@@ -52,6 +52,7 @@ job and the row should point rather than paraphrase.
 | 25 | Applications listing — one `NucleusWeb.ApplicationsLive` module, bounding `docs/adr/0018`'s Index/Show split to *match the module count to the route count* (no detail route here); row and cell DOM ids derive from the unhashed `Job.name`, resolving the ticket's unreferenced `#job-{id}-*` contract to `name` — safe **only** because `Job.child?/1` filters `/`-bearing child names out at the boundary, since `Job.name` has no validating allowlist and LazyHTML rejects a `/` in a selector outright; the name-ascending sort stays in the LiveView rather than expanding `list/1`'s contract; version/image/schedule ship as empty cells at their final ids so `APP-S2` is content-only | 2026-08-26 | Decided | `docs/adr/0025-applications-listing-single-module-and-name-derived-dom-ids.md` |
 | 26 | Applications row formatters — shared `NucleusWeb.Nomad.JobFormat` (`status_class/1`, `status_text/1`, `version_text/1`, `image_text/1`, `schedule_text/1`) over `Job.t()`, unblocking DEX-S5; `detail_error` degrades version/image/schedule text identically, including a degraded periodic job's cron; status badge is a `<span>` nested in the `#job-{name}-status` cell (id moves onto the span), `align-middle` on the `<td>` so the pill centers vertically in the row; Version column retitled "Job revision"; rendered status colour (not the CSS class) recorded as a `test/README.md` gap, following `M2M-A10`/`SEC-A04`'s precedent of not reopening `docs/adr/0008` itself | 2026-08-26 | Decided | `docs/adr/0026-applications-row-formatters-and-status-colour-test-gap.md` |
 | 27 | Nomad vars adapter — `Nucleus.Nomad.Transport` gains `:json`, `404`→`:not_found`, `409`→`:conflict` (carrying `ModifyIndex`), and an empty-body-success decode; `Nucleus.Backend.Error` gains a seventh kind, `:conflict`, with every existing exhaustive `case` already carrying a safe catch-all; `Nucleus.NomadVars.Store` (read+write, CAS-enforced, no create/delete) mirrors `Nucleus.Secrets.Store`'s shape; `Nucleus.NomadVars.Value.validate/1` returns a bare reason atom, not a wrapped `Error`; `Local`'s "tenant not enabled" sentinel is the JSON literal `false`, not `null` as the plan proposed — `Nucleus.Backend.Seed.read/2` cannot distinguish an absent section from an explicit `null` one; `Nucleus.Backend.Seed` gains `get_and_update/3` after review caught the first pass's check-and-set as a non-atomic read-then-write (a lost-update race under concurrent writers) | 2026-08-27 | Decided | `docs/adr/0027-nomad-vars-adapter.md` |
+| 28 | Data Export listing — one `NucleusWeb.DataExportLive` module, a second confirmation of `docs/adr/0025`'s module-count-matches-route-count rule; row/cell DOM ids use the unhashed variable key, resting on ops-provisioned-key provenance rather than an upstream filter (no `Job.child?/1` equivalent exists for `Items` keys); `Nucleus.NomadVars` gains `fetch/1` (no audit) alongside `list/1` (`fetch/1` plus `nomad_vars_listed` on success), mirroring `M2M.fetch/2`/`view/2` — caught in review after the plan's literal `connected?`-gated single call left the disconnected static render blank | 2026-08-27 | Decided | `docs/adr/0028-data-export-listing-single-module-dom-ids-and-fetch-list-split.md` |
 
 No **"re-platform" decision** (fresh start) and no **inherited ADRs** — the wiki's `ADR-0001`–
 `ADR-0007` are reference only; adopting one is a decision made on its own merits.
@@ -73,7 +74,7 @@ the ADR it points at stays findable.
 
 ## Onboarding Checklist
 
-- [ ] Read the Decision Index above; `adr/0001`–`0027` are binding
+- [ ] Read the Decision Index above; `adr/0001`–`0028` are binding
 - [ ] New formal ADRs belong in `docs/adr/`, with only an index row mirrored here — the wiki's
       ADR-0001–0007 are reference only, not adopted
 - [ ] Know which decisions are pending (see `living-notes.md`)

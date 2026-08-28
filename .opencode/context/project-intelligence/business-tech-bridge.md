@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.24 | Updated: 2026-08-26 -->
+<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.25 | Updated: 2026-08-27 -->
 
 # Business ↔ Tech Bridge
 
@@ -314,6 +314,36 @@ id itself, with `align-middle` on the `<td>` so the pill sits centered in the ro
 coloring the whole cell. The rendered status *colour* itself (as opposed to the CSS class)
 joins `test/README.md`'s gap table alongside `M2M-A10`/`SEC-A04`, rather than reopening
 `docs/adr/0008` — see `docs/adr/0026-applications-row-formatters-and-status-colour-test-gap.md`.
+
+`DEX-A01`, `A03`, `A12`, `A13`, and `A14` are now claimed and covered (`DEX-S1`/#73):
+`NucleusWeb.DataExportLive` (single module, no Index/Show split — the same
+module-count-matches-route-count rule `docs/adr/0025` established, applied here for a second
+listing rather than re-derived) lists every key/value from `Nucleus.NomadVars.list/1`, sorted
+name-ascending with a case-insensitive tiebreak. Row/cell DOM ids (`#var-{key}-value`) use the
+raw, unhashed key — unlike `docs/adr/0025`'s `Job.name`, no upstream filter exists or could
+exist for a Nomad Variables key, so the safety argument rests on provenance (every key today is
+ops-provisioned, not tenant-supplied) rather than a filter the code enforces; see
+`docs/adr/0028` for the full reasoning and its residual risk. `Nucleus.NomadVars` gained a second
+function, `fetch/1` (no audit), alongside `list/1` (`fetch/1` plus `nomad_vars_listed` on
+success) — caught in review after the ticket's literal plan (one `connected?`-gated call to
+`list/1`) left the disconnected static render blank, since `Phoenix.LiveViewTest.live/2` never
+exercises that pass. `NucleusWeb.DataExportLive.mount/3` now calls `fetch/1` disconnected and
+`list/1` once connected, mirroring `NucleusWeb.M2MClientsLive.Show`'s `M2M.fetch/2`/`view/2`
+split (`docs/adr/0019`) — the first time that split has been applied to a listing rather than a
+detail view, since `Nucleus.NomadVars.list/1` is the first listing-level context function that
+audits at all. `{:error, %Error{kind: :not_found}}` maps to its own `#data-export-not-enabled`
+state (`DEX-A01`), not a generic error — `Nucleus.NomadVars.Store`'s own moduledoc states plainly
+that `:not_found` here means "not enabled," not "the load failed." `VariableSet.t()`'s single
+`modify_index`/`modified_at` for the whole path (`docs/adr/0027`, DEX-D1's correction of the
+wiki's per-key shape) renders once at `#data-export-modified-at`, never per row.
+`NucleusWeb.DataExportLive.States` collapses every other `Nucleus.Backend.Error.kinds/0` value
+the same way `docs/adr/0025` collapsed `Nucleus.NomadJobs`'s, including a documented defensive
+fallback for `:conflict`, which nothing here can produce yet. `DEX-A14`'s read-only guard is
+enforced one layer below the UI already (`Nucleus.NomadVars.Store` defines no create/delete
+callback of any kind) and reproven by a negative test. The sidebar's Data Export entry
+(`layouts.ex`) is now a real `<.link navigate>`, replacing the disabled placeholder EN-7 shipped;
+`NAV-A03`'s active-section highlighting remains unclaimed, matching `M2M-S2`'s and `APP-S1`'s
+identical precedent.
 
 ## Tagging Convention
 

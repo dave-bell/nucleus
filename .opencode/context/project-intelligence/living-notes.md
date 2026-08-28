@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/notes | Priority: high | Version: 1.25 | Updated: 2026-08-27 -->
+<!-- Context: project-intelligence/notes | Priority: high | Version: 1.27 | Updated: 2026-08-27 -->
 
 # Living Notes
 
@@ -202,6 +202,35 @@ deploys it.
   `Nucleus.NomadVars.Store.Local` needed exactly this (`:not_configured` vs. a tenant lacking
   Data Export) and uses the JSON literal `false` as the second sentinel instead — reuse that
   pattern rather than reaching for `null` again. See `docs/adr/0027-nomad-vars-adapter.md`.
+- **A `connected?/1`-gated single fetch, applied literally, leaves the disconnected static
+  render blank — and `Phoenix.LiveViewTest.live/2` will not catch it**, since `live/2` connects
+  before returning and never exercises the disconnected pass. `NucleusWeb.DataExportLive`'s first
+  pass gated its only read (`Nucleus.NomadVars.list/1`, which audits) entirely behind
+  `connected?(socket)`, exactly as `DEX-S1`'s plan specified, and the static HTML was empty until
+  the socket connected — caught in review with a real `get/2` + `html_response/2` request, not a
+  `live/2` test. Fixed by giving the context module a second, non-auditing function (`fetch/1`)
+  for the disconnected pass, called disconnected while the auditing `list/1` runs only once
+  connected — the same split `NucleusWeb.M2MClientsLive.Show` already uses
+  (`M2M.fetch/2`/`view/2`, `docs/adr/0019`), applied to a listing for the first time. **This split
+  is safe here only because neither Data Export configuration nor an M2M client list is
+  sensitive** — `DEX-A03` says so explicitly for the former, and the latter is a client list, not
+  secret data. It does not generalize to a future audited listing of secret/sensitive data: an
+  unaudited `fetch/1`-style counterpart added specifically to populate the disconnected render
+  would then be an unaudited path to that data, regardless of whether a human ever actually sees
+  the disconnected pass — the audit requirement does not care who's watching. Check whether the
+  listed data is sensitive before reaching for this pattern; if it is, audit unconditionally (both
+  the disconnected and connected calls) or accept a blank/loading disconnected render instead of
+  serving real content unaudited. See
+  `docs/adr/0028-data-export-listing-single-module-dom-ids-and-fetch-list-split.md`.
+- **A key/field with no validating allowlist used in a DOM id is a per-case examination, not a
+  fact you can inherit from a sibling ADR.** `docs/adr/0025`'s `Job.name` and `Nucleus.NomadVars`'
+  `Items` keys are the same *shape* of problem (no allowlist, `/` breaks `LazyHTML` selectors
+  outright) but have different resolutions: `Job.name`'s is safe because `Job.child?/1` filters
+  `/`-bearing names out upstream; `Items` keys have no equivalent filter and never will (no
+  create/delete callback exists to filter), so `NucleusWeb.DataExportLive` instead rests on
+  ops-provisioned-key provenance — a convention, not a code guarantee. Citing ADR-0025 as
+  settling this key too, without re-examining whether an upstream filter actually exists, would
+  have been wrong. See `docs/adr/0028-data-export-listing-single-module-dom-ids-and-fetch-list-split.md`.
 
 ## Active Projects
 

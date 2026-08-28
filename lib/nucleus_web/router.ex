@@ -59,6 +59,10 @@ defmodule NucleusWeb.Router do
       # Single module, no Index/Show split — APP-S1 (#58), see
       # `NucleusWeb.ApplicationsLive`'s moduledoc.
       live "/applications", ApplicationsLive, :index
+
+      # Single module, no Index/Show split — DEX-S1 (#73), see
+      # `NucleusWeb.DataExportLive`'s moduledoc.
+      live "/data-export", DataExportLive, :index
     end
   end
 

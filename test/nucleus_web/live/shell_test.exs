@@ -95,6 +95,19 @@ defmodule NucleusWeb.ShellTest do
   end
 
   @tag :unit
+  test "the sidebar Data Export item is a real link and navigates to this view", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/environments/prod/secrets")
+
+    assert {:ok, data_export_view, _html} =
+             view
+             |> element("a", "Data Export")
+             |> render_click()
+             |> follow_redirect(conn, ~p"/data-export")
+
+    assert has_element?(data_export_view, "#tenant-identifier")
+  end
+
+  @tag :unit
   test "shows the identity control with the dev email, and no sign-out control", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/environments/prod/secrets")
 
