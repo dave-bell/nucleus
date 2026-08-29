@@ -3,8 +3,10 @@ defmodule NucleusWeb.DataExportLive do
   The Data Export configuration table: enablement gate (`DEX-A01`), every
   key/value listed unmasked (`DEX-A03`), the empty state (`DEX-A12`), every
   `Nucleus.Backend.Error.kinds/0` value rendered as a distinct, shell-intact
-  state (`DEX-A13` and friends), and no mutating affordance of any kind
-  (`DEX-A14`) — issue #73, DEX-S1.
+  state (`DEX-A13` and friends), no create-or-delete affordance of any kind
+  (`DEX-A14`) — issue #73, DEX-S1 — plus inline edit/save/cancel for every
+  key except `env_names`, and a failed save that is never silent (`DEX-A04`,
+  `DEX-A05`, `DEX-A06` — issue #74, DEX-S2).
 
   ## Single module — no Index/Show split
 
@@ -95,28 +97,96 @@ defmodule NucleusWeb.DataExportLive do
   created through this feature. A future key that violates this convention
   is an ops-process bug, not something this view can validate against.
 
-  ## `DEX-A14` — no mutating affordance anywhere
+  ## `DEX-A14` — no create-or-delete affordance anywhere
 
-  No create button, no per-row edit/delete control, no "Actions" column.
-  This is enforced one layer below the UI already — `Nucleus.NomadVars.Store`
-  defines no create/delete callback of any kind — but the negative test
-  proves the template itself adds none either.
-
-  `:modify_index` is carried in assigns because DEX-S2's edit flow needs the
-  value the page was loaded with for CAS — this ticket's job is only to
-  carry it forward, not to use it.
+  No create button, no per-row delete control. This is enforced one layer
+  below the UI already — `Nucleus.NomadVars.Store` defines no create/delete
+  callback of any kind — but the negative test proves the template itself
+  adds none either. DEX-S2 adds a per-row **edit** control (below) for every
+  key except `env_names` — `DEX-A14` was never "no mutating affordance at
+  all," only "no create or delete of *keys*"; editing an existing key's
+  value is exactly what `DEX-A04`/`DEX-A05` require.
 
   `current_scope` and `environments`/`expanded_categories` come from the
   `:authenticated` `live_session`'s `on_mount` hooks (`NucleusWeb.ScopeHook`,
   `NucleusWeb.EnvironmentsHook`), same order as `NucleusWeb.ApplicationsLive`
   — this module does not assign any of them itself.
+
+  ## Edit is a modal — `DEX-A04`/`DEX-A05`, one code path for `description` and every other non-`env_names` key
+
+  Originally shipped as a per-row inline form swap (`DEX-A03`: values are
+  unmasked, so no reveal-gate forced a modal the way `NucleusWeb.SecretsLive`
+  needed one). Changed to a modal for symmetry with `SecretsLive`'s edit
+  experience — a deliberate UX-consistency choice, not a reveal-gate
+  requirement; see `docs/adr/0029` for the full history of both decisions.
+  The modal's *mechanics* follow `SecretsLive`'s edit flow
+  (`secrets_live.ex:158-203,347-411,496-511,701-782`) closely: one
+  conditionally-rendered `<.modal>` (`:if={@editing_key}`, never toggled via
+  client-side `show_modal/2`), not a second modal stacked on anything —
+  `DataExportLive` has no reveal modal to stack against, so ADR-0012's
+  `focusStack` gotcha does not apply here regardless.
+
+  Four assigns track the single row that may be open at once:
+  `:editing_key` (the key currently being edited, or `nil` — this alone
+  gates the modal's `:if`, the same role `:revealed` plays for
+  `SecretsLive`), `:editing_value` (the value as it was when the modal
+  opened, kept for the save button's dirty-check — never rewritten by a
+  failed save, mirroring `SecretsLive`'s `@revealed.value`), `:edit_form`
+  (a `to_form/2`-built form over `NucleusWeb.DataExportLive.EditForm`), and
+  `:edit_error` (the kind-mapped copy for a failed save, or `nil`). At most
+  one row is editable at a time — clicking "Edit" on a different row while
+  another is open simply replaces `:editing_key`/`:editing_value`,
+  discarding whatever unsaved text was in the row that closes; there is no
+  cross-row unsaved-changes guard, matching `SecretsLive`'s own
+  single-`:editing` simplicity extended to a keyed row.
+
+  `"edit"` (`phx-value-key`) is rejected outright for `env_names` — `DEX-A14`
+  and DEX-S3/S4's own picker-based editing both depend on no edit modal ever
+  opening for that key here. `"save_edit"` re-checks the submitted `key`
+  against `socket.assigns.editing_key` — pattern-matched, not merely
+  compared — before ever calling `Nucleus.NomadVars.update/5`, the same
+  discipline `SecretsLive.handle_event("save_edit", ...)` applies
+  (`secrets_live.ex:378-398`) against a stale or tampered `phx-value-key`. A
+  disabled/hidden button is convenience only; this check is the actual gate.
+
+  On save success, all four edit assigns clear — which, because the modal
+  is wrapped in `:if={@editing_key}`, removes the modal and the form from
+  the DOM in the same assign that confirms success, the same one-step
+  re-mask `SecretsLive` gets from clearing `:revealed`. `@variables` and
+  `@modify_index` are replaced with the returned `var_set`'s — carrying
+  forward a stale index here would make every *subsequent* edit's
+  check-and-set conflict spuriously, defeating the whole point of the CAS
+  the caller is trusted to carry forward (`Nucleus.NomadVars.update/5`'s
+  moduledoc) — and a flash confirms the key was updated. `#var-{key}-value`
+  therefore shows the new value immediately, no page reload.
+
+  On save failure (`DEX-A06`): the modal stays open (`:editing_key`/
+  `:editing_value` untouched), the form rebuilt from the *submitted* params
+  rather than the original value, so the user's typed text is never lost;
+  `:edit_error` is set from `edit_error_message/1`, which gives `:conflict`
+  its own copy — "reload to see the current value" — distinct from every
+  other kind's generic retry copy, since the correct next action genuinely
+  differs (retry the same value vs. reload to see what changed). Cancel
+  (`"cancel_edit"`, also wired to the modal's own dismiss via `on_cancel`)
+  clears all four edit assigns — closing the modal entirely, since there is
+  no "view" content left to fall back to inside it — with no adapter call
+  and no audit side effect, mirroring `SecretsLive`'s own `"cancel_edit"`.
+
+  Save starts disabled and enables only once the entered value differs from
+  `@editing_value`, the same dirty-check `SecretsLive` applies
+  (`secrets_live.ex:738,939-941`) — UI convenience only; the server-side
+  re-check above is what actually gates the write.
   """
 
   use NucleusWeb, :live_view
 
   alias Nucleus.Backend.Error
   alias Nucleus.NomadVars
+  alias Nucleus.NomadVars.Value
+  alias NucleusWeb.DataExportLive.EditForm
   alias NucleusWeb.DataExportLive.States
+
+  @env_names_key "env_names"
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
@@ -129,13 +199,151 @@ defmodule NucleusWeb.DataExportLive do
         NomadVars.fetch(scope)
       end
 
-    {:ok, assign_result(socket, result)}
+    socket =
+      socket
+      |> assign(editing_key: nil, editing_value: nil, edit_form: nil, edit_error: nil)
+      |> assign_result(result)
+
+    {:ok, socket}
   end
 
   @impl Phoenix.LiveView
   def handle_event("retry", _params, socket) do
     result = NomadVars.list(socket.assigns.current_scope)
-    {:noreply, assign_result(socket, result)}
+
+    socket =
+      socket
+      |> assign(editing_key: nil, editing_value: nil, edit_form: nil, edit_error: nil)
+      |> assign_result(result)
+
+    {:noreply, socket}
+  end
+
+  # `DEX-A14`/DEX-S3-S4: `env_names` never gets an edit modal here, no
+  # matter what a client sends — the picker (a future ticket) is its only
+  # edit path.
+  @impl Phoenix.LiveView
+  def handle_event("edit", %{"key" => @env_names_key}, socket) do
+    {:noreply, socket}
+  end
+
+  @impl Phoenix.LiveView
+  def handle_event("edit", %{"key" => key}, socket) do
+    case Enum.find(socket.assigns.variables, fn {k, _value} -> k == key end) do
+      {^key, value} ->
+        socket =
+          socket
+          |> assign(:editing_key, key)
+          |> assign(:editing_value, value)
+          |> assign(:edit_form, build_edit_form(value))
+          |> assign(:edit_error, nil)
+
+        {:noreply, socket}
+
+      nil ->
+        {:noreply, socket}
+    end
+  end
+
+  @impl Phoenix.LiveView
+  def handle_event("validate_edit", %{"value" => params}, socket) do
+    if socket.assigns.editing_key do
+      changeset =
+        %EditForm{}
+        |> EditForm.changeset(params)
+        |> Map.put(:action, :validate)
+
+      socket =
+        socket
+        |> assign(:edit_form, to_form(changeset, as: :value))
+        # A stale failure banner (e.g. `:conflict`'s "reload and retry" copy)
+        # must not linger while the user is actively retyping — it describes
+        # the last submit, not the text currently in the box.
+        |> assign(:edit_error, nil)
+
+      {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  # Re-checked here, not only in "edit" — `:editing_key` could have been
+  # cleared (a cancel, a switch to another row) between opening the form and
+  # submitting it, and the submitted `key` is client-controlled.
+  @impl Phoenix.LiveView
+  def handle_event("save_edit", %{"key" => key, "value" => params}, socket) do
+    case socket.assigns.editing_key do
+      ^key ->
+        changeset =
+          %EditForm{}
+          |> EditForm.changeset(params)
+          |> Map.put(:action, :validate)
+
+        if changeset.valid? do
+          save_edit(socket, key, Ecto.Changeset.get_field(changeset, :value))
+        else
+          {:noreply, assign(socket, :edit_form, to_form(changeset, as: :value))}
+        end
+
+      _not_editing_this_row ->
+        {:noreply, put_flash(socket, :error, "That row is no longer open for editing.")}
+    end
+  end
+
+  @impl Phoenix.LiveView
+  def handle_event("cancel_edit", _params, socket) do
+    # No adapter call, no audit event — cancelling discards the edit and
+    # closes the modal entirely (`DEX-A05`); unlike `SecretsLive`, there is
+    # no "view" content left to fall back to inside it.
+    socket =
+      socket
+      |> assign(:editing_key, nil)
+      |> assign(:editing_value, nil)
+      |> assign(:edit_form, nil)
+      |> assign(:edit_error, nil)
+
+    {:noreply, socket}
+  end
+
+  defp save_edit(socket, key, value) do
+    items = Map.new(socket.assigns.variables)
+    scope = socket.assigns.current_scope
+
+    case NomadVars.update(key, value, items, socket.assigns.modify_index, scope) do
+      {:ok, var_set} ->
+        sorted =
+          Enum.sort_by(Map.to_list(var_set.items), fn {k, _value} -> String.downcase(k) end)
+
+        socket =
+          socket
+          |> assign(:variables, sorted)
+          |> assign(:modify_index, var_set.modify_index)
+          |> assign(:modified_at, var_set.modified_at)
+          |> assign(:editing_key, nil)
+          |> assign(:editing_value, nil)
+          |> assign(:edit_form, nil)
+          |> assign(:edit_error, nil)
+          |> put_flash(:info, "#{key} was updated.")
+
+        {:noreply, socket}
+
+      {:error, %Error{} = error} ->
+        # `DEX-A06`: the modal stays open (`:editing_key`/`:editing_value`
+        # untouched), the form rebuilt from the submitted value (not the
+        # original) so the user's typed text survives, and the value is
+        # never presented as saved.
+        changeset =
+          %EditForm{}
+          |> EditForm.changeset(%{"value" => value})
+          |> Map.put(:action, :validate)
+
+        socket =
+          socket
+          |> assign(:edit_form, to_form(changeset, as: :value))
+          |> assign(:edit_error, edit_error_message(error))
+
+        {:noreply, socket}
+    end
   end
 
   defp assign_result(socket, {:ok, var_set}) do
@@ -206,12 +414,77 @@ defmodule NucleusWeb.DataExportLive do
             <tbody id="data-export-table-body">
               <tr :for={{key, value} <- @variables} id={"var-" <> key} data-var-key={key}>
                 <td class="font-medium">{key}</td>
-                <td id={"var-" <> key <> "-value"}>{value}</td>
+                <td id={"var-" <> key <> "-value"}>
+                  <div class="flex items-center justify-between gap-2">
+                    <span>{value}</span>
+                    <button
+                      :if={key != "env_names"}
+                      id={"var-#{key}-edit"}
+                      type="button"
+                      class="btn btn-sm"
+                      phx-click="edit"
+                      phx-value-key={key}
+                    >
+                      Edit
+                    </button>
+                  </div>
+                </td>
               </tr>
             </tbody>
           </table>
         </div>
       </div>
+
+      <%!--
+      Only in the DOM while it is open — mirroring `SecretsLive`'s reveal
+      modal shape (see the moduledoc, "Edit is a modal"), even though there
+      is no plaintext to protect here: the modal itself never exists until
+      `:editing_key` is set.
+      --%>
+      <.modal :if={@editing_key} id="data-export-edit-modal" show on_cancel={JS.push("cancel_edit")}>
+        <:title>{@editing_key}</:title>
+        <.form
+          for={@edit_form}
+          id="data-export-edit-form"
+          phx-change="validate_edit"
+          phx-submit="save_edit"
+        >
+          <input type="hidden" name="key" value={@editing_key} />
+          <.input
+            field={@edit_form[:value]}
+            id="data-export-edit-value"
+            type="textarea"
+            label="Value"
+            rows="6"
+            class="w-full textarea font-mono text-sm"
+          />
+          <div id="data-export-edit-count" class="text-xs text-base-content/70 text-right mt-1">
+            {edit_value_length(@edit_form)}/{Value.max_length()} characters
+          </div>
+          <p
+            :if={@edit_error}
+            id="data-export-edit-error"
+            role="alert"
+            class="text-error text-sm mt-2"
+          >
+            {@edit_error}
+          </p>
+          <div class="modal-action">
+            <.button id="data-export-cancel-edit" type="button" phx-click="cancel_edit">
+              Cancel
+            </.button>
+            <.button
+              id="data-export-save-edit"
+              type="submit"
+              variant="primary"
+              disabled={not edit_dirty?(@edit_form, @editing_value)}
+              phx-disable-with="Saving..."
+            >
+              Save
+            </.button>
+          </div>
+        </.form>
+      </.modal>
     </Layouts.app>
     """
   end
@@ -221,4 +494,41 @@ defmodule NucleusWeb.DataExportLive do
   end
 
   defp modified_at_text(nil), do: "unavailable"
+
+  defp build_edit_form(value) do
+    %EditForm{}
+    |> EditForm.changeset(%{"value" => value})
+    |> to_form(as: :value)
+  end
+
+  defp edit_value_length(form) do
+    form[:value].value
+    |> to_string()
+    |> String.length()
+  end
+
+  defp edit_dirty?(form, original_value) do
+    to_string(form[:value].value) != to_string(original_value)
+  end
+
+  defp edit_error_message(%Error{kind: :conflict}) do
+    "This value changed since you loaded it. Reload to see the current value, then try again."
+  end
+
+  defp edit_error_message(%Error{kind: :not_found}) do
+    "This key no longer exists."
+  end
+
+  # Defensive: `save_edit`'s own changeset gate rejects an invalid value
+  # before `Nucleus.NomadVars.update/5` is ever called, so this kind should
+  # not normally reach here — it exists because `update/5` enforces the
+  # same rule independently (a direct `phx-submit`/event dispatch bypassing
+  # the client-side changeset must not bypass the server-side check too).
+  defp edit_error_message(%Error{kind: :invalid}) do
+    "That value isn't valid."
+  end
+
+  defp edit_error_message(%Error{}) do
+    "Can't save this value right now. Try again shortly."
+  end
 end

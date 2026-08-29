@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.25 | Updated: 2026-08-27 -->
+<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.27 | Updated: 2026-08-28 -->
 
 # Business ↔ Tech Bridge
 
@@ -344,6 +344,31 @@ callback of any kind) and reproven by a negative test. The sidebar's Data Export
 (`layouts.ex`) is now a real `<.link navigate>`, replacing the disabled placeholder EN-7 shipped;
 `NAV-A03`'s active-section highlighting remains unclaimed, matching `M2M-S2`'s and `APP-S1`'s
 identical precedent.
+
+`DEX-A04`, `A05`, and `A06` are now claimed and covered (`DEX-S2`/#74):
+`NucleusWeb.DataExportLive` gains edit/save/cancel for every configuration key except `env_names`
+(DEX-S3/S4's picker owns that one), via a single conditionally-rendered modal
+(`:if={@editing_key}`) mirroring `SecretsLive`'s own edit modal, for symmetry between the two
+views — this ticket's own first pass swapped the edit form into the row's `#var-{key}-value` cell
+instead, reasoning that `DEX-A03` already established values are unmasked so there was no
+reveal-gate forcing a modal; revised to a modal after that landed, once UI consistency with
+`SecretsLive` was preferred over that reasoning — see `docs/adr/0029` for both decisions in full.
+`Nucleus.NomadVars` gains `update/5` (`key, value, items, expected_modify_index, scope`) —
+corrected from the issue's own `update/4`, since `Store.write/2` (`docs/adr/0027`) replaces the
+whole `Items` map and a fresh `Store.read/0` would defeat the CAS check's actual purpose. On
+success it emits `nomad_var_updated` (`path`, `key` — never `value`, structurally guaranteed by
+the audit catalogue's field allowlist) and the LiveView carries the returned `modify_index`
+forward so the *next* edit's check-and-set stays meaningful. On `{:error, %Error{kind:
+:conflict}}` — the stale-index case `DEX-A06` describes — the modal stays open with the user's
+typed value preserved, and the copy is distinct ("reload to see the current value") from every
+other kind's generic retry message. `save_edit` re-checks the submitted key against
+`socket.assigns.editing_key` by pattern match before calling `update/5`, mirroring
+`SecretsLive`'s own `%Secret{key: ^key}` gate (`docs/adr/0013`) rather than trusting a
+client-supplied `phx-value-key`. `update/5` also runs `Nucleus.NomadVars.Value.validate/1` itself
+before the CAS check, wrapping the bare `:empty`/`:too_long` reason into
+`Error{kind: :invalid}` — caught in review, since the first pass trusted the LiveView's own
+changeset as the only gate, leaving `update/5` writeable with an empty or oversized value by any
+caller other than that one form.
 
 ## Tagging Convention
 

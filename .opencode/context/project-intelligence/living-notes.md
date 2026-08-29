@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/notes | Priority: high | Version: 1.27 | Updated: 2026-08-27 -->
+<!-- Context: project-intelligence/notes | Priority: high | Version: 1.28 | Updated: 2026-08-28 -->
 
 # Living Notes
 
@@ -231,6 +231,15 @@ deploys it.
   ops-provisioned-key provenance — a convention, not a code guarantee. Citing ADR-0025 as
   settling this key too, without re-examining whether an upstream filter actually exists, would
   have been wrong. See `docs/adr/0028-data-export-listing-single-module-dom-ids-and-fetch-list-split.md`.
+- **A CAS write function's arity must include the current-state map it merges into, even when a
+  ticket's own `@spec` says otherwise.** DEX-S2's issue named `Nucleus.NomadVars.update/4` (`key,
+  value, expected_modify_index, scope`), but its own prose required building the new `Items` map
+  from "the caller-supplied current items" without ever calling `Store.read/0` — and
+  `Store.write/2` replaces the *entire* map on the wire, so there is no way to assemble it from
+  only a key, a value, and an index. The shipped function is `update/5`, with `items` as its own
+  parameter. DEX-S3/S4 call this same function unchanged for `env_names`'s bulk update — expect
+  `update/5`, not the `/4` an unread issue body would suggest. See
+  `docs/adr/0029-data-export-inline-edit-update-arity-and-conflict-copy.md`.
 
 ## Active Projects
 

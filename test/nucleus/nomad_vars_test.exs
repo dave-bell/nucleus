@@ -46,6 +46,7 @@ defmodule Nucleus.NomadVarsTest do
   alias Nucleus.NomadVars
   alias Nucleus.NomadVars.FakeStore
   alias Nucleus.NomadVars.Store
+  alias Nucleus.NomadVars.Value
   alias Nucleus.NomadVars.VariableSet
   alias Nucleus.Scope
 
@@ -185,6 +186,123 @@ defmodule Nucleus.NomadVarsTest do
 
         assert {:error, %Error{kind: ^kind, boundary: :nomad_vars}} = NomadVars.list(@scope)
         assert_no_audit_event(:nomad_vars_listed)
+      end
+    end
+  end
+
+  describe "Nucleus.NomadVars.update/5 — DEX-A05 a matching index succeeds" do
+    @tag action: "DEX-A05"
+    test "replaces the target key, returns the bumped VariableSet, and leaves other keys unchanged" do
+      {:ok, %VariableSet{items: items, modify_index: modify_index}} = NomadVars.fetch(@scope)
+
+      assert {:ok, %VariableSet{} = updated} =
+               NomadVars.update(
+                 "description",
+                 "Updated nightly export.",
+                 items,
+                 modify_index,
+                 @scope
+               )
+
+      assert updated.items["description"] == "Updated nightly export."
+      assert updated.modify_index > modify_index
+
+      # Proves the new Items map was built from the caller's full map, not a
+      # partial write that would have clobbered every other key.
+      assert updated.items["env_names"] == items["env_names"]
+      assert updated.items["destination_bucket"] == items["destination_bucket"]
+    end
+
+    @tag action: "DEX-A05"
+    test "emits nomad_var_updated on success, with path and key in details and no value anywhere" do
+      {:ok, %VariableSet{items: items, modify_index: modify_index}} = NomadVars.fetch(@scope)
+
+      assert {:ok, %VariableSet{} = updated} =
+               NomadVars.update(
+                 "description",
+                 "Updated nightly export.",
+                 items,
+                 modify_index,
+                 @scope
+               )
+
+      event =
+        assert_audit_event(:nomad_var_updated,
+          tenant: "local",
+          details: %{path: updated.path, key: "description"}
+        )
+
+      refute Map.has_key?(event.details, :value)
+      refute Map.has_key?(event, :value)
+    end
+  end
+
+  describe "Nucleus.NomadVars.update/5 — DEX-A05 value shape validation, before Store.write/2 is ever called" do
+    @tag action: "DEX-A05"
+    test "an empty value returns {:error, %Error{kind: :invalid}}, no write, no audit" do
+      {:ok, %VariableSet{items: items, modify_index: modify_index}} = NomadVars.fetch(@scope)
+
+      assert {:error, %Error{kind: :invalid, boundary: :nomad_vars}} =
+               NomadVars.update("description", "", items, modify_index, @scope)
+
+      assert_no_audit_event(:nomad_var_updated)
+
+      # The store was never written to — the same modify_index and items
+      # from before the rejected call are still current.
+      assert {:ok, %VariableSet{modify_index: ^modify_index, items: ^items}} =
+               NomadVars.fetch(@scope)
+    end
+
+    @tag action: "DEX-A05"
+    test "a value over Value.max_length/0 characters returns {:error, %Error{kind: :invalid}}, no write, no audit" do
+      {:ok, %VariableSet{items: items, modify_index: modify_index}} = NomadVars.fetch(@scope)
+      too_long = String.duplicate("a", Value.max_length() + 1)
+
+      assert {:error, %Error{kind: :invalid, boundary: :nomad_vars}} =
+               NomadVars.update("description", too_long, items, modify_index, @scope)
+
+      assert_no_audit_event(:nomad_var_updated)
+
+      assert {:ok, %VariableSet{modify_index: ^modify_index, items: ^items}} =
+               NomadVars.fetch(@scope)
+    end
+
+    @tag action: "DEX-A05"
+    test "an invalid value is rejected even against a stale index — validation runs before the CAS check" do
+      {:ok, %VariableSet{items: items, modify_index: modify_index}} = NomadVars.fetch(@scope)
+      stale_index = modify_index - 1
+
+      assert {:error, %Error{kind: :invalid}} =
+               NomadVars.update("description", "", items, stale_index, @scope)
+    end
+  end
+
+  describe "Nucleus.NomadVars.update/5 — DEX-A06 a stale index conflicts, silently" do
+    @tag action: "DEX-A06"
+    test "a stale expected_modify_index returns {:error, %Error{kind: :conflict}}, no audit emitted" do
+      {:ok, %VariableSet{items: items, modify_index: modify_index}} = NomadVars.fetch(@scope)
+      stale_index = modify_index - 1
+
+      assert {:error, %Error{kind: :conflict}} =
+               NomadVars.update("description", "Racing edit.", items, stale_index, @scope)
+
+      assert_no_audit_event(:nomad_var_updated)
+    end
+  end
+
+  describe "Nucleus.NomadVars.update/5 — every other Error.kind() passes through unchanged, no audit" do
+    for kind <- Error.kinds() do
+      @tag kind: kind
+      test "#{kind} is returned unflattened, with no translation and no audit emission", %{
+        kind: kind
+      } do
+        {:ok, %VariableSet{items: items, modify_index: modify_index}} = NomadVars.fetch(@scope)
+        force_error(:nomad_vars, kind)
+
+        assert {:error, %Error{kind: ^kind, boundary: :nomad_vars}} =
+                 NomadVars.update("description", "value", items, modify_index, @scope)
+
+        assert_no_audit_event(:nomad_var_updated)
       end
     end
   end
