@@ -44,6 +44,87 @@
         "categories": ["Deprecated"],
         "isArchived": true,
         "description": "Retired QA stage. Retained because long-lived secrets still resolve against it."
+      },
+      {
+        "shortName": "qa1",
+        "label": "QA Alpha",
+        "iri": "https://tenant.example.com/environment/qa1",
+        "accentColor": "#0891b2",
+        "categories": ["QA"],
+        "isArchived": false,
+        "description": "First-wave feature verification, refreshed nightly from staging."
+      },
+      {
+        "shortName": "qa2",
+        "label": "QA Beta",
+        "iri": "https://tenant.example.com/environment/qa2",
+        "accentColor": "#0e7490",
+        "categories": ["QA"],
+        "isArchived": false,
+        "description": "Second-wave feature verification, refreshed weekly from staging."
+      },
+      {
+        "shortName": "perf",
+        "label": "Performance",
+        "iri": "https://tenant.example.com/environment/perf",
+        "accentColor": "#c2410c",
+        "categories": ["Performance"],
+        "isArchived": false,
+        "description": "Load and soak testing. Sized to mirror production capacity."
+      },
+      {
+        "shortName": "uat",
+        "label": "UAT",
+        "iri": "https://tenant.example.com/environment/uat",
+        "accentColor": "#65a30d",
+        "categories": ["UAT"],
+        "isArchived": false,
+        "description": "Customer acceptance testing ahead of a release sign-off."
+      },
+      {
+        "shortName": "demo",
+        "label": "Demo",
+        "iri": "https://tenant.example.com/environment/demo",
+        "accentColor": "#9333ea",
+        "categories": ["Demo"],
+        "isArchived": false,
+        "description": "Stable, curated data for sales and customer demos."
+      },
+      {
+        "shortName": "training",
+        "label": "Training",
+        "iri": "https://tenant.example.com/environment/training",
+        "accentColor": "#be185d",
+        "categories": ["Training"],
+        "isArchived": false,
+        "description": "Reset nightly. Used for internal and customer training sessions."
+      },
+      {
+        "shortName": "dr",
+        "label": "Disaster Recovery",
+        "iri": "https://tenant.example.com/environment/dr",
+        "accentColor": "#334155",
+        "categories": ["Disaster Recovery"],
+        "isArchived": false,
+        "description": "Warm standby, kept in sync with production for failover drills."
+      },
+      {
+        "shortName": "canary",
+        "label": "Canary",
+        "iri": "https://tenant.example.com/environment/canary",
+        "accentColor": "#ca8a04",
+        "categories": ["Canary"],
+        "isArchived": false,
+        "description": "Receives a small slice of production traffic ahead of a full rollout."
+      },
+      {
+        "shortName": "old-sandbox",
+        "label": "Old Sandbox",
+        "iri": "https://tenant.example.com/environment/old-sandbox",
+        "accentColor": "#78716c",
+        "categories": ["Deprecated"],
+        "isArchived": true,
+        "description": "Superseded by the current sandbox. Retained for historical reference only."
       }
     ]
   },

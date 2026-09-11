@@ -6,7 +6,10 @@ defmodule NucleusWeb.DataExportLive do
   state (`DEX-A13` and friends), no create-or-delete affordance of any kind
   (`DEX-A14`) — issue #73, DEX-S1 — plus inline edit/save/cancel for every
   key except `env_names`, and a failed save that is never silent (`DEX-A04`,
-  `DEX-A05`, `DEX-A06` — issue #74, DEX-S2).
+  `DEX-A05`, `DEX-A06` — issue #74, DEX-S2) — plus `env_names`'s own
+  environment picker: open, pre-selected (`DEX-A07`), select/deselect with a
+  live count (`DEX-A08`), and a filter narrowing both lists (`DEX-A09` —
+  issue #75, DEX-S3).
 
   ## Single module — no Index/Show split
 
@@ -176,6 +179,59 @@ defmodule NucleusWeb.DataExportLive do
   `@editing_value`, the same dirty-check `SecretsLive` applies
   (`secrets_live.ex:738,939-941`) — UI convenience only; the server-side
   re-check above is what actually gates the write.
+
+  ## `env_names`'s picker — `DEX-A07`–`A09`, a second modal, no write path yet
+
+  `env_names` gets its own trigger (`#var-env_names-edit`, `phx-click`
+  `"open_env_picker"`) in place of the inline-edit button every other row
+  gets — `handle_event("edit", %{"key" => "env_names"}, socket)` still
+  rejects that key outright, so this is a genuinely separate path, not a
+  variant of the same one. `:env_picker` (a
+  `NucleusWeb.DataExportLive.EnvironmentPicker.t()` or `nil`) alone gates a
+  second conditionally-rendered `<.modal id="env-picker-modal">`, mirroring
+  the edit modal's own "never exists until open" shape.
+
+  Opening calls `Nucleus.TenantApi.list_environments/1` directly — not
+  `EnvironmentsHook`'s `@environments` assign, which collapses every load
+  error to `[]` and would misreport a genuine outage as "this tenant has
+  zero environments." `{:error, %Error{}}` degrades to a flash and no modal
+  opens at all, for any kind — there is no kind-specific copy here the way
+  `edit_error_message/1` gives failed *saves*, since nothing has been
+  attempted yet to fail in a specific way. On success, pre-selection is
+  parsed fresh from `env_names`'s *current* row value
+  (`parse_env_names/1`, tolerant of blank/whitespace entries the way
+  `Nucleus.M2M.DenyList.parse/1` tolerates its own comma-separated value,
+  though without that module's `:unset`/`"none"`-sentinel semantics, which
+  don't apply to a plain selection list) — every open re-derives from the
+  table, never from a previous picker's leftover state, so reopening after
+  a discarded toggle starts exactly where a fresh page load would.
+
+  `"toggle_env"` and `"filter_envs"` only ever call
+  `EnvironmentPicker.toggle/2` and `.filter/2` on the `:env_picker` assign
+  itself; `"cancel_env_picker"` (wired to the modal's `on_cancel`) simply
+  clears it. **None of the three ever calls `Nucleus.NomadVars.update/5`**
+  — `env_names` is not written anywhere in this module yet. Saving the
+  selection as an explicit add/remove delta (`DEX-A10`) and the full
+  cancel-discards-changes guarantee (`DEX-A11`) are DEX-S4's; this ticket
+  only builds the picker's read-and-interact surface, per the two tickets'
+  explicit split (mirroring `M2M-S4`/`M2M-S5`'s own form-interaction vs.
+  submission-consequence split).
+
+  ### Each list scrolls at a fixed height; the modal itself does not grow
+
+  `#env-picker-available` and `#env-picker-selected` are each a fixed
+  `h-44` (five `btn-sm` rows plus their `space-y-1` gaps) with
+  `overflow-y-auto` — a *fixed*, not a *max*, height: a filter that narrows
+  a list to one match still renders a `176px` box with mostly empty space
+  below it, rather than shrinking to fit. A tenant with hundreds of
+  environments and a tenant with three render the same modal size; only
+  the *lists* — and, within them, only how much of each fixed-size box is
+  actually filled — change. `max-height` alone was tried first and
+  rejected: it bounds growth but not shrinkage, so `DEX-A09`'s own filter
+  narrowing shrank the box (and the modal with it) the moment matches
+  dropped below five. Both columns carry the same fixed height regardless
+  of how many rows either actually holds, so the two columns never
+  visually desync either.
   """
 
   use NucleusWeb, :live_view
@@ -183,7 +239,10 @@ defmodule NucleusWeb.DataExportLive do
   alias Nucleus.Backend.Error
   alias Nucleus.NomadVars
   alias Nucleus.NomadVars.Value
+  alias Nucleus.TenantApi
+  alias Nucleus.TenantApi.Environment
   alias NucleusWeb.DataExportLive.EditForm
+  alias NucleusWeb.DataExportLive.EnvironmentPicker
   alias NucleusWeb.DataExportLive.States
 
   @env_names_key "env_names"
@@ -202,6 +261,7 @@ defmodule NucleusWeb.DataExportLive do
     socket =
       socket
       |> assign(editing_key: nil, editing_value: nil, edit_form: nil, edit_error: nil)
+      |> assign(:env_picker, nil)
       |> assign_result(result)
 
     {:ok, socket}
@@ -220,8 +280,7 @@ defmodule NucleusWeb.DataExportLive do
   end
 
   # `DEX-A14`/DEX-S3-S4: `env_names` never gets an edit modal here, no
-  # matter what a client sends — the picker (a future ticket) is its only
-  # edit path.
+  # matter what a client sends — the picker (below) is its only edit path.
   @impl Phoenix.LiveView
   def handle_event("edit", %{"key" => @env_names_key}, socket) do
     {:noreply, socket}
@@ -303,6 +362,61 @@ defmodule NucleusWeb.DataExportLive do
       |> assign(:edit_error, nil)
 
     {:noreply, socket}
+  end
+
+  # `DEX-A07`: sourced from `Nucleus.TenantApi.list_environments/1` directly,
+  # never from `EnvironmentsHook`'s `@environments` — that assign collapses
+  # every load error to `[]` (`environments_hook.ex:81-84`), which would
+  # render a genuine outage as "this tenant has zero environments" instead
+  # of surfacing the failure. Pre-selection is re-derived from `env_names`'s
+  # *current* stored value every time this opens, never from a prior
+  # picker's leftover state, so a reopen after a discarded toggle starts
+  # from the same place a fresh page load would.
+  @impl Phoenix.LiveView
+  def handle_event("open_env_picker", _params, socket) do
+    case TenantApi.list_environments(socket.assigns.current_scope.token) do
+      {:ok, environments} ->
+        selected = parse_env_names(current_value(socket, @env_names_key))
+        picker = EnvironmentPicker.new(available_environments(environments), selected)
+        {:noreply, assign(socket, :env_picker, picker)}
+
+      {:error, %Error{}} ->
+        {:noreply, put_flash(socket, :error, "Couldn't load environments right now.")}
+    end
+  end
+
+  # `DEX-A08`. No adapter call — nothing is saved until DEX-S4's save event.
+  @impl Phoenix.LiveView
+  def handle_event("toggle_env", %{"short_name" => short_name}, socket) do
+    case socket.assigns.env_picker do
+      nil ->
+        {:noreply, socket}
+
+      picker ->
+        {:noreply, assign(socket, :env_picker, EnvironmentPicker.toggle(picker, short_name))}
+    end
+  end
+
+  # `DEX-A09`. No adapter call.
+  @impl Phoenix.LiveView
+  def handle_event("filter_envs", %{"query" => query}, socket) do
+    case socket.assigns.env_picker do
+      nil ->
+        {:noreply, socket}
+
+      picker ->
+        {:noreply, assign(socket, :env_picker, EnvironmentPicker.filter(picker, query))}
+    end
+  end
+
+  # Closes the picker via the modal's `on_cancel` (Escape/backdrop) — the
+  # structural half of `DEX-A11`. No adapter call, no audit event: nothing
+  # was ever saved, so there is nothing to discard beyond this in-memory
+  # assign. The explicit cancel button and its full "no changes applied"
+  # test coverage are DEX-S4's.
+  @impl Phoenix.LiveView
+  def handle_event("cancel_env_picker", _params, socket) do
+    {:noreply, assign(socket, :env_picker, nil)}
   end
 
   defp save_edit(socket, key, value) do
@@ -427,6 +541,15 @@ defmodule NucleusWeb.DataExportLive do
                     >
                       Edit
                     </button>
+                    <button
+                      :if={key == "env_names"}
+                      id={"var-#{key}-edit"}
+                      type="button"
+                      class="btn btn-sm"
+                      phx-click="open_env_picker"
+                    >
+                      Edit
+                    </button>
                   </div>
                 </td>
               </tr>
@@ -485,6 +608,90 @@ defmodule NucleusWeb.DataExportLive do
           </div>
         </.form>
       </.modal>
+
+      <%!--
+      `DEX-A07`–`A09`. Only in the DOM while `:env_picker` is set — the same
+      "never exists until open" shape as the edit modal above, and for the
+      same reason: `EnvironmentPicker.new/2` re-derives pre-selection from
+      `env_names`'s current stored value on every open, so there is no
+      stale state to protect against by keeping the modal mounted-but-hidden
+      between opens.
+      --%>
+      <.modal
+        :if={@env_picker}
+        id="env-picker-modal"
+        show
+        on_cancel={JS.push("cancel_env_picker")}
+      >
+        <:title>Environments for Data Export</:title>
+
+        <.form
+          for={to_form(%{"query" => @env_picker.filter}, as: :env_filter)}
+          id="env-picker-filter-form"
+          phx-change="filter_envs"
+          phx-submit="filter_envs"
+        >
+          <.input
+            type="search"
+            id="env-picker-filter"
+            name="query"
+            value={@env_picker.filter}
+            placeholder="Filter environments..."
+            phx-debounce="200"
+          />
+        </.form>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <h3 class="font-semibold text-sm mb-2">Available</h3>
+            <ul
+              id="env-picker-available"
+              class="space-y-1 h-44 overflow-y-auto rounded-md border border-base-300 p-2"
+            >
+              <li
+                :for={env <- EnvironmentPicker.available_matches(@env_picker)}
+                id={"env-picker-available-#{env.short_name}"}
+              >
+                <button
+                  type="button"
+                  class="btn btn-sm btn-block justify-start"
+                  phx-click="toggle_env"
+                  phx-value-short_name={env.short_name}
+                >
+                  {env.label || env.short_name}
+                </button>
+              </li>
+            </ul>
+          </div>
+
+          <div>
+            <h3 class="font-semibold text-sm mb-2">
+              Active
+              <span id="env-picker-selected-count" class="font-normal text-base-content/70">
+                ({EnvironmentPicker.selected_count(@env_picker)})
+              </span>
+            </h3>
+            <ul
+              id="env-picker-selected"
+              class="space-y-1 h-44 overflow-y-auto rounded-md border border-base-300 p-2"
+            >
+              <li
+                :for={env <- EnvironmentPicker.selected_matches(@env_picker)}
+                id={"env-picker-selected-#{env.short_name}"}
+              >
+                <button
+                  type="button"
+                  class="btn btn-sm btn-block btn-primary justify-start"
+                  phx-click="toggle_env"
+                  phx-value-short_name={env.short_name}
+                >
+                  {env.label || env.short_name}
+                </button>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </.modal>
     </Layouts.app>
     """
   end
@@ -494,6 +701,46 @@ defmodule NucleusWeb.DataExportLive do
   end
 
   defp modified_at_text(nil), do: "unavailable"
+
+  # `env_names`'s current stored value — `@variables` is a sorted list of
+  # `{key, value}` tuples (`docs/adr/0028`), not a map, so this mirrors the
+  # `"edit"` handler's own `Enum.find/2` rather than map access syntax.
+  defp current_value(socket, key) do
+    case Enum.find(socket.assigns.variables, fn {k, _value} -> k == key end) do
+      {^key, value} -> value
+      nil -> nil
+    end
+  end
+
+  # Tolerant of the same messiness `Nucleus.M2M.DenyList.parse/1` tolerates
+  # for its own comma-separated value — blank entries and stray whitespace
+  # — since `env_names` was hand-edited by an operator before Nucleus
+  # existed and may not be pristine. Unlike `DenyList.parse/1`, there is no
+  # `:unset`/`"none"`-sentinel distinction to preserve here: an absent or
+  # blank value simply means nothing is currently selected.
+  @spec parse_env_names(String.t() | nil) :: [String.t()]
+  defp parse_env_names(nil), do: []
+
+  defp parse_env_names(value) when is_binary(value) do
+    value
+    |> String.split(",")
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+  end
+
+  # `DEX-A07`: the tenant's non-archived environments, name-sorted
+  # case-insensitively — the same display-name fallback (`label || short_name`)
+  # `NucleusWeb.EnvironmentsLive` already uses, and the same convention
+  # DEX-S1's row ordering established for this LiveView. Deliberately not
+  # `NucleusWeb.SidebarEnvironments.group/1` — that module also groups by
+  # category, which a flat picker does not want, and its own moduledoc
+  # scopes archived-exclusion to the sidebar specifically.
+  @spec available_environments([Environment.t()]) :: [Environment.t()]
+  defp available_environments(environments) do
+    environments
+    |> Enum.reject(& &1.archived?)
+    |> Enum.sort_by(&String.downcase(&1.label || &1.short_name))
+  end
 
   defp build_edit_form(value) do
     %EditForm{}
