@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/notes | Priority: high | Version: 1.28 | Updated: 2026-08-28 -->
+<!-- Context: project-intelligence/notes | Priority: high | Version: 1.29 | Updated: 2026-09-11 -->
 
 # Living Notes
 
@@ -240,6 +240,19 @@ deploys it.
   parameter. DEX-S3/S4 call this same function unchanged for `env_names`'s bulk update — expect
   `update/5`, not the `/4` an unread issue body would suggest. See
   `docs/adr/0029-data-export-inline-edit-update-arity-and-conflict-copy.md`.
+- **A selection count and the list it labels must be counted the same way, or a stale entry
+  makes them visibly disagree.** `NucleusWeb.DataExportLive.EnvironmentPicker`'s "Active (N)"
+  badge first read `length(selected_names/1)` — the raw `MapSet` of selected short names — while
+  the list underneath it renders `selected_matches/1`, which intersects that same set with `all`
+  (the tenant's current non-archived environments). `env_names` is hand-edited, pre-Nucleus data,
+  so `selected` can contain a short name `all` no longer has (archived, renamed, removed); when it
+  does, the badge overcounts what's actually visible. Fixed with a fourth accessor,
+  `selected_count/1`, that intersects with `all` the same way `selected_matches/1` does but
+  ignores the filter — `selected_names/1` itself stays unfiltered, since `DEX-S4`'s save reads it
+  and must not silently drop a stored value it can no longer otherwise account for. Reach for
+  `selected_count/1` for any future display of "how many are selected"; reach for
+  `selected_names/1` only when computing what to actually save. See
+  `docs/adr/0030-environment-picker-selected-count-and-fixed-height-lists.md`.
 
 ## Active Projects
 
