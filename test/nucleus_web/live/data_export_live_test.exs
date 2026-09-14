@@ -87,6 +87,66 @@ defmodule NucleusWeb.DataExportLiveTest do
     )
   end
 
+  defmodule NomadJobsAlwaysUnavailable do
+    @moduledoc """
+    Always errs, ignoring `LOCAL_FORCE_ERROR` entirely — proving `DEX-A02`'s
+    independence claim without `force_error/2`, which is node-global
+    (`Nucleus.Backend.Faults`) and would fault `:nomad_vars` too, since
+    `Nucleus.NomadVars.Store.Local` checks the very same env var. Swapping
+    the `:nomad_jobs` backend instead keeps `:nomad_vars` genuinely
+    unaffected, the same technique `NomadVarsWriteSpy` above uses for the
+    opposite direction.
+    """
+    @behaviour Nucleus.NomadJobs
+
+    alias Nucleus.Backend.Error
+
+    @impl Nucleus.NomadJobs
+    def list_jobs(_namespace) do
+      {:error, Error.new(:unavailable, Nucleus.NomadJobs.boundary(), "forced for test")}
+    end
+
+    @impl Nucleus.NomadJobs
+    def health_check, do: :ok
+  end
+
+  defmodule NomadVarsAlwaysUnavailable do
+    @moduledoc """
+    Always errs on `read/0`, for the opposite direction from
+    `NomadJobsAlwaysUnavailable` — proving a `:nomad_vars` outage does not
+    blank the deployment status panel, without reaching for
+    `force_error/2` (which would fault `:nomad_jobs` too).
+    """
+    @behaviour Nucleus.NomadVars.Store
+
+    alias Nucleus.Backend.Error
+
+    @impl Nucleus.NomadVars.Store
+    def read, do: {:error, Error.new(:unavailable, :nomad_vars, "forced for test")}
+
+    @impl Nucleus.NomadVars.Store
+    def write(_items, _expected_modify_index) do
+      {:error, Error.new(:unavailable, :nomad_vars, "forced for test")}
+    end
+
+    @impl Nucleus.NomadVars.Store
+    def health_check, do: :ok
+  end
+
+  defp use_nomad_jobs_double(module) do
+    original = Application.get_env(:nucleus, :backends, [])
+    on_exit(fn -> Application.put_env(:nucleus, :backends, original) end)
+
+    Application.put_env(:nucleus, :backends, Keyword.put(original, :nomad_jobs, module))
+  end
+
+  defp use_nomad_vars_double(module) do
+    original = Application.get_env(:nucleus, :backends, [])
+    on_exit(fn -> Application.put_env(:nucleus, :backends, original) end)
+
+    Application.put_env(:nucleus, :backends, Keyword.put(original, :nomad_vars, module))
+  end
+
   describe "DEX-A01 — detect whether Data Export is enabled" do
     @tag action: "DEX-A01"
     test "a tenant without the variable path sees a clear not-enabled message, no table", %{
@@ -325,6 +385,128 @@ defmodule NucleusWeb.DataExportLiveTest do
       refute table_html =~ "New"
       refute table_html =~ "Delete"
       refute table_html =~ "Remove"
+    end
+  end
+
+  describe "DEX-A02 — view Data Export deployment status" do
+    @tag action: "DEX-A02"
+    test "shows the seeded Data Export job's status, version, image, and cron schedule", %{
+      conn: conn
+    } do
+      {:ok, view, _html} = live_data_export(conn)
+      render_async(view)
+
+      assert has_element?(view, "#data-export-job-status")
+      refute has_element?(view, "#data-export-job-unavailable")
+
+      panel = view |> element("#data-export-job-status") |> render()
+      assert panel =~ "running"
+      assert panel =~ "3"
+      assert panel =~ "registry.example.com/acme/data-export:sha-ccc3333"
+      assert panel =~ "0 3 * * *"
+    end
+
+    @tag action: "DEX-A02"
+    test "a non-periodic job renders the shared formatter's no-schedule text", %{conn: conn} do
+      Seed.write(:nomad_jobs, [
+        %{
+          "stub" => %{
+            "ID" => "local-data_export",
+            "ParentID" => nil,
+            "Name" => "local-data_export",
+            "Status" => "running",
+            "Periodic" => false
+          },
+          "detail" => %{
+            "Version" => 1,
+            "TaskGroups" => [
+              %{
+                "Tasks" => [
+                  %{
+                    "Name" => "export",
+                    "Lifecycle" => nil,
+                    "Leader" => true,
+                    "Config" => %{"image" => "registry.example.com/acme/data-export:sha-none"}
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ])
+
+      {:ok, view, _html} = live_data_export(conn)
+      render_async(view)
+
+      panel = view |> element("#data-export-job-status") |> render()
+      assert panel =~ "No schedule"
+    end
+
+    @tag action: "DEX-A02"
+    test "the job-absent state renders #data-export-job-unavailable, distinct from #data-export-unavailable",
+         %{conn: conn} do
+      Seed.write(:nomad_jobs, [])
+
+      {:ok, view, _html} = live_data_export(conn)
+      render_async(view)
+
+      assert has_element?(view, "#data-export-job-unavailable")
+      refute has_element?(view, "#data-export-unavailable")
+      # the configuration table's own boundary is untouched by the job's absence.
+      assert has_element?(view, "#data-export-table")
+    end
+
+    @tag action: "DEX-A02"
+    test "a NomadJobs.list/1 error also renders #data-export-job-unavailable, collapsed with job-absent",
+         %{conn: conn} do
+      use_nomad_jobs_double(NomadJobsAlwaysUnavailable)
+
+      {:ok, view, _html} = live_data_export(conn)
+      render_async(view)
+
+      assert has_element?(view, "#data-export-job-unavailable")
+    end
+
+    @tag action: "DEX-A02"
+    test "a NomadJobs outage does not blank the configuration table", %{conn: conn} do
+      use_nomad_jobs_double(NomadJobsAlwaysUnavailable)
+
+      {:ok, view, _html} = live_data_export(conn)
+      render_async(view)
+
+      assert has_element?(view, "#data-export-table")
+      assert has_element?(view, "#data-export-job-unavailable")
+    end
+
+    @tag action: "DEX-A02"
+    test "a NomadVars outage does not blank the deployment status panel", %{conn: conn} do
+      use_nomad_vars_double(NomadVarsAlwaysUnavailable)
+
+      {:ok, view, _html} = live_data_export(conn)
+      render_async(view)
+
+      assert has_element?(view, "#data-export-unavailable")
+      assert has_element?(view, "#data-export-job-status")
+      refute has_element?(view, "#data-export-job-unavailable")
+    end
+
+    @tag action: "DEX-A02"
+    test "retry_job_status re-fetches and clears the job panel's own failure state", %{
+      conn: conn
+    } do
+      use_nomad_jobs_double(NomadJobsAlwaysUnavailable)
+
+      {:ok, view, _html} = live_data_export(conn)
+      render_async(view)
+      assert has_element?(view, "#data-export-job-unavailable")
+
+      use_nomad_jobs_double(Nucleus.NomadJobs.Local)
+
+      view |> element("[phx-click='retry_job_status']") |> render_click()
+      render_async(view)
+
+      refute has_element?(view, "#data-export-job-unavailable")
+      assert has_element?(view, "#data-export-job-status")
     end
   end
 

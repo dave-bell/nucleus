@@ -17,7 +17,79 @@ defmodule NucleusWeb.DataExportLive do
   justify `phx.gen.live`'s Index/Show split (`docs/adr/0018`): Data Export is
   one screen, one table, no drill-down — the same reasoning
   `NucleusWeb.ApplicationsLive` gives (`docs/adr/0025`).
-  `NucleusWeb.DataExportLive.States` is the only sibling module.
+  `NucleusWeb.DataExportLive.States` and `NucleusWeb.DataExportLive.JobStates`
+  are the two sibling modules — one per boundary (`:nomad_vars`,
+  `:nomad_jobs`), not one shared module for both; see `JobStates`'
+  moduledoc for why they are not merged.
+
+  ## The deployment status panel (`DEX-A02`, issue #77, DEX-S5)
+
+  A second, independent read alongside the configuration table above: this
+  page also shows the Data Export Nomad job's current status, version,
+  cron schedule, and image, formatted entirely through the shared
+  `NucleusWeb.Nomad.JobFormat` (`APP-S2`/#59) — no formatting logic of its
+  own, per that ticket's plan. Rendered as a single horizontal row
+  (status, version, schedule, image) rather than `<.description_list>`'s
+  stacked rows — four short values read better side by side than as a
+  four-row vertical list, and there is no per-row affordance (an edit
+  button, a badge needing its own line) the way the configuration table's
+  rows have that would push toward a vertical layout. The row is `flex`,
+  not an evenly-split grid — status/version/schedule stay
+  content-sized (`shrink-0`) while image (the one field long enough to
+  need it, e.g. a full registry path) takes the remaining width
+  (`flex-1`) and truncates with a `title` tooltip rather than wrapping or
+  forcing the other three columns wider than their content needs.
+
+  `Nucleus.NomadJobs.list/1` returns every parent job in the namespace, not
+  one job — `fetch_job_status/1` filters for the entry whose `name` matches
+  `Nucleus.NomadVars.Path.job_name/0` (EN-12/#72's derived
+  `{tenant_namespace}-data_export` name, never a hardcoded literal). A job
+  absent from that list is a real deployment scenario (Data Export enabled
+  via its Variables but the job not yet deployed, or vice versa), not the
+  same condition as `Nucleus.NomadJobs.list/1` itself erroring — but this
+  ticket represents both by folding "job absent" into the existing
+  `Nucleus.Backend.Error.kind() :not_found` vocabulary (favouring
+  consistency with every other boundary in this codebase over a bespoke
+  `{:not_found}` tuple) rather than distinguishing the two in the UI: see
+  `NucleusWeb.DataExportLive.JobStates` for why they render the same single
+  state.
+
+  This is a second network call beyond `NomadVars.list/1`/`fetch/1` above,
+  and renders from its own `:job` assign — a `Phoenix.LiveView.AsyncResult`,
+  deliberately not reusing `:status`/`:variables`. A `Nucleus.NomadJobs`
+  outage must not blank the configuration table this module already renders
+  successfully from `NomadVars`, and a `NomadVars` failure must not hide a
+  successful job status read — so the panel (`#data-export-job-status`)
+  renders at the top level, outside every `@status`-gated branch below, not
+  nested inside the `@status == :ok` block.
+
+  The page itself carries one `<h1>Data Export</h1>`, not one per section —
+  `#data-export-job-status` ("Deployment") and
+  `#data-export-configuration` ("Configuration", wrapping every `States.*`
+  branch and the `@status == :ok` table/empty-state below) are its two
+  sibling `<h2>` sections, not two competing top-level pages glued together.
+  The former per-status `<h1>Data Export</h1>` this ticket's earlier
+  revision nested inside the `@status == :ok` block only was a leftover
+  from before this page had a second (deployment status) section — every
+  other `@status` branch rendered with no page title at all, which this
+  fixes.
+
+  `Nucleus.NomadJobs.list/1` emits no audit event (its own moduledoc), so —
+  unlike the `fetch/1`/`list/1` split above, which exists solely to avoid a
+  double `nomad_vars_listed` audit across `mount/3`'s two passes — there is
+  no *audit* reason to gate this call on `connected?(socket)` the way that
+  split does. It is still loaded via `Phoenix.LiveView.assign_async/3`
+  (`fetch_job_status/1`), the same mechanism `NucleusWeb.EnvironmentsHook`
+  uses for the sidebar's Environments section: `assign_async/3` itself only
+  spawns the fetch once the socket is connected, so the disconnected static
+  render shows `:loading` and the connected pass is what actually calls
+  `Nucleus.NomadJobs.list/1` — chaining this ~15s-budgeted call after
+  `NomadVars.list/1`/`fetch/1` inside `mount/3` directly would otherwise
+  block first paint (including the Configuration table below, which has
+  nothing to do with this boundary) on `Nucleus.NomadJobs`' own latency.
+  Unlike `NucleusWeb.ApplicationsLive`'s own unconditional, *synchronous*
+  `fetch_jobs/1` call in `mount/3` — a known gap against that ticket's own
+  moduledoc claim, not a pattern this module repeats.
 
   ## One call to `Nucleus.NomadVars.fetch/1`/`list/1`
 
@@ -237,13 +309,18 @@ defmodule NucleusWeb.DataExportLive do
   use NucleusWeb, :live_view
 
   alias Nucleus.Backend.Error
+  alias Nucleus.NomadJobs
+  alias Nucleus.NomadJobs.Job
   alias Nucleus.NomadVars
+  alias Nucleus.NomadVars.Path
   alias Nucleus.NomadVars.Value
   alias Nucleus.TenantApi
   alias Nucleus.TenantApi.Environment
   alias NucleusWeb.DataExportLive.EditForm
   alias NucleusWeb.DataExportLive.EnvironmentPicker
+  alias NucleusWeb.DataExportLive.JobStates
   alias NucleusWeb.DataExportLive.States
+  alias NucleusWeb.Nomad.JobFormat
 
   @env_names_key "env_names"
 
@@ -263,6 +340,7 @@ defmodule NucleusWeb.DataExportLive do
       |> assign(editing_key: nil, editing_value: nil, edit_form: nil, edit_error: nil)
       |> assign(:env_picker, nil)
       |> assign_result(result)
+      |> fetch_job_status()
 
     {:ok, socket}
   end
@@ -277,6 +355,18 @@ defmodule NucleusWeb.DataExportLive do
       |> assign_result(result)
 
     {:noreply, socket}
+  end
+
+  # `DEX-A02`/DEX-S5: a distinct event from `"retry"` above — the two calls
+  # (`NomadVars.list/1`, `NomadJobs.list/1`) are independent boundaries with
+  # independent failure states, so a retry on one must not touch the other.
+  # Calling `assign_async/3` again on the same key (`fetch_job_status/1`)
+  # cancels nothing to cancel — the previous attempt already resolved to
+  # `:failed` by the time this event can fire, the button only being
+  # rendered in `JobStates.unavailable/1`'s branch — and re-runs the fetch.
+  @impl Phoenix.LiveView
+  def handle_event("retry_job_status", _params, socket) do
+    {:noreply, fetch_job_status(socket)}
   end
 
   # `DEX-A14`/DEX-S3-S4: `env_names` never gets an edit modal here, no
@@ -490,6 +580,59 @@ defmodule NucleusWeb.DataExportLive do
     assign(socket, status: :unavailable, variables: [], variable_count: 0)
   end
 
+  # `DEX-A02`/DEX-S5: independent of `assign_result/2` above — a
+  # `Nucleus.NomadJobs` outage must not touch `:status`/`:variables`, and a
+  # `Nucleus.NomadVars` outage must not touch `:job`. `assign_async/3` only
+  # starts the fetch once `connected?(socket)` — see the moduledoc, "The
+  # deployment status panel" — so the disconnected static render shows
+  # `:loading`, never blocking first paint on this boundary's own ~15s
+  # budget (`Nucleus.NomadJobs.list/1`'s moduledoc).
+  #
+  # `scope` is read out of `socket.assigns` here, before the closure below,
+  # rather than inside it — the closure runs in a separate process
+  # (`Phoenix.LiveView.assign_async/3`'s own warning), so it must not close
+  # over `socket` itself.
+  defp fetch_job_status(socket) do
+    scope = socket.assigns.current_scope
+
+    assign_async(socket, :job, fn ->
+      case fetch_data_export_job(scope) do
+        {:ok, job} -> {:ok, %{job: job}}
+        {:error, %Error{}} = error -> error
+      end
+    end)
+  end
+
+  # Two independent failure modes collapse to the same `{:error, Error.t()}`
+  # shape here: the job absent from `NomadJobs.list/1`'s result (folded into
+  # the existing `:not_found` kind rather than a bespoke `{:not_found}`
+  # tuple — favouring consistency with every other boundary's vocabulary),
+  # and the list call itself erroring with any other kind. Both render the
+  # same `NucleusWeb.DataExportLive.JobStates.unavailable/1` state; see that
+  # module's moduledoc for why they are not distinguished further.
+  @spec fetch_data_export_job(Nucleus.Scope.t()) :: {:ok, Job.t()} | {:error, Error.t()}
+  defp fetch_data_export_job(scope) do
+    case NomadJobs.list(scope) do
+      {:ok, jobs} ->
+        case Enum.find(jobs, &(&1.name == Path.job_name())) do
+          %Job{} = job ->
+            {:ok, job}
+
+          nil ->
+            {:error,
+             Error.new(
+               :not_found,
+               NomadJobs.boundary(),
+               "the data export job is not deployed in this namespace",
+               %{job_name: Path.job_name()}
+             )}
+        end
+
+      {:error, %Error{}} = error ->
+        error
+    end
+  end
+
   @impl Phoenix.LiveView
   def render(assigns) do
     ~H"""
@@ -499,62 +642,102 @@ defmodule NucleusWeb.DataExportLive do
       environments={@environments}
       expanded_categories={@expanded_categories}
     >
-      <States.not_enabled :if={@status == :not_enabled} />
-      <States.misconfigured :if={@status == :misconfigured} />
-      <States.unavailable :if={@status == :unavailable} />
-      <States.auth_expired :if={@status == :auth_expired} />
+      <h1 class="text-lg font-semibold pb-4">Data Export</h1>
 
-      <div :if={@status == :ok}>
-        <h1 class="text-lg font-semibold pb-4">Data Export</h1>
+      <div id="data-export-job-status" class="pb-6">
+        <h2 class="text-base font-semibold pb-2">Deployment</h2>
 
-        <.empty_state
-          :if={@variable_count == 0}
-          id="data-export-empty"
-          icon="hero-inbox"
-          message="No variables configured."
-        />
+        <.async_result :let={job} assign={@job}>
+          <:loading>
+            <p id="data-export-job-loading" class="text-sm text-base-content/60">
+              Loading deployment status…
+            </p>
+          </:loading>
+          <:failed>
+            <JobStates.unavailable />
+          </:failed>
+          <dl class="flex flex-col gap-4 sm:flex-row sm:gap-x-16">
+            <div class="shrink-0">
+              <dt class="text-sm font-medium text-base-content/60">Status</dt>
+              <dd class="text-sm">{JobFormat.status_text(job)}</dd>
+            </div>
+            <div class="shrink-0">
+              <dt class="text-sm font-medium text-base-content/60">Version</dt>
+              <dd class="text-sm">{JobFormat.version_text(job)}</dd>
+            </div>
+            <div class="shrink-0">
+              <dt class="text-sm font-medium text-base-content/60">Schedule</dt>
+              <dd class="text-sm">{JobFormat.schedule_text(job)}</dd>
+            </div>
+            <div class="min-w-0 flex-1">
+              <dt class="text-sm font-medium text-base-content/60">Image</dt>
+              <dd class="text-sm truncate" title={JobFormat.image_text(job)}>
+                {JobFormat.image_text(job)}
+              </dd>
+            </div>
+          </dl>
+        </.async_result>
+      </div>
 
-        <div :if={@variable_count > 0} id="data-export-table">
-          <p class="text-sm text-base-content/70 pb-2">
-            Last modified: <span id="data-export-modified-at">{modified_at_text(@modified_at)}</span>
-          </p>
-          <table class="table table-zebra">
-            <thead>
-              <tr>
-                <th>Key</th>
-                <th>Value</th>
-              </tr>
-            </thead>
-            <tbody id="data-export-table-body">
-              <tr :for={{key, value} <- @variables} id={"var-" <> key} data-var-key={key}>
-                <td class="font-medium">{key}</td>
-                <td id={"var-" <> key <> "-value"}>
-                  <div class="flex items-center justify-between gap-2">
-                    <span>{value}</span>
-                    <button
-                      :if={key != "env_names"}
-                      id={"var-#{key}-edit"}
-                      type="button"
-                      class="btn btn-sm"
-                      phx-click="edit"
-                      phx-value-key={key}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      :if={key == "env_names"}
-                      id={"var-#{key}-edit"}
-                      type="button"
-                      class="btn btn-sm"
-                      phx-click="open_env_picker"
-                    >
-                      Edit
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+      <div id="data-export-configuration">
+        <h2 class="text-base font-semibold pb-2">Configuration</h2>
+
+        <States.not_enabled :if={@status == :not_enabled} />
+        <States.misconfigured :if={@status == :misconfigured} />
+        <States.unavailable :if={@status == :unavailable} />
+        <States.auth_expired :if={@status == :auth_expired} />
+
+        <div :if={@status == :ok}>
+          <.empty_state
+            :if={@variable_count == 0}
+            id="data-export-empty"
+            icon="hero-inbox"
+            message="No variables configured."
+          />
+
+          <div :if={@variable_count > 0} id="data-export-table">
+            <p class="text-sm text-base-content/70 pb-2">
+              Last modified:
+              <span id="data-export-modified-at">{modified_at_text(@modified_at)}</span>
+            </p>
+            <table class="table table-zebra">
+              <thead>
+                <tr>
+                  <th>Key</th>
+                  <th>Value</th>
+                </tr>
+              </thead>
+              <tbody id="data-export-table-body">
+                <tr :for={{key, value} <- @variables} id={"var-" <> key} data-var-key={key}>
+                  <td class="font-medium">{key}</td>
+                  <td id={"var-" <> key <> "-value"}>
+                    <div class="flex items-center justify-between gap-2">
+                      <span>{value}</span>
+                      <button
+                        :if={key != "env_names"}
+                        id={"var-#{key}-edit"}
+                        type="button"
+                        class="btn btn-sm"
+                        phx-click="edit"
+                        phx-value-key={key}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        :if={key == "env_names"}
+                        id={"var-#{key}-edit"}
+                        type="button"
+                        class="btn btn-sm"
+                        phx-click="open_env_picker"
+                      >
+                        Edit
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
