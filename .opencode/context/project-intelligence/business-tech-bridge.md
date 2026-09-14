@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.27 | Updated: 2026-08-28 -->
+<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.28 | Updated: 2026-09-11 -->
 
 # Business ↔ Tech Bridge
 
@@ -369,6 +369,25 @@ before the CAS check, wrapping the bare `:empty`/`:too_long` reason into
 `Error{kind: :invalid}` — caught in review, since the first pass trusted the LiveView's own
 changeset as the only gate, leaving `update/5` writeable with an empty or oversized value by any
 caller other than that one form.
+
+`DEX-A07`, `A08`, and `A09` are now claimed and covered (`DEX-S3`/#75): `env_names` gets its own
+trigger (`#var-env_names-edit`) opening a second conditionally-rendered modal
+(`#env-picker-modal`), never the generic edit path — `NucleusWeb.DataExportLive.EnvironmentPicker`
+(a real shared module, mirroring `M2MClientsLive.Format`'s "own file, own tests" precedent) holds
+one `MapSet` of selected short names against the tenant's full non-archived, name-sorted
+environment list, plus a filter string. Opening calls `Nucleus.TenantApi.list_environments/1`
+directly — never `EnvironmentsHook`'s `@environments`, which collapses every load error to `[]`
+and would misreport a genuine outage as zero environments — and re-derives pre-selection from
+`env_names`'s current stored value (`parse_env_names/1`, tolerant of the same blank/whitespace
+messiness `Nucleus.M2M.DenyList.parse/1` tolerates) on every open, never from a prior picker's
+leftover state. `toggle_env`/`filter_envs`/`cancel_env_picker` only ever touch the `:env_picker`
+assign — no adapter call from any of the three, since nothing is saved until `DEX-S4`'s delta
+write. The "Active (N)" badge reads a fourth accessor, `selected_count/1`, not
+`length(selected_names/1)` — `selected_names/1` stays the raw, possibly-stale selection `DEX-A10`'s
+save must read unfiltered, while the badge counts only the `all`-intersection the "Active" list
+actually renders, so a stale `env_names` entry (hand-edited, pre-Nucleus data) can't inflate the
+count past the rows shown beneath it. See `docs/adr/0030` for both that split and why each list
+pane is a fixed `h-44` rather than `max-height`.
 
 ## Tagging Convention
 

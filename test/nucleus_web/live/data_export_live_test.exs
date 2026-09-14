@@ -56,6 +56,37 @@ defmodule NucleusWeb.DataExportLiveTest do
     )
   end
 
+  defmodule FailingTenantApi do
+    @moduledoc """
+    A `Nucleus.TenantApi` implementation whose `list_environments/1` always
+    fails — the same swapped-module technique
+    `NucleusWeb.EnvironmentsLiveTest.FailingTenantApi` uses, per `M2M-S1`'s
+    established reasoning against the node-global `LOCAL_FORCE_ERROR` fault
+    for a targeted, single-boundary assertion (this LiveView's own
+    `EnvironmentsHook` calls the same `:tenant_api` boundary on every mount,
+    so a node-global fault would also be caught there).
+    """
+    @behaviour Nucleus.TenantApi
+
+    @impl Nucleus.TenantApi
+    def list_environments(_token),
+      do: {:error, Error.new(:unavailable, :tenant_api, "forced for test", %{})}
+
+    @impl Nucleus.TenantApi
+    def health_check, do: raise("should not be called")
+  end
+
+  defp use_failing_tenant_api do
+    original = Application.get_env(:nucleus, :backends, [])
+    on_exit(fn -> Application.put_env(:nucleus, :backends, original) end)
+
+    Application.put_env(
+      :nucleus,
+      :backends,
+      Keyword.put(original, :tenant_api, FailingTenantApi)
+    )
+  end
+
   describe "DEX-A01 — detect whether Data Export is enabled" do
     @tag action: "DEX-A01"
     test "a tenant without the variable path sees a clear not-enabled message, no table", %{
@@ -559,12 +590,183 @@ defmodule NucleusWeb.DataExportLiveTest do
     end
   end
 
-  describe "env_names never renders an edit modal here" do
-    @tag action: "DEX-A14"
-    test "no edit trigger exists on the env_names row", %{conn: conn} do
+  describe "DEX-A07 — open the environment picker" do
+    @tag action: "DEX-A07"
+    test "opening shows non-archived environments with current selection pre-selected", %{
+      conn: conn
+    } do
       {:ok, view, _html} = live_data_export(conn)
 
-      refute has_element?(view, "#var-env_names-edit")
+      view |> element("#var-env_names-edit") |> render_click()
+
+      assert has_element?(view, "#env-picker-modal")
+      refute has_element?(view, "#env-picker-available-legacy-qa")
+      assert has_element?(view, "#env-picker-selected-prod")
+    end
+
+    @tag action: "DEX-A07"
+    test "the seeded archived fixture (legacy-qa) never appears in either list", %{conn: conn} do
+      {:ok, view, _html} = live_data_export(conn)
+
+      view |> element("#var-env_names-edit") |> render_click()
+
+      refute has_element?(view, "#env-picker-available-legacy-qa")
+      refute has_element?(view, "#env-picker-selected-legacy-qa")
+    end
+
+    @tag action: "DEX-A07"
+    test "currently-included env_names entries render pre-selected, others available", %{
+      conn: conn
+    } do
+      {:ok, view, _html} = live_data_export(conn)
+
+      view |> element("#var-env_names-edit") |> render_click()
+
+      # seeded env_names value is "prod,staging" — see @seeded_keys above.
+      assert has_element?(view, "#env-picker-selected-prod")
+      assert has_element?(view, "#env-picker-selected-staging")
+      assert has_element?(view, "#env-picker-available-dev")
+      assert has_element?(view, "#env-picker-available-sandbox")
+      refute has_element?(view, "#env-picker-available-prod")
+      refute has_element?(view, "#env-picker-available-staging")
+    end
+
+    @tag action: "DEX-A07"
+    test "opening when list_environments/1 fails shows an error flash, not a crash, and does not open the modal",
+         %{conn: conn} do
+      use_failing_tenant_api()
+      {:ok, view, _html} = live_data_export(conn)
+
+      view |> element("#var-env_names-edit") |> render_click()
+
+      refute has_element?(view, "#env-picker-modal")
+      assert render(view) =~ "Couldn&#39;t load environments right now."
+    end
+
+    @tag action: "DEX-A07"
+    test "reopening after a discarded toggle re-derives pre-selection from the current stored value, not stale picker state",
+         %{conn: conn} do
+      {:ok, view, _html} = live_data_export(conn)
+
+      view |> element("#var-env_names-edit") |> render_click()
+      view |> element("#env-picker-available-dev button") |> render_click()
+      assert has_element?(view, "#env-picker-selected-dev")
+
+      # dismiss without saving (structural half of DEX-A11 — Escape/backdrop).
+      render_click(view, "cancel_env_picker", %{})
+      refute has_element?(view, "#env-picker-modal")
+
+      view |> element("#var-env_names-edit") |> render_click()
+
+      refute has_element?(view, "#env-picker-selected-dev")
+      assert has_element?(view, "#env-picker-available-dev")
+    end
+  end
+
+  describe "DEX-A08 — select and deselect environments" do
+    @tag action: "DEX-A08"
+    test "clicking an available environment moves it to selected, and the count increments", %{
+      conn: conn
+    } do
+      {:ok, view, _html} = live_data_export(conn)
+      view |> element("#var-env_names-edit") |> render_click()
+
+      assert view |> element("#env-picker-selected-count") |> render() =~ "(2)"
+
+      view |> element("#env-picker-available-dev button") |> render_click()
+
+      assert has_element?(view, "#env-picker-selected-dev")
+      refute has_element?(view, "#env-picker-available-dev")
+      assert view |> element("#env-picker-selected-count") |> render() =~ "(3)"
+    end
+
+    @tag action: "DEX-A08"
+    test "clicking a selected environment moves it back to available, and the count decrements",
+         %{conn: conn} do
+      {:ok, view, _html} = live_data_export(conn)
+      view |> element("#var-env_names-edit") |> render_click()
+
+      view |> element("#env-picker-selected-prod button") |> render_click()
+
+      assert has_element?(view, "#env-picker-available-prod")
+      refute has_element?(view, "#env-picker-selected-prod")
+      assert view |> element("#env-picker-selected-count") |> render() =~ "(1)"
+    end
+
+    @tag action: "DEX-A08"
+    test "no adapter write call occurs from opening or toggling alone", %{conn: conn} do
+      use_write_spy()
+      {:ok, view, _html} = live_data_export(conn)
+
+      view |> element("#var-env_names-edit") |> render_click()
+      view |> element("#env-picker-available-dev button") |> render_click()
+      view |> element("#env-picker-selected-dev button") |> render_click()
+
+      assert NomadVarsWriteSpy.write_calls() == 0
+      assert_no_audit_event(:env_names_updated)
+    end
+  end
+
+  describe "DEX-A09 — filter the environment picker" do
+    @tag action: "DEX-A09"
+    test "typing a filter narrows both available and selected to matches only", %{conn: conn} do
+      {:ok, view, _html} = live_data_export(conn)
+      view |> element("#var-env_names-edit") |> render_click()
+
+      view
+      |> element("#env-picker-filter-form")
+      |> render_change(%{"query" => "prod"})
+
+      assert has_element?(view, "#env-picker-selected-prod")
+      refute has_element?(view, "#env-picker-selected-staging")
+      refute has_element?(view, "#env-picker-available-dev")
+      refute has_element?(view, "#env-picker-available-sandbox")
+    end
+
+    @tag action: "DEX-A09"
+    test "clearing the filter restores the full lists", %{conn: conn} do
+      {:ok, view, _html} = live_data_export(conn)
+      view |> element("#var-env_names-edit") |> render_click()
+
+      view
+      |> element("#env-picker-filter-form")
+      |> render_change(%{"query" => "prod"})
+
+      view
+      |> element("#env-picker-filter-form")
+      |> render_change(%{"query" => ""})
+
+      assert has_element?(view, "#env-picker-selected-prod")
+      assert has_element?(view, "#env-picker-selected-staging")
+      assert has_element?(view, "#env-picker-available-dev")
+      assert has_element?(view, "#env-picker-available-sandbox")
+    end
+
+    @tag action: "DEX-A09"
+    test "no adapter write call occurs from filtering alone", %{conn: conn} do
+      use_write_spy()
+      {:ok, view, _html} = live_data_export(conn)
+      view |> element("#var-env_names-edit") |> render_click()
+
+      view
+      |> element("#env-picker-filter-form")
+      |> render_change(%{"query" => "prod"})
+
+      assert NomadVarsWriteSpy.write_calls() == 0
+    end
+  end
+
+  describe "env_names never renders an edit modal here" do
+    @tag action: "DEX-A14"
+    test "the env_names row's edit trigger opens the picker, never the inline edit modal", %{
+      conn: conn
+    } do
+      {:ok, view, _html} = live_data_export(conn)
+
+      view |> element("#var-env_names-edit") |> render_click()
+
+      assert has_element?(view, "#env-picker-modal")
+      refute has_element?(view, "#data-export-edit-modal")
     end
 
     test "dispatching \"edit\" directly for env_names opens no modal", %{conn: conn} do

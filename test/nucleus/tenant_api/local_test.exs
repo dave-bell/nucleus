@@ -25,11 +25,26 @@ defmodule Nucleus.TenantApi.LocalTest do
   end
 
   describe "the seeded fixtures" do
-    test "all five are present, so downstream tickets need not invent their own" do
+    test "every seeded fixture is present, so downstream tickets need not invent their own" do
       assert {:ok, environments} = Local.list_environments(nil)
 
       assert Enum.map(environments, & &1.short_name) |> Enum.sort() ==
-               ["dev", "legacy-qa", "prod", "sandbox", "staging"]
+               [
+                 "canary",
+                 "demo",
+                 "dev",
+                 "dr",
+                 "legacy-qa",
+                 "old-sandbox",
+                 "perf",
+                 "prod",
+                 "qa1",
+                 "qa2",
+                 "sandbox",
+                 "staging",
+                 "training",
+                 "uat"
+               ]
     end
 
     test "prod has multiple categories and a description" do
