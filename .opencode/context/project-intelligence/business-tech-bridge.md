@@ -34,13 +34,13 @@ Then re-check the table below for new or renamed action IDs.
 
 ## Core Mapping
 
-**114 actions across 10 pages.** Action IDs are stable and never renumbered, so they are safe
+**112 actions across 10 pages.** Action IDs are stable and never renumbered, so they are safe
 to cite from test names and bug reports.
 
 | Requirement page | Action IDs | Count | Planned Phoenix surface | Planned test file |
 |------------------|-----------|-------|-------------------------|-------------------|
 | `Authentication-and-Access.md` | `AUTH-A01`–`A11` | 11 | Cognito Hosted UI redirect + session plug; `NucleusWeb.AuthController`, `on_mount` hook | `test/nucleus_web/auth_test.exs` |
-| `Application-Shell-and-Navigation.md` | `NAV-A01`–`A12` | 12 | `NucleusWeb.Layouts` (app shell, header, sidebar) | `test/nucleus_web/live/shell_test.exs` |
+| `Application-Shell-and-Navigation.md` | `NAV-A01`–`A10` | 10 | `NucleusWeb.Layouts` (app shell, header, sidebar) | `test/nucleus_web/live/shell_test.exs` |
 | `Applications.md` | `APP-A01`–`A08` | 8 | `NucleusWeb.ApplicationsLive` (read-only Nomad jobs) | `test/nucleus_web/live/applications_live_test.exs` |
 | `Environments.md` | `ENV-A01`–`A07` | 7 | `NucleusWeb.EnvironmentsLive` | `test/nucleus_web/live/environments_live_test.exs` |
 | `Data-Export-Configuration.md` | `DEX-A01`–`A14` | 14 | `NucleusWeb.DataExportLive` + Nomad Variables client | `test/nucleus_web/live/data_export_live_test.exs` |
@@ -75,10 +75,25 @@ children, so no available reading is a real lifetime total (EN-11 Decision 2,
 deleted. No action ID was added or removed, so the `APP-A01`–`A08` / `8` count above is
 unchanged — a wording fix, not a coverage change.
 
+`NAV-A11` (loading state while auth status is determined) and `NAV-A12` (desktop-only
+experience) are deleted outright (NAV-D2), not reworded. Identity is resolved synchronously in
+`NucleusWeb.Plugs.AssignScope` before any response is sent, so there is no client-side
+"checking auth" window for a loading state to cover; `NAV-A12`'s `Test layer: manual/visual
+review` was never a layer `mix nucleus.trace` could mark covered, and it only asserted an
+absence of work. `NAV-A08` is narrowed to drop its granted-scopes clause and gains a Logout
+option instead; the companion clause on `AUTH-A11` (`Authentication-and-Access.md`) is struck
+to match, so the two pages no longer disagree on whether scopes are shown. The NAV page's last
+`/api/*` contract row (`GET /api/proxy/environments`) is also removed — `NucleusWeb.EnvironmentsHook`
+calls `Nucleus.TenantApi.list_environments/2` directly, with no proxy hop to specify (the
+repo-wide removal of the rest of that layer is **PRX-D1**, out of scope here). Two action IDs
+are actually removed this time, so — unlike `ENV-A05`/`APP-A03`/`APP-A04` above — this is a
+coverage-denominator change, not just wording: the `NAV-A01`–`A12` / `12` row becomes
+`NAV-A01`–`A10` / `10`, and the page total above drops from `114` to `112`.
+
 **Most "Planned" columns are still unimplemented.** `NucleusWeb.Layouts` (app shell, header,
 sidebar) and `test/nucleus_web/live/shell_test.exs` now exist (EN-7) — a deliberate subset only.
 `NAV-A04`–`A07` are now claimed and covered too (`NAV-S1`/#53, see below); `NAV-A01`–`A03`,
-`A08`–`A12` remain uncovered, needing authentication and the Applications view.
+`A08`–`A10` remain uncovered, needing authentication and the Applications view.
 `NucleusWeb.SecretsLive` and `test/nucleus_web/live/secrets_live_test.exs`
 also now exist (SEC-S1/#9, SEC-S2/#10, SEC-S3/#11, SEC-S4/#12, SEC-S5/#13, SEC-S6/#14) —
 `SEC-A01`–`A14`, `A17` are claimed and covered; the module validates and resolves the environment,
@@ -227,9 +242,11 @@ lifecycle hooks rather than a `LiveComponent`. This also makes `NAV-A05` and `EN
 through a plain `render_click/1` in `Phoenix.LiveViewTest`, matching the
 `phx-click="event"`-over-`JS.exec` convention `docs/adr/0012` set — collapsed/expanded state is a
 real assign, not an unobservable client-side attribute toggle, so both are claimed as fully
-proven, not the wiring-only partial claim `SEC-A04`/`SEC-A13` carry. `mix nucleus.trace --feature NAV`
-now reports 4/12 covered (`NAV-A04`–`A07`; the rest need authentication and the Applications
-view) and `--feature ENV` reports 7/7.
+proven, not the wiring-only partial claim `SEC-A04`/`SEC-A13` carry. At the time (NAV had 12
+actions), `mix nucleus.trace --feature NAV` reported 4/12 covered (`NAV-A04`–`A07`; the rest
+needed authentication and the Applications view) and `--feature ENV` reported 7/7. NAV's
+denominator dropped to 10 under NAV-D2 (`A11`/`A12` deleted, neither ever covered), so the same
+coverage today reads 4/10.
 
 `layouts.ex`'s per-category DOM id was, until a post-implementation code review on this same
 branch, derived from `category_slug/1` alone — lowercase the category name, collapse every run
