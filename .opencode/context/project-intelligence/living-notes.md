@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/notes | Priority: high | Version: 1.29 | Updated: 2026-09-11 -->
+<!-- Context: project-intelligence/notes | Priority: high | Version: 1.30 | Updated: 2026-09-14 -->
 
 # Living Notes
 
@@ -20,6 +20,7 @@
 | No browser-driven test coverage for `SEC-A02` (the `navigator.clipboard.writeText` call itself, the confirmation face swap/revert — an icon in a row, the word "Copied" in the modal — the non-secure-context `execCommand` fallback, the failure indication, and the hover/`:focus-visible` reveal of any tooltip, now on path and ARN values as well as the copy buttons) or for modal dismissal — `SEC-A13`'s focus trap and focus restoration (both the reveal modal's and the create modal's), plus `SEC-A04`'s Escape and backdrop-click routes, which reach the server only by running the `JS` chain in `data-cancel`. `M2M-A04`–`A07`'s create modal (M2M-S4/#37) has the identical gap — Escape, backdrop click, focus trap/restoration, and typing-lag are all client-side. `M2M-A08`'s one-time credentials panel (M2M-S5/#38) has the clipboard-write half of the same gap for its own two copy buttons, plus focus trap/restoration — but *not* the Escape/backdrop half, since that panel deliberately carries no `data-cancel`/`phx-click-away`/`phx-window-keydown` wiring at all (see `NucleusWeb.M2MClientsLive.CredentialsPanel`'s moduledoc). `M2M-A10`'s `beforeunload` warning (M2M-S7/#40) is the same story again, one level further: the dialog itself is a browser API no LiveViewTest run can trigger at all, not even partially. `M2M-A11`/`M2M-A12`'s rotation confirmation modal (M2M-S6/#39) is a real `<.modal>` (unlike the credentials panel), so it has the *full* gap — Escape, backdrop click, focus trap/restoration — same as `SEC-A04`/`SEC-A13`/the create modal; the credentials panel it opens on success is `CredentialsPanel` reused verbatim (only a `title` attribute differs), so its own clipboard-write and focus trap/restoration gap applies again, unchanged, for the same two copy buttons | Tests assert wiring only (hook attached, `data-value` full/untruncated, `phx-update="ignore"` present or, for `M2M-A10`, deliberately absent, `data-tip` set, `on_cancel`/`phx-key`/`phx-click-away` present, `data-dirty`'s transitions), and claim `@tag action:` for `SEC-A04`/`SEC-A13`/`M2M-A04`–`A07`/`M2M-A08`/`M2M-A12` **only** via each modal's plain-`phx-click` dismiss control (Close, Cancel, the credentials panel's own explicit dismiss), which `render_click/1` can actually drive. `M2M-A10` claims no `@tag action:` at all — none of its wiring tests prove a dialog appeared | Medium | Add Wallaby once sign-in exists (deferred, EN-8); see `docs/adr/0008-test-strategy.md`. Six gap sets are skipped `:browser`-tagged placeholder modules — `secrets_live_test.exs`'s `CopyButtonBrowserGaps` (4), `SecretRevealModalBrowserGaps` (5), and `NewSecretModalBrowserGaps` (5), and `m2m_clients_live_test.exs`'s `NewClientModalBrowserGaps` (5), `CredentialsPanelBrowserGaps` (7), and `UnsavedGuardBrowserGaps` (5). `M2M-A10` additionally records a manual, two-browser checklist in its PR description (not in the codebase), per `docs/requirements/M2M-Clients.md`'s `Test layer: e2e` — `m2m_clients_live_test.exs`'s `UnsavedGuardBrowserGaps` module names the same scenarios as skipped placeholder tests, so the intent survives here even though the checklist itself lives only in the PR |
 | `LOCAL_FORCE_ERROR` (`Nucleus.Backend.Faults`) is node-global, not per-boundary — a fault set for one boundary is seen by every local implementation's next call | A test targeting the `:secrets` boundary's error path is actually caught by whichever boundary is called first; SEC-S2 found this when `Nucleus.Secrets.list/2`'s `Environments.fetch/2` gate always intercepted the fault before `Store.list_secrets/1` ran | Low | Swap in a real/failing module via `Application.put_env(:nucleus, :backends, ...)` instead of `force_error/2` for a specific-boundary test — see `SecretsLiveTest.FailingSecretsStore` |
 | `Nucleus.Backend.Seed.read/2` cannot distinguish a boundary's section being entirely absent from the seed document from that section being present with an explicit JSON `null` value — `get_in/2` returns `nil` for both once decoded | EN-12 needed exactly this distinction (`:not_configured` vs. a specific tenant lacking a feature) and worked around it locally in `Nucleus.NomadVars.Store.Local` with a `false` sentinel instead of `null`, rather than fixing `Seed` itself | Low | Reuse the `false`-sentinel pattern for the next boundary that needs this, or add a key-presence check (e.g. `has_section?/1`) to `Nucleus.Backend.Seed` if a third boundary needs the same distinction — see `docs/adr/0027-nomad-vars-adapter.md` |
+| `NucleusWeb.ApplicationsLive.mount/3` calls `Nucleus.NomadJobs.list/1` synchronously, contradicting `Nucleus.NomadJobs`'s own moduledoc claim that `APP-S1` "mounts immediately with a loading state and runs this call off the LiveView process" | A slow or unavailable `:nomad_jobs` boundary blocks first paint of `/applications` for the full ~15s budget (`docs/adr/0022`) — noticed while giving `NucleusWeb.DataExportLive`'s own second `NomadJobs.list/1` read (`DEX-S5`) an `assign_async/3` load instead of repeating this pattern | Medium | Switch `ApplicationsLive.mount/3` to `Phoenix.LiveView.assign_async/3`, the same fix `docs/adr/0031-data-export-deployment-status-panel-not-found-fold-and-async-load.md` applied to `DataExportLive`'s panel — out of scope for that ticket since it is a different LiveView |
 
 ### Technical Debt Details
 
@@ -253,6 +254,22 @@ deploys it.
   `selected_count/1` for any future display of "how many are selected"; reach for
   `selected_names/1` only when computing what to actually save. See
   `docs/adr/0030-environment-picker-selected-count-and-fixed-height-lists.md`.
+- **Chaining a second budgeted network call inside `mount/3`, after a first call already
+  succeeded, blocks first paint of everything — including content the second call has nothing to
+  do with.** `NucleusWeb.DataExportLive`'s deployment status panel (`DEX-S5`) first shipped
+  `fetch_job_status/1` as a plain synchronous call to `Nucleus.NomadJobs.list/1`, chained after
+  the configuration table's own `NomadVars.fetch/1`/`list/1` — mirroring
+  `NucleusWeb.ApplicationsLive`'s own `fetch_jobs/1`, which has the identical problem (see
+  Technical Debt, above). Caught in review: `NomadJobs.list/1` carries its own ~15s overall
+  budget (`docs/adr/0022`) precisely because it can be slow, and a call chained inside `mount/3`
+  blocks the *entire* render — including the Configuration table, which the page's own moduledoc
+  already promised would render independently of this boundary's health. Fixed by loading `:job`
+  (a `Phoenix.LiveView.AsyncResult`) via `assign_async/3` instead — the same mechanism
+  `NucleusWeb.EnvironmentsHook` already uses for the sidebar, applied here for the first time to
+  a LiveView's own primary content. Any future second (or third) read added inside an existing
+  `mount/3` should default to `assign_async/3` unless there is a specific reason — an audit
+  side-effect ordering requirement, e.g. — that needs it synchronous. See
+  `docs/adr/0031-data-export-deployment-status-panel-not-found-fold-and-async-load.md`.
 
 ## Active Projects
 

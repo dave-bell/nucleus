@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.28 | Updated: 2026-09-11 -->
+<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.29 | Updated: 2026-09-14 -->
 
 # Business ↔ Tech Bridge
 
@@ -388,6 +388,24 @@ save must read unfiltered, while the badge counts only the `all`-intersection th
 actually renders, so a stale `env_names` entry (hand-edited, pre-Nucleus data) can't inflate the
 count past the rows shown beneath it. See `docs/adr/0030` for both that split and why each list
 pane is a fixed `h-44` rather than `max-height`.
+
+`DEX-A02` is now claimed and covered (`DEX-S5`/#77): a second, independent read alongside the
+configuration table, rendering the Data Export Nomad job's status/version/schedule/image
+entirely through the already-shared `NucleusWeb.Nomad.JobFormat` (`APP-S2`/#59) — no independent
+formatting logic here. `fetch_data_export_job/1` filters `Nucleus.NomadJobs.list/1`'s result for
+the entry whose name matches `Nucleus.NomadVars.Path.job_name/0` (`EN-12`/#72); a job absent from
+that list folds into the existing `Nucleus.Backend.Error.kind() :not_found` vocabulary rather
+than a bespoke tuple, and collapses with a `list/1` error into one state,
+`NucleusWeb.DataExportLive.JobStates.unavailable/1` (`#data-export-job-unavailable`), distinct
+from the configuration table's own `#data-export-unavailable` — the ticket's own two-DOM-id
+contract, not four. The read loads via `Phoenix.LiveView.assign_async/3` into a single `:job`
+`AsyncResult`, not a second synchronous call chained inside `mount/3` — caught in review after
+the first pass mirrored `NucleusWeb.ApplicationsLive`'s own unconditional, synchronous
+`fetch_jobs/1` and was found to block first paint of the unrelated Configuration table on
+`Nucleus.NomadJobs.list/1`'s own ~15s budget (`docs/adr/0022`). Reuses
+`NucleusWeb.EnvironmentsHook`'s `assign_async/3` pattern, the first time it's applied to a
+LiveView's own primary content rather than shell chrome. See `docs/adr/0031` for the full
+reasoning and the alternatives rejected.
 
 ## Tagging Convention
 

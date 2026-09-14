@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.34 | Updated: 2026-09-11 -->
+<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.35 | Updated: 2026-09-14 -->
 
 # Decisions Log
 
@@ -55,6 +55,7 @@ job and the row should point rather than paraphrase.
 | 28 | Data Export listing — one `NucleusWeb.DataExportLive` module, a second confirmation of `docs/adr/0025`'s module-count-matches-route-count rule; row/cell DOM ids use the unhashed variable key, resting on ops-provisioned-key provenance rather than an upstream filter (no `Job.child?/1` equivalent exists for `Items` keys); `Nucleus.NomadVars` gains `fetch/1` (no audit) alongside `list/1` (`fetch/1` plus `nomad_vars_listed` on success), mirroring `M2M.fetch/2`/`view/2` — caught in review after the plan's literal `connected?`-gated single call left the disconnected static render blank | 2026-08-27 | Decided | `docs/adr/0028-data-export-listing-single-module-dom-ids-and-fetch-list-split.md` |
 | 29 | Data Export inline edit — `Nucleus.NomadVars.update/5`, not the issue's own `update/4`: `items` must be a parameter since `Store.write/2` replaces the whole map and a fresh `Store.read/0` would defeat CAS's purpose; `update/5` also validates `value` via `Value.validate/1` before the CAS check, wrapping the bare reason atom into `Error{kind: :invalid}` (caught in review — the first pass trusted the LiveView's own changeset as the only gate); edit is a single conditionally-rendered modal (`:if={@editing_key}`), mirroring `SecretsLive`'s edit modal for UI symmetry — revised from this same PR's first pass (a row-scoped inline form swap, chosen because `DEX-A03` values are unmasked and there was no reveal-gate forcing a modal); `save_edit` re-checks `editing_key` against the submitted key by pattern match, mirroring `SecretsLive`; `:conflict` gets its own "reload and retry" copy, every other kind collapses to one generic message; `env_names` rejected inside `handle_event("edit", ...)` itself, not only by omitting its button | 2026-08-28 | Decided | `docs/adr/0029-data-export-inline-edit-update-arity-and-conflict-copy.md` |
 | 30 | Environment picker — `EnvironmentPicker` gains `selected_count/1`, a fourth accessor the plan didn't name, so the "Active (N)" badge counts `selected ∩ all` (what `selected_matches/1` renders) rather than raw `selected_names/1` (which `DEX-A10`'s save must keep reading unfiltered, stale entries included); both list panes use a fixed `h-44`, not `max-height`, so `DEX-A09`'s filter narrowing a list below five rows can't shrink the modal | 2026-09-11 | Decided | `docs/adr/0030-environment-picker-selected-count-and-fixed-height-lists.md` |
+| 31 | Deployment status panel — job absence from `Nucleus.NomadJobs.list/1` folds into the existing `:not_found` `Error.kind()` rather than a bespoke tuple; both that cause and a `list/1` error collapse into one `#data-export-job-unavailable` state per the ticket's own two-DOM-id contract; the read loads via `Phoenix.LiveView.assign_async/3` (a single `:job` `AsyncResult`, replacing a synchronous `mount/3` call caught in review blocking first paint on this boundary's own ~15s budget) — the first use of that pattern for a LiveView's own content rather than shell chrome | 2026-09-14 | Decided | `docs/adr/0031-data-export-deployment-status-panel-not-found-fold-and-async-load.md` |
 
 No **"re-platform" decision** (fresh start) and no **inherited ADRs** — the wiki's `ADR-0001`–
 `ADR-0007` are reference only; adopting one is a decision made on its own merits.
@@ -76,7 +77,7 @@ the ADR it points at stays findable.
 
 ## Onboarding Checklist
 
-- [ ] Read the Decision Index above; `adr/0001`–`0030` are binding
+- [ ] Read the Decision Index above; `adr/0001`–`0031` are binding
 - [ ] New formal ADRs belong in `docs/adr/`, with only an index row mirrored here — the wiki's
       ADR-0001–0007 are reference only, not adopted
 - [ ] Know which decisions are pending (see `living-notes.md`)
