@@ -277,7 +277,24 @@ defmodule NucleusWeb.Layouts do
           <div class="flex-none flex items-center gap-2">
             <.theme_toggle />
 
-            <div :if={@current_scope} id="user-menu" class="dropdown dropdown-end">
+            <%!--
+              daisyUI's `.dropdown` component gates `.dropdown-content`'s
+              visibility on `:focus-within` (or the `.dropdown-open` class)
+              in its own CSS, independently of whether `.dropdown-content`
+              is even in the DOM — relying on focus here would mean the
+              panel exists (per `:if={@user_menu_open?}`) but stays
+              `display: none` unless the trigger button still has real
+              browser focus after the `phx-click` round-trip, which no
+              browser guarantees (Safari never focuses a clicked `<button>`
+              at all). `dropdown-open` makes visibility track the same
+              server assign the DOM presence already tracks, with no
+              dependency on focus surviving a patch.
+            --%>
+            <div
+              :if={@current_scope}
+              id="user-menu"
+              class={["dropdown dropdown-end", @user_menu_open? && "dropdown-open"]}
+            >
               <button
                 type="button"
                 class="btn btn-ghost btn-circle"

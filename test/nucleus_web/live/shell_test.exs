@@ -201,6 +201,30 @@ defmodule NucleusWeb.ShellTest do
 
     @tag :unit
     @tag action: "NAV-A08"
+    test "#user-menu carries daisyUI's dropdown-open class once open, not just the panel's presence",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/environments/prod/secrets")
+
+      # daisyUI's `.dropdown` component hides `.dropdown-content` via CSS
+      # unless the container is `:focus-within` or carries `.dropdown-open`
+      # — `.dropdown-content` being present in the DOM (`:if=`) is not
+      # sufficient on its own for it to actually be visible, since a
+      # `phx-click` round-trip gives no cross-browser guarantee the trigger
+      # button keeps real focus afterwards (Safari never focuses a clicked
+      # `<button>` at all). Regression test for that gap.
+      refute has_element?(view, "#user-menu.dropdown-open")
+
+      render_click(view, "toggle-user-menu")
+
+      assert has_element?(view, "#user-menu.dropdown-open")
+
+      render_click(view, "toggle-user-menu")
+
+      refute has_element?(view, "#user-menu.dropdown-open")
+    end
+
+    @tag :unit
+    @tag action: "NAV-A08"
     test "shows the identity control with the dev email, and now a Logout control (inverts the pre-NAV-S3 refutes)",
          %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/environments/prod/secrets")
