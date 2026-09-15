@@ -357,6 +357,21 @@ defmodule Nucleus.NomadVarsTest do
     end
 
     @tag action: "DEX-A10"
+    test "deselecting every environment writes env_names as \"\" and succeeds — an empty selection is valid, not an error" do
+      {:ok, %VariableSet{items: items, modify_index: modify_index}} = NomadVars.fetch(@scope)
+
+      assert {:ok, %VariableSet{} = updated} =
+               NomadVars.update_env_names([], items, modify_index, @scope)
+
+      assert updated.items["env_names"] == ""
+
+      assert_audit_event(:env_names_updated,
+        tenant: "local",
+        details: %{path: updated.path, added: [], removed: ["prod", "staging"]}
+      )
+    end
+
+    @tag action: "DEX-A10"
     test "the added/removed details are always present even when one side of the delta is empty" do
       {:ok, %VariableSet{items: items, modify_index: modify_index}} = NomadVars.fetch(@scope)
 

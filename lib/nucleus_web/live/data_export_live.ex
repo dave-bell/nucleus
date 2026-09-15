@@ -530,33 +530,38 @@ defmodule NucleusWeb.DataExportLive do
   # `items` map `save_edit/3` builds for `update/5`.
   @impl Phoenix.LiveView
   def handle_event("save_env_picker", _params, socket) do
-    picker = socket.assigns.env_picker
-    new_names = EnvironmentPicker.selected_names(picker)
-    items = Map.new(socket.assigns.variables)
-    scope = socket.assigns.current_scope
-
-    case NomadVars.update_env_names(new_names, items, socket.assigns.modify_index, scope) do
-      {:ok, var_set} ->
-        sorted =
-          Enum.sort_by(Map.to_list(var_set.items), fn {k, _value} -> String.downcase(k) end)
-
-        socket =
-          socket
-          |> assign(:variables, sorted)
-          |> assign(:modify_index, var_set.modify_index)
-          |> assign(:modified_at, var_set.modified_at)
-          |> assign(:env_picker, nil)
-          |> assign(:env_picker_error, nil)
-          |> put_flash(:info, "Environment selection updated.")
-
+    case socket.assigns.env_picker do
+      nil ->
         {:noreply, socket}
 
-      {:error, %Error{} = error} ->
-        # `DEX-A06`'s in-place failure handling, mirrored here: the picker
-        # stays open (`:env_picker` untouched) with the kind-mapped error
-        # surfaced inside the modal — closing on a failed save would let
-        # the user believe the picker's last state was persisted.
-        {:noreply, assign(socket, :env_picker_error, edit_error_message(error))}
+      picker ->
+        new_names = EnvironmentPicker.selected_names(picker)
+        items = Map.new(socket.assigns.variables)
+        scope = socket.assigns.current_scope
+
+        case NomadVars.update_env_names(new_names, items, socket.assigns.modify_index, scope) do
+          {:ok, var_set} ->
+            sorted =
+              Enum.sort_by(Map.to_list(var_set.items), fn {k, _value} -> String.downcase(k) end)
+
+            socket =
+              socket
+              |> assign(:variables, sorted)
+              |> assign(:modify_index, var_set.modify_index)
+              |> assign(:modified_at, var_set.modified_at)
+              |> assign(:env_picker, nil)
+              |> assign(:env_picker_error, nil)
+              |> put_flash(:info, "Environment selection updated.")
+
+            {:noreply, socket}
+
+          {:error, %Error{} = error} ->
+            # `DEX-A06`'s in-place failure handling, mirrored here: the picker
+            # stays open (`:env_picker` untouched) with the kind-mapped error
+            # surfaced inside the modal — closing on a failed save would let
+            # the user believe the picker's last state was persisted.
+            {:noreply, assign(socket, :env_picker_error, edit_error_message(error))}
+        end
     end
   end
 

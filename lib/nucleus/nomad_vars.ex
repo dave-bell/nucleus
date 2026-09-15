@@ -243,6 +243,12 @@ defmodule Nucleus.NomadVars do
   section for why the two events differ. On `{:error, %Error{kind:
   :conflict}}` or any other error, the error is returned unchanged and
   nothing is emitted, identical to `update/5`'s failure contract.
+
+  `new_names == []` (Data Export enabled for zero environments,
+  `EnvNames`'s own "No `:unset`/`\"none\"` sentinel" section) is a valid
+  selection, not an error — `write_key/4`'s validation gives `env_names`
+  an exemption from `Value.validate/1`'s non-empty rule for exactly this
+  reason. Deselecting every environment and saving does not fail.
   """
   @spec update_env_names(
           new_names :: [String.t()],
@@ -279,6 +285,15 @@ defmodule Nucleus.NomadVars do
       Store.write(Map.put(items, key, value), expected_modify_index)
     end
   end
+
+  # env_names is a set encoding, not free text — `Value.validate/1`'s
+  # non-empty rule does not apply to it. `EnvNames`'s own moduledoc ("No
+  # `:unset`/`"none"` sentinel") is explicit that `""` (zero environments
+  # selected) is a valid, representable choice for this key, not an
+  # incomplete value the way an empty free-text field would be. `""` skips
+  # straight to `:ok`; any other value still runs through `Value.validate/1`
+  # so the `@max_length` bound continues to apply.
+  defp validate_value(@env_names_key, ""), do: :ok
 
   defp validate_value(key, value) do
     case Value.validate(value) do

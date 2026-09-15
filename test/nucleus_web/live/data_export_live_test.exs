@@ -1033,6 +1033,37 @@ defmodule NucleusWeb.DataExportLiveTest do
       refute has_element?(view, "#env-picker-modal")
       assert has_element?(view, "#var-env_names-value", "dev")
     end
+
+    @tag action: "DEX-A10"
+    test "deselecting every environment and saving succeeds — an empty selection is valid, not rejected",
+         %{conn: conn} do
+      {:ok, view, _html} = live_data_export(conn)
+
+      view |> element("#var-env_names-edit") |> render_click()
+      view |> element("#env-picker-selected-prod button") |> render_click()
+      view |> element("#env-picker-selected-staging button") |> render_click()
+      view |> element("#env-picker-save") |> render_click()
+
+      refute has_element?(view, "#env-picker-modal")
+      refute has_element?(view, "#env-picker-error")
+
+      assert_audit_event(:env_names_updated,
+        tenant: "local",
+        details: %{added: [], removed: ["prod", "staging"]}
+      )
+    end
+
+    @tag action: "DEX-A10"
+    test "firing save_env_picker with no picker open is a no-op, not a crash", %{conn: conn} do
+      {:ok, view, _html} = live_data_export(conn)
+
+      refute has_element?(view, "#env-picker-modal")
+
+      render_click(view, "save_env_picker", %{})
+
+      refute has_element?(view, "#env-picker-modal")
+      assert_no_audit_event(:env_names_updated)
+    end
   end
 
   describe "DEX-A11 — cancel the environment picker without saving" do
