@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.29 | Updated: 2026-09-14 -->
+<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.30 | Updated: 2026-09-14 -->
 
 # Business ↔ Tech Bridge
 
@@ -34,7 +34,7 @@ Then re-check the table below for new or renamed action IDs.
 
 ## Core Mapping
 
-**112 actions across 10 pages.** Action IDs are stable and never renumbered, so they are safe
+**105 actions across 9 pages.** Action IDs are stable and never renumbered, so they are safe
 to cite from test names and bug reports.
 
 | Requirement page | Action IDs | Count | Planned Phoenix surface | Planned test file |
@@ -47,8 +47,22 @@ to cite from test names and bug reports.
 | `Secrets.md` | `SEC-A01`–`A18` | 18 | `NucleusWeb.SecretsLive` + SSM Parameter Store client | `test/nucleus_web/live/secrets_live_test.exs` |
 | `M2M-Clients.md` | `M2M-A01`–`A18`, minus `A09` | 17 | `NucleusWeb.M2MClientsLive.Index` + `.Show` + Cognito client | `test/nucleus_web/live/m2m_clients_live_test.exs` |
 | `Audit-and-Compliance.md` | `AUD-A01`–`A07` | 7 | `Nucleus.Audit` (emit-only; no local store — stateless constraint) | `test/nucleus/audit_test.exs` |
-| `API-Proxy.md` | `PRX-A01`–`A07` | 7 | Backing-API forwarding layer | `test/nucleus_web/proxy_test.exs` |
 | `Platform-Operations.md` | `OPS-A01`–`A13` | 13 | Health/readiness endpoints, config reference | `test/nucleus_web/ops_test.exs` |
+
+`API-Proxy.md` (`PRX-A01`–`A07`, 7 actions) is deleted outright (`PRX-D1`), fulfilling the
+promise `NAV-D2` logged above: this application is server-side rendered Phoenix/LiveView, so
+every one of the six other pages that carried an `/api/*` annotation or contract-table row for
+it (`Applications.md`, `Environments.md`, `Secrets.md`, `M2M-Clients.md`,
+`Data-Export-Configuration.md`, `Authentication-and-Access.md`) called its own backend context
+function directly the whole time — there was never a proxy hop for any of those rows to specify.
+Each affected page's `## API contract` section now either says so in prose (naming the LiveView
+and context module that calls the backing system directly) or, for `Authentication-and-Access.md`,
+points at `NucleusWeb.Plugs.AssignScope` as the thing every other feature's direct call runs
+through. `AUTH-A04`'s `API:` line, which enumerated `/api/*` paths, is reworded to state the
+independent-per-request-authorization principle without naming any path; `AUTH-A05` needed no
+change, since it never named one. No action ID's `Given`/`When`/`Then` text changed on any of
+the six pages — only the `API:` annotations and contract-table rows tied to the deleted layer.
+Page count drops from `10` to `9`; the total above drops from `112` to `105`.
 
 `ENV-A05`'s wording changed (ENV-D1) — the error matrix no longer collapses "environment list
 cannot be loaded" into the same "not found" case; it is now a distinct "temporarily unavailable"
@@ -444,7 +458,7 @@ Run a single requirement's tests:
 mix test --only action:SEC-A03
 ```
 
-List every action ID defined in the requirements (yields 114):
+List every action ID defined in the requirements (yields 105):
 
 ```sh
 rg -o --no-filename '^### ([A-Z0-9]+-A[0-9]+)' -r '$1' docs/requirements/ -g '!Home.md' | sort -u
@@ -452,7 +466,7 @@ rg -o --no-filename '^### ([A-Z0-9]+-A[0-9]+)' -r '$1' docs/requirements/ -g '!H
 
 Both flags matter. `--no-filename` is required or `rg` prefixes each match with its path and
 `sort -u` silently stops deduping. `-g '!Home.md'` excludes the `SEC-A03` block at
-`Home.md:77`, which is the wiki's worked example of action formatting, not a 114th requirement.
+`Home.md:76`, which is the wiki's worked example of action formatting, not a 106th requirement.
 
 List every action ID currently claimed by a test:
 
@@ -530,7 +544,7 @@ the value**, so the audit trail is safe to retain and review.
 ## Onboarding Checklist
 
 - [ ] Initialise the `docs/requirements/` submodule
-- [ ] Know which of the 10 action prefixes maps to which planned module
+- [ ] Know which of the 9 action prefixes maps to which planned module
 - [ ] Be able to run `mix test --only action:SEC-A03`
 - [ ] Know which parts of a wiki action are binding and which are advisory
 - [ ] Add `@tag action:` to every new test
