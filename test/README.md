@@ -25,15 +25,17 @@ covered:
 | Tooltip reveal on hover / `:focus-visible` | `SEC-A02` | daisyUI `.tooltip` is CSS pseudo-element state |
 | Escape-key dismissal, focus trap, focus restoration | `SEC-A13` | Real key events and focus management need a browser |
 | Escape and backdrop-click dismissal of the reveal modal | `SEC-A04` | Both reach the server only by running the `JS` chain in `data-cancel` |
+| Escape and backdrop-click dismissal of the environment picker | `DEX-A11` | Same `data-cancel` chain as `SEC-A04`; claimed here through the picker's own Cancel button instead |
 | The `beforeunload` warning dialog itself | `M2M-A10` | `window.beforeunload` is a browser API; the hook cannot be executed |
 | The rendered status colour itself (as opposed to the CSS class) | `APP-A02` | Actual pixel colour is not observable through `Phoenix.LiveViewTest`; only the class attribute is |
 
 For these, assert the *wiring* (hook attached, `phx-window-keydown` bound,
 `on_cancel` set) — never tag the test `action:` for that ID, since the test
-does not prove the requirement's `Then` clauses. `SEC-A04` and `APP-A02` are
-partial cases: each `Then` *is* proven through a mechanism `Phoenix.LiveViewTest`
-can drive — `SEC-A04` through the modal's Close button (a plain event
-`render_click/1` can push), `APP-A02` through the per-status CSS class
+does not prove the requirement's `Then` clauses. `SEC-A04`, `DEX-A11`, and
+`APP-A02` are partial cases: each `Then` *is* proven through a mechanism
+`Phoenix.LiveViewTest` can drive — `SEC-A04` and `DEX-A11` through their
+respective modal's Close/Cancel button (a plain event `render_click/1` can
+push), `APP-A02` through the per-status CSS class
 (`has_element?(view, "#job-...-status.badge-success")`, asserted pairwise
 distinct across `running`/`pending`/`dead`) — so the tag is claimed there and
 only the un-drivable remainder (backdrop/Escape dismissal; the rendered

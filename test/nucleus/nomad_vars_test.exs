@@ -44,6 +44,7 @@ defmodule Nucleus.NomadVarsTest do
   alias Nucleus.Backend
   alias Nucleus.Backend.Error
   alias Nucleus.NomadVars
+  alias Nucleus.NomadVars.EnvNames
   alias Nucleus.NomadVars.FakeStore
   alias Nucleus.NomadVars.Store
   alias Nucleus.NomadVars.Value
@@ -303,6 +304,109 @@ defmodule Nucleus.NomadVarsTest do
                  NomadVars.update("description", "value", items, modify_index, @scope)
 
         assert_no_audit_event(:nomad_var_updated)
+      end
+    end
+  end
+
+  describe "Nucleus.NomadVars.update_env_names/4 — DEX-A10 writes the delta as env_names" do
+    @tag action: "DEX-A10"
+    test "writes the new comma-joined value and returns the updated VariableSet.t()" do
+      {:ok, %VariableSet{items: items, modify_index: modify_index}} = NomadVars.fetch(@scope)
+      assert items["env_names"] == "prod,staging"
+
+      assert {:ok, %VariableSet{} = updated} =
+               NomadVars.update_env_names(["prod", "qa"], items, modify_index, @scope)
+
+      assert updated.items["env_names"] == "prod,qa"
+      assert updated.modify_index > modify_index
+
+      # The rest of the Items map is untouched — the same full-map-replace
+      # guarantee update/5 gives.
+      assert updated.items["description"] == items["description"]
+      assert updated.items["destination_bucket"] == items["destination_bucket"]
+    end
+
+    @tag action: "DEX-A10"
+    test "emits env_names_updated with the correct added/removed lists, and no nomad_var_updated alongside it" do
+      {:ok, %VariableSet{items: items, modify_index: modify_index}} = NomadVars.fetch(@scope)
+
+      assert {:ok, %VariableSet{} = updated} =
+               NomadVars.update_env_names(["prod", "qa"], items, modify_index, @scope)
+
+      assert_audit_event(:env_names_updated,
+        tenant: "local",
+        details: %{path: updated.path, added: ["qa"], removed: ["staging"]}
+      )
+
+      assert_no_audit_event(:nomad_var_updated)
+    end
+
+    @tag action: "DEX-A10"
+    test "a save where nothing changed still succeeds and emits added: [], removed: [] — an explicit no-op, not an error" do
+      {:ok, %VariableSet{items: items, modify_index: modify_index}} = NomadVars.fetch(@scope)
+
+      assert {:ok, %VariableSet{} = updated} =
+               NomadVars.update_env_names(["prod", "staging"], items, modify_index, @scope)
+
+      assert updated.items["env_names"] == "prod,staging"
+
+      assert_audit_event(:env_names_updated,
+        tenant: "local",
+        details: %{path: updated.path, added: [], removed: []}
+      )
+    end
+
+    @tag action: "DEX-A10"
+    test "the added/removed details are always present even when one side of the delta is empty" do
+      {:ok, %VariableSet{items: items, modify_index: modify_index}} = NomadVars.fetch(@scope)
+
+      assert {:ok, %VariableSet{} = updated} =
+               NomadVars.update_env_names(["prod", "staging", "qa"], items, modify_index, @scope)
+
+      event =
+        assert_audit_event(:env_names_updated,
+          tenant: "local",
+          details: %{path: updated.path, added: ["qa"], removed: []}
+        )
+
+      assert Map.has_key?(event.details, :added)
+      assert Map.has_key?(event.details, :removed)
+    end
+  end
+
+  describe "Nucleus.NomadVars.update_env_names/4 — DEX-A06 a stale index conflicts, silently" do
+    @tag action: "DEX-A10"
+    test "a stale expected_modify_index returns {:error, %Error{kind: :conflict}}, no audit emitted, delta still independently computable" do
+      {:ok, %VariableSet{items: items, modify_index: modify_index}} = NomadVars.fetch(@scope)
+      stale_index = modify_index - 1
+
+      assert {:error, %Error{kind: :conflict}} =
+               NomadVars.update_env_names(["prod", "qa"], items, stale_index, @scope)
+
+      assert_no_audit_event(:env_names_updated)
+      assert_no_audit_event(:nomad_var_updated)
+
+      # The delta the failed write would have emitted is computable from
+      # the same inputs, independent of the write's own outcome — proving
+      # the diff is not somehow only available on a successful return.
+      assert EnvNames.diff(EnvNames.parse(items["env_names"]), ["prod", "qa"]) ==
+               %{added: ["qa"], removed: ["staging"]}
+    end
+  end
+
+  describe "Nucleus.NomadVars.update_env_names/4 — every other Error.kind() passes through unchanged, no audit" do
+    for kind <- Error.kinds() do
+      @tag kind: kind
+      test "#{kind} is returned unflattened, with no translation and no audit emission", %{
+        kind: kind
+      } do
+        {:ok, %VariableSet{items: items, modify_index: modify_index}} = NomadVars.fetch(@scope)
+        force_error(:nomad_vars, kind)
+
+        assert {:error, %Error{kind: ^kind, boundary: :nomad_vars}} =
+                 NomadVars.update_env_names(["prod", "qa"], items, modify_index, @scope)
+
+        assert_no_audit_event(:env_names_updated)
       end
     end
   end

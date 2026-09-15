@@ -280,14 +280,39 @@ defmodule NucleusWeb.DataExportLive do
 
   `"toggle_env"` and `"filter_envs"` only ever call
   `EnvironmentPicker.toggle/2` and `.filter/2` on the `:env_picker` assign
-  itself; `"cancel_env_picker"` (wired to the modal's `on_cancel`) simply
-  clears it. **None of the three ever calls `Nucleus.NomadVars.update/5`**
-  — `env_names` is not written anywhere in this module yet. Saving the
-  selection as an explicit add/remove delta (`DEX-A10`) and the full
-  cancel-discards-changes guarantee (`DEX-A11`) are DEX-S4's; this ticket
-  only builds the picker's read-and-interact surface, per the two tickets'
-  explicit split (mirroring `M2M-S4`/`M2M-S5`'s own form-interaction vs.
-  submission-consequence split).
+  itself, with no adapter call of their own — `env_names` is written only by
+  `"save_env_picker"` (`DEX-A10`, DEX-S4, below), never as a side effect of
+  toggling or filtering. This ticket (DEX-S3) built only the picker's
+  read-and-interact surface; saving the selection as an explicit add/remove
+  delta and the full cancel-discards-changes guarantee were split into
+  DEX-S4, mirroring `M2M-S4`/`M2M-S5`'s own form-interaction vs.
+  submission-consequence split.
+
+  ## `env_names`'s save and cancel (`DEX-A10`/`DEX-A11`, DEX-S4)
+
+  `"save_env_picker"` reads `EnvironmentPicker.selected_names/1` — the raw,
+  unfiltered selection (`docs/adr/0030`; never `selected_count/1`, which
+  intersects against the current filter and exists only for the "Active
+  (N)" badge) — and calls `Nucleus.NomadVars.update_env_names/4` with the
+  same reassembled `items` map `save_edit/3` builds for `update/5`. On
+  success, `:env_picker` clears (removing the modal, same as the edit
+  modal's own success path) and `@variables`/`@modify_index`/`@modified_at`
+  are replaced from the returned `var_set`. On failure, the picker stays
+  open with `:env_picker_error` set from `edit_error_message/1` — the exact
+  copy `save_edit/3` uses, `:conflict` included — never closed: closing on a
+  failed save would let the user believe the picker's last state was
+  persisted, the same reasoning `DEX-A06` gives for the edit modal.
+
+  `"cancel_env_picker"` (the explicit Cancel button, and — via the modal's
+  own `on_cancel` — Escape/backdrop dismissal) discards `:env_picker` and
+  `:env_picker_error` with no adapter call and no audit event. Nothing was
+  ever written to `env_names` before this point, so "the original value
+  remains in effect" (`DEX-A11`) is true by construction: there is no value
+  to revert, only in-memory picker state to drop. Reopening afterward calls
+  `"open_env_picker"` again, which re-derives pre-selection from `env_names`'
+  current stored value (never from the discarded picker) — the same
+  guarantee DEX-S3 established, now exercised end-to-end across a real
+  cancel.
 
   ### Each list scrolls at a fixed height; the modal itself does not grow
 
@@ -312,6 +337,7 @@ defmodule NucleusWeb.DataExportLive do
   alias Nucleus.NomadJobs
   alias Nucleus.NomadJobs.Job
   alias Nucleus.NomadVars
+  alias Nucleus.NomadVars.EnvNames
   alias Nucleus.NomadVars.Path
   alias Nucleus.NomadVars.Value
   alias Nucleus.TenantApi
@@ -338,7 +364,7 @@ defmodule NucleusWeb.DataExportLive do
     socket =
       socket
       |> assign(editing_key: nil, editing_value: nil, edit_form: nil, edit_error: nil)
-      |> assign(:env_picker, nil)
+      |> assign(env_picker: nil, env_picker_error: nil)
       |> assign_result(result)
       |> fetch_job_status()
 
@@ -466,7 +492,7 @@ defmodule NucleusWeb.DataExportLive do
   def handle_event("open_env_picker", _params, socket) do
     case TenantApi.list_environments(socket.assigns.current_scope.token) do
       {:ok, environments} ->
-        selected = parse_env_names(current_value(socket, @env_names_key))
+        selected = EnvNames.parse(current_value(socket, @env_names_key))
         picker = EnvironmentPicker.new(available_environments(environments), selected)
         {:noreply, assign(socket, :env_picker, picker)}
 
@@ -499,14 +525,48 @@ defmodule NucleusWeb.DataExportLive do
     end
   end
 
-  # Closes the picker via the modal's `on_cancel` (Escape/backdrop) — the
-  # structural half of `DEX-A11`. No adapter call, no audit event: nothing
-  # was ever saved, so there is nothing to discard beyond this in-memory
-  # assign. The explicit cancel button and its full "no changes applied"
-  # test coverage are DEX-S4's.
+  # `DEX-A10`: saves the selection as an explicit add/remove delta via
+  # `Nucleus.NomadVars.update_env_names/4`, reusing the same reassembled
+  # `items` map `save_edit/3` builds for `update/5`.
+  @impl Phoenix.LiveView
+  def handle_event("save_env_picker", _params, socket) do
+    picker = socket.assigns.env_picker
+    new_names = EnvironmentPicker.selected_names(picker)
+    items = Map.new(socket.assigns.variables)
+    scope = socket.assigns.current_scope
+
+    case NomadVars.update_env_names(new_names, items, socket.assigns.modify_index, scope) do
+      {:ok, var_set} ->
+        sorted =
+          Enum.sort_by(Map.to_list(var_set.items), fn {k, _value} -> String.downcase(k) end)
+
+        socket =
+          socket
+          |> assign(:variables, sorted)
+          |> assign(:modify_index, var_set.modify_index)
+          |> assign(:modified_at, var_set.modified_at)
+          |> assign(:env_picker, nil)
+          |> assign(:env_picker_error, nil)
+          |> put_flash(:info, "Environment selection updated.")
+
+        {:noreply, socket}
+
+      {:error, %Error{} = error} ->
+        # `DEX-A06`'s in-place failure handling, mirrored here: the picker
+        # stays open (`:env_picker` untouched) with the kind-mapped error
+        # surfaced inside the modal — closing on a failed save would let
+        # the user believe the picker's last state was persisted.
+        {:noreply, assign(socket, :env_picker_error, edit_error_message(error))}
+    end
+  end
+
+  # Closes the picker via the Cancel button, or the modal's `on_cancel`
+  # (Escape/backdrop) — both routes for `DEX-A11`. No adapter call, no audit
+  # event: nothing was ever saved, so there is nothing to discard beyond
+  # this in-memory assign — the underlying `env_names` value is untouched.
   @impl Phoenix.LiveView
   def handle_event("cancel_env_picker", _params, socket) do
-    {:noreply, assign(socket, :env_picker, nil)}
+    {:noreply, assign(socket, env_picker: nil, env_picker_error: nil)}
   end
 
   defp save_edit(socket, key, value) do
@@ -874,6 +934,30 @@ defmodule NucleusWeb.DataExportLive do
             </ul>
           </div>
         </div>
+
+        <p
+          :if={@env_picker_error}
+          id="env-picker-error"
+          role="alert"
+          class="text-error text-sm mt-4"
+        >
+          {@env_picker_error}
+        </p>
+
+        <div class="modal-action">
+          <.button id="env-picker-cancel" type="button" phx-click="cancel_env_picker">
+            Cancel
+          </.button>
+          <.button
+            id="env-picker-save"
+            type="button"
+            variant="primary"
+            phx-click="save_env_picker"
+            phx-disable-with="Saving..."
+          >
+            Save
+          </.button>
+        </div>
       </.modal>
     </Layouts.app>
     """
@@ -893,22 +977,6 @@ defmodule NucleusWeb.DataExportLive do
       {^key, value} -> value
       nil -> nil
     end
-  end
-
-  # Tolerant of the same messiness `Nucleus.M2M.DenyList.parse/1` tolerates
-  # for its own comma-separated value — blank entries and stray whitespace
-  # — since `env_names` was hand-edited by an operator before Nucleus
-  # existed and may not be pristine. Unlike `DenyList.parse/1`, there is no
-  # `:unset`/`"none"`-sentinel distinction to preserve here: an absent or
-  # blank value simply means nothing is currently selected.
-  @spec parse_env_names(String.t() | nil) :: [String.t()]
-  defp parse_env_names(nil), do: []
-
-  defp parse_env_names(value) when is_binary(value) do
-    value
-    |> String.split(",")
-    |> Enum.map(&String.trim/1)
-    |> Enum.reject(&(&1 == ""))
   end
 
   # `DEX-A07`: the tenant's non-archived environments, name-sorted
