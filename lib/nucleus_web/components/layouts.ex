@@ -278,6 +278,33 @@ defmodule NucleusWeb.Layouts do
             <.theme_toggle />
 
             <%!--
+              `phx-click-away`/`phx-window-keydown` live on this outer
+              `#user-menu` container, not on `#user-menu-panel` — the
+              trigger button below is a *sibling* of the panel, not its
+              descendant, so binding click-away to the panel alone means a
+              click on the trigger button is "away" from the panel too.
+              `Phoenix.LiveView`'s JS dispatches click-away *before* the
+              clicked element's own `phx-click`
+              (`bindClick`/`dispatchClickAway` in
+              `phoenix_live_view.esm.js`), so a click on the button while
+              open would push `close-user-menu` (→ `false`) and then
+              `toggle-user-menu` (→ negates `false` → `true`) for the same
+              click — net effect, the menu never closes by clicking the
+              icon again. Binding to this container instead, which
+              contains both the button and the panel, makes a click on the
+              button "contained", not "away", so only `toggle-user-menu`
+              fires.
+
+              The attributes themselves are conditional on
+              `@user_menu_open?`, not just the container's own mounting
+              (`:if={@current_scope}`, true for every authenticated
+              request) — `dispatchClickAway` matches every element bearing
+              `phx-click-away` in the whole document on every click,
+              regardless of app state, so an unconditional binding here
+              would push `close-user-menu` on every click anywhere on the
+              page, even with the menu already closed.
+            --%>
+            <%!--
               daisyUI's `.dropdown` component gates `.dropdown-content`'s
               visibility on `:focus-within` (or the `.dropdown-open` class)
               in its own CSS, independently of whether `.dropdown-content`
@@ -294,6 +321,14 @@ defmodule NucleusWeb.Layouts do
               :if={@current_scope}
               id="user-menu"
               class={["dropdown dropdown-end", @user_menu_open? && "dropdown-open"]}
+              {if(@user_menu_open?,
+                do: %{
+                  "phx-click-away" => "close-user-menu",
+                  "phx-window-keydown" => "close-user-menu",
+                  "phx-key" => "Escape"
+                },
+                else: %{}
+              )}
             >
               <button
                 type="button"
@@ -307,9 +342,6 @@ defmodule NucleusWeb.Layouts do
                 :if={@user_menu_open?}
                 id="user-menu-panel"
                 class="dropdown-content menu bg-base-100 rounded-box shadow-lg w-64 p-4 mt-2 z-10"
-                phx-click-away="close-user-menu"
-                phx-window-keydown="close-user-menu"
-                phx-key="Escape"
               >
                 <p class="break-all text-sm">{@current_scope.user.email}</p>
                 <div class="divider my-2"></div>

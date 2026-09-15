@@ -250,6 +250,34 @@ defmodule NucleusWeb.ShellTest do
 
     @tag :unit
     @tag action: "NAV-A08"
+    test "click-away binds to #user-menu (which contains the trigger button), not #user-menu-panel alone, and only while open",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/environments/prod/secrets")
+
+      # Regression test for a real-browser bug that `has_element?/2` alone
+      # never caught: `Phoenix.LiveView`'s JS dispatches click-away *before*
+      # the clicked element's own `phx-click`. The trigger button is a
+      # sibling of `#user-menu-panel`, not its descendant — binding
+      # click-away to the panel alone means a click on the trigger button
+      # while open is "away" from the panel, so it would push
+      # `close-user-menu` and then `toggle-user-menu` for the same click,
+      # reopening what it just closed. Binding to `#user-menu` (which
+      # contains both) makes a click on the button "contained", not
+      # "away". The binding is also conditional on `@user_menu_open?`
+      # itself — asserted here as absent while closed — since `#user-menu`
+      # is otherwise mounted for every authenticated request, and an
+      # unconditional binding would push `close-user-menu` on every click
+      # anywhere on the page.
+      refute has_element?(view, ~s(#user-menu[phx-click-away]))
+
+      render_click(view, "toggle-user-menu")
+
+      assert has_element?(view, ~s(#user-menu[phx-click-away="close-user-menu"]))
+      refute has_element?(view, ~s(#user-menu-panel[phx-click-away]))
+    end
+
+    @tag :unit
+    @tag action: "NAV-A08"
     test "the scopes block is gone, even for a scope with a non-empty scopes list", %{
       conn: conn
     } do
