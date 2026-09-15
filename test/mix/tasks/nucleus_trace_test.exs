@@ -1,6 +1,6 @@
 defmodule Mix.Tasks.Nucleus.TraceTest do
   @moduledoc """
-  Self-tests for `mix nucleus.trace`. The 112 canary in particular: if the
+  Self-tests for `mix nucleus.trace`. The 105 canary in particular: if the
   `docs/requirements/` submodule is updated and this count moves, that is a
   signal to re-read the requirements, not a bug — see the task's own
   moduledoc and `business-tech-bridge.md`.
@@ -15,8 +15,8 @@ defmodule Mix.Tasks.Nucleus.TraceTest do
 
   describe "against the real, pinned requirements submodule" do
     @tag :unit
-    test "finds exactly 112 defined action ids" do
-      assert MapSet.size(Trace.defined_action_ids()) == 112
+    test "finds exactly 105 defined action ids" do
+      assert MapSet.size(Trace.defined_action_ids()) == 105
     end
 
     @tag :unit
