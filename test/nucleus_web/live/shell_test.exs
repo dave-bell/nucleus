@@ -4,6 +4,7 @@ defmodule NucleusWeb.ShellTest do
   use NucleusWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
+  import NucleusWeb.LiveCase
 
   @endpoint NucleusWeb.Endpoint
 
@@ -66,6 +67,84 @@ defmodule NucleusWeb.ShellTest do
   end
 
   @tag :unit
+  @tag action: "NAV-A02"
+  test "the tenant identifier is present regardless of which feature is viewed", %{conn: conn} do
+    {:ok, applications_view, _html} = live_applications(conn)
+    assert has_element?(applications_view, "#tenant-identifier")
+
+    {:ok, data_export_view, _html} = live_data_export(conn)
+    assert has_element?(data_export_view, "#tenant-identifier")
+
+    {:ok, m2m_clients_view, _html} = live_m2m_clients(conn)
+    assert has_element?(m2m_clients_view, "#tenant-identifier")
+
+    {:ok, environment_view, _html} = live_environment(conn, "prod")
+    assert has_element?(environment_view, "#tenant-identifier")
+
+    {:ok, secrets_view, _html} = live_secrets(conn, "prod")
+    assert has_element?(secrets_view, "#tenant-identifier")
+  end
+
+  @tag :unit
+  @tag action: "NAV-A03"
+  test "visiting /applications highlights only #nav-applications", %{conn: conn} do
+    {:ok, view, _html} = live_applications(conn)
+
+    assert has_element?(view, ~s(#nav-applications[aria-current="page"]))
+    refute has_element?(view, ~s(#nav-data-export[aria-current="page"]))
+    refute has_element?(view, ~s(#nav-m2m-clients[aria-current="page"]))
+  end
+
+  @tag :unit
+  @tag action: "NAV-A03"
+  test "visiting / (the same view as /applications) highlights only #nav-applications", %{
+    conn: conn
+  } do
+    {:ok, view, _html} = live(conn, ~p"/")
+
+    assert has_element?(view, ~s(#nav-applications[aria-current="page"]))
+    refute has_element?(view, ~s(#nav-data-export[aria-current="page"]))
+    refute has_element?(view, ~s(#nav-m2m-clients[aria-current="page"]))
+  end
+
+  @tag :unit
+  @tag action: "NAV-A03"
+  test "visiting /data-export highlights only #nav-data-export", %{conn: conn} do
+    {:ok, view, _html} = live_data_export(conn)
+
+    assert has_element?(view, ~s(#nav-data-export[aria-current="page"]))
+    refute has_element?(view, ~s(#nav-applications[aria-current="page"]))
+    refute has_element?(view, ~s(#nav-m2m-clients[aria-current="page"]))
+  end
+
+  @tag :unit
+  @tag action: "NAV-A03"
+  test "visiting /m2m/clients highlights only #nav-m2m-clients", %{conn: conn} do
+    {:ok, view, _html} = live_m2m_clients(conn)
+
+    assert has_element?(view, ~s(#nav-m2m-clients[aria-current="page"]))
+    refute has_element?(view, ~s(#nav-applications[aria-current="page"]))
+    refute has_element?(view, ~s(#nav-data-export[aria-current="page"]))
+  end
+
+  @tag :unit
+  @tag action: "NAV-A03"
+  test "visiting an environment detail or secrets page highlights none of the three tenant-wide links",
+       %{conn: conn} do
+    {:ok, environment_view, _html} = live_environment(conn, "prod")
+
+    refute has_element?(environment_view, ~s(#nav-applications[aria-current="page"]))
+    refute has_element?(environment_view, ~s(#nav-data-export[aria-current="page"]))
+    refute has_element?(environment_view, ~s(#nav-m2m-clients[aria-current="page"]))
+
+    {:ok, secrets_view, _html} = live_secrets(conn, "prod")
+
+    refute has_element?(secrets_view, ~s(#nav-applications[aria-current="page"]))
+    refute has_element?(secrets_view, ~s(#nav-data-export[aria-current="page"]))
+    refute has_element?(secrets_view, ~s(#nav-m2m-clients[aria-current="page"]))
+  end
+
+  @tag :unit
   test "sidebar is open (not collapsed) by default, with a toggle control", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/environments/prod/secrets")
 
@@ -87,7 +166,7 @@ defmodule NucleusWeb.ShellTest do
 
     assert {:ok, m2m_view, _html} =
              view
-             |> element("a", "M2M Clients")
+             |> element("#nav-m2m-clients")
              |> render_click()
              |> follow_redirect(conn, ~p"/m2m/clients")
 
@@ -100,7 +179,7 @@ defmodule NucleusWeb.ShellTest do
 
     assert {:ok, data_export_view, _html} =
              view
-             |> element("a", "Data Export")
+             |> element("#nav-data-export")
              |> render_click()
              |> follow_redirect(conn, ~p"/data-export")
 

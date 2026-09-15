@@ -17,16 +17,6 @@ defmodule NucleusWeb.Router do
     plug NucleusWeb.Plugs.AssignScope
   end
 
-  pipeline :api do
-    plug :accepts, ["json"]
-  end
-
-  scope "/", NucleusWeb do
-    pipe_through :browser
-
-    get "/", PageController, :home
-  end
-
   scope "/", NucleusWeb do
     pipe_through [:browser, :assign_scope]
 
@@ -34,13 +24,20 @@ defmodule NucleusWeb.Router do
     # view can be added under this scope without current_scope or the
     # sidebar's environment list (AGENTS.md,
     # docs/adr/0005-deferred-authentication.md). EnvironmentsHook runs after
-    # ScopeHook — it reads current_scope.token off the socket.
+    # ScopeHook — it reads current_scope.token off the socket. ShellHook runs
+    # third; it only reads the connection URI to derive the active sidebar
+    # section (NAV-A03), never current_scope, so its position relative to
+    # the other two is not load-bearing (see its moduledoc).
     #
     # SecretsLive is a placeholder (SEC-S1/S2 own the real feature) so this
     # route compiles and Layouts.app's sidebar has somewhere real to link
     # environments to, per this ticket's own plan.
     live_session :authenticated,
-      on_mount: [{NucleusWeb.ScopeHook, :assign}, {NucleusWeb.EnvironmentsHook, :assign}] do
+      on_mount: [
+        {NucleusWeb.ScopeHook, :assign},
+        {NucleusWeb.EnvironmentsHook, :assign},
+        {NucleusWeb.ShellHook, :assign}
+      ] do
       # No conflict with the detail route below — Phoenix disambiguates on
       # the trailing `/secrets` segment.
       live "/environments/:environment", EnvironmentsLive, :show
@@ -58,6 +55,13 @@ defmodule NucleusWeb.Router do
 
       # Single module, no Index/Show split — APP-S1 (#58), see
       # `NucleusWeb.ApplicationsLive`'s moduledoc.
+      #
+      # `/` intentionally shares this module and action — NAV-A01: "the user
+      # is taken directly to the Applications view" is served directly, with
+      # no redirect hop, rather than through a router-level redirect plug.
+      # `NucleusWeb.ActiveSection.for_path/1` treats both paths as
+      # `:applications` (NAV-A03).
+      live "/", ApplicationsLive, :index
       live "/applications", ApplicationsLive, :index
 
       # Single module, no Index/Show split — DEX-S1 (#73), see
@@ -65,11 +69,6 @@ defmodule NucleusWeb.Router do
       live "/data-export", DataExportLive, :index
     end
   end
-
-  # Other scopes may use custom stacks.
-  # scope "/api", NucleusWeb do
-  #   pipe_through :api
-  # end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development
   if Application.compile_env(:nucleus, :dev_routes) do
