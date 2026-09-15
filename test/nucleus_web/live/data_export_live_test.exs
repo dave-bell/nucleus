@@ -959,4 +959,234 @@ defmodule NucleusWeb.DataExportLiveTest do
       refute has_element?(view, "#data-export-edit-modal")
     end
   end
+
+  describe "DEX-A10 — save the environment selection as an explicit delta" do
+    @tag action: "DEX-A10"
+    test "saving updates env_names and the table reflects the new value; the picker closes",
+         %{conn: conn} do
+      {:ok, view, _html} = live_data_export(conn)
+
+      view |> element("#var-env_names-edit") |> render_click()
+      view |> element("#env-picker-available-dev button") |> render_click()
+      view |> element("#env-picker-save") |> render_click()
+
+      refute has_element?(view, "#env-picker-modal")
+      assert has_element?(view, "#var-env_names-value", "dev")
+      assert has_element?(view, "#var-env_names-value", "prod")
+      assert has_element?(view, "#var-env_names-value", "staging")
+    end
+
+    @tag action: "DEX-A10"
+    test "emits env_names_updated with the added/removed delta, and no nomad_var_updated",
+         %{conn: conn} do
+      {:ok, view, _html} = live_data_export(conn)
+
+      view |> element("#var-env_names-edit") |> render_click()
+      view |> element("#env-picker-available-dev button") |> render_click()
+      view |> element("#env-picker-selected-staging button") |> render_click()
+      view |> element("#env-picker-save") |> render_click()
+
+      assert_audit_event(:env_names_updated,
+        tenant: "local",
+        details: %{added: ["dev"], removed: ["staging"]}
+      )
+
+      assert_no_audit_event(:nomad_var_updated)
+    end
+
+    @tag action: "DEX-A10"
+    test "a forced :conflict on save keeps the picker open with the conflict-specific error, table unchanged",
+         %{conn: conn} do
+      {:ok, view, _html} = live_data_export(conn)
+
+      view |> element("#var-env_names-edit") |> render_click()
+      view |> element("#env-picker-available-dev button") |> render_click()
+      force_error(:nomad_vars, :conflict)
+
+      view |> element("#env-picker-save") |> render_click()
+
+      assert has_element?(view, "#env-picker-modal")
+      assert has_element?(view, "#env-picker-error")
+      assert view |> element("#env-picker-error") |> render() =~ "changed since you loaded it"
+      assert has_element?(view, "#var-env_names-value", "prod")
+      refute has_element?(view, "#var-env_names-value", "dev")
+
+      clear_faults()
+      assert_no_audit_event(:env_names_updated)
+    end
+
+    @tag action: "DEX-A10"
+    test "after a forced-failure save, the user can retry and succeed", %{conn: conn} do
+      {:ok, view, _html} = live_data_export(conn)
+
+      view |> element("#var-env_names-edit") |> render_click()
+      view |> element("#env-picker-available-dev button") |> render_click()
+      force_error(:nomad_vars, :unavailable)
+
+      view |> element("#env-picker-save") |> render_click()
+      assert has_element?(view, "#env-picker-error")
+
+      clear_faults()
+
+      view |> element("#env-picker-save") |> render_click()
+
+      refute has_element?(view, "#env-picker-modal")
+      assert has_element?(view, "#var-env_names-value", "dev")
+    end
+
+    @tag action: "DEX-A10"
+    test "deselecting every environment and saving succeeds — an empty selection is valid, not rejected",
+         %{conn: conn} do
+      {:ok, view, _html} = live_data_export(conn)
+
+      view |> element("#var-env_names-edit") |> render_click()
+      view |> element("#env-picker-selected-prod button") |> render_click()
+      view |> element("#env-picker-selected-staging button") |> render_click()
+      view |> element("#env-picker-save") |> render_click()
+
+      refute has_element?(view, "#env-picker-modal")
+      refute has_element?(view, "#env-picker-error")
+
+      assert_audit_event(:env_names_updated,
+        tenant: "local",
+        details: %{added: [], removed: ["prod", "staging"]}
+      )
+    end
+
+    @tag action: "DEX-A10"
+    test "firing save_env_picker with no picker open is a no-op, not a crash", %{conn: conn} do
+      {:ok, view, _html} = live_data_export(conn)
+
+      refute has_element?(view, "#env-picker-modal")
+
+      render_click(view, "save_env_picker", %{})
+
+      refute has_element?(view, "#env-picker-modal")
+      assert_no_audit_event(:env_names_updated)
+    end
+  end
+
+  describe "DEX-A11 — cancel the environment picker without saving" do
+    @tag action: "DEX-A11"
+    test "clicking Cancel closes the picker with no adapter write call and no audit event; env_names unchanged",
+         %{conn: conn} do
+      use_write_spy()
+      {:ok, view, _html} = live_data_export(conn)
+
+      view |> element("#var-env_names-edit") |> render_click()
+      view |> element("#env-picker-available-dev button") |> render_click()
+      assert has_element?(view, "#env-picker-selected-dev")
+
+      view |> element("#env-picker-cancel") |> render_click()
+
+      refute has_element?(view, "#env-picker-modal")
+      assert has_element?(view, "#var-env_names-value", "prod")
+      assert has_element?(view, "#var-env_names-value", "staging")
+      refute has_element?(view, "#var-env_names-value", "dev")
+      assert NomadVarsWriteSpy.write_calls() == 0
+      assert_no_audit_event(:env_names_updated)
+    end
+
+    @tag action: "DEX-A11"
+    test "dismissing via the modal's structural on_cancel path (Escape/backdrop) has the identical no-op effect as Cancel",
+         %{conn: conn} do
+      use_write_spy()
+      {:ok, view, _html} = live_data_export(conn)
+
+      view |> element("#var-env_names-edit") |> render_click()
+      view |> element("#env-picker-available-dev button") |> render_click()
+
+      # Claims only the `on_cancel` handler path this pushes to
+      # (`"cancel_env_picker"`) — the genuine keyboard Escape keypress and a
+      # real backdrop click are the standing browser-only gap recorded in
+      # `test/README.md`, mirroring `SEC-A04`/`SEC-A13`'s own gaps.
+      render_click(view, "cancel_env_picker", %{})
+
+      refute has_element?(view, "#env-picker-modal")
+      assert has_element?(view, "#var-env_names-value", "prod")
+      refute has_element?(view, "#var-env_names-value", "dev")
+      assert NomadVarsWriteSpy.write_calls() == 0
+      assert_no_audit_event(:env_names_updated)
+    end
+
+    @tag action: "DEX-A11"
+    test "reopening the picker after a cancel pre-selects from the original, unaffected value",
+         %{conn: conn} do
+      {:ok, view, _html} = live_data_export(conn)
+
+      view |> element("#var-env_names-edit") |> render_click()
+      view |> element("#env-picker-available-dev button") |> render_click()
+      view |> element("#env-picker-selected-staging button") |> render_click()
+
+      view |> element("#env-picker-cancel") |> render_click()
+
+      view |> element("#var-env_names-edit") |> render_click()
+
+      assert has_element?(view, "#env-picker-selected-prod")
+      assert has_element?(view, "#env-picker-selected-staging")
+      refute has_element?(view, "#env-picker-selected-dev")
+      assert has_element?(view, "#env-picker-available-dev")
+    end
+
+    @tag action: "DEX-A11"
+    test "cancelling after a failed save also discards the picker with no further effect",
+         %{conn: conn} do
+      {:ok, view, _html} = live_data_export(conn)
+
+      view |> element("#var-env_names-edit") |> render_click()
+      view |> element("#env-picker-available-dev button") |> render_click()
+      force_error(:nomad_vars, :unavailable)
+      view |> element("#env-picker-save") |> render_click()
+      assert has_element?(view, "#env-picker-error")
+
+      clear_faults()
+      view |> element("#env-picker-cancel") |> render_click()
+
+      refute has_element?(view, "#env-picker-modal")
+      assert has_element?(view, "#var-env_names-value", "prod")
+      refute has_element?(view, "#var-env_names-value", "dev")
+    end
+  end
+
+  defmodule EnvPickerModalBrowserGaps do
+    @moduledoc """
+    `DEX-A11`'s Escape and backdrop-click dismissal reach the server only by
+    running the `Phoenix.LiveView.JS` chain in `<.modal>`'s `data-cancel`
+    attribute (`core_components.ex:645`), which needs a real key event, a
+    real click outside `.modal-box`, and a client to interpret the command
+    list — `Phoenix.LiveViewTest` cannot execute any of that
+    (`docs/adr/0008-test-strategy.md`), the exact reason `SEC-A04`'s and
+    `SEC-A13`'s own modal gaps exist.
+
+    The `"DEX-A11 — ..."` describe block above proves the one route
+    `render_click/1` can actually drive (the explicit Cancel button, a
+    plain `phx-click`) discards cleanly, and proves the `on_cancel` handler
+    itself is a genuine no-op when reached directly. What remains
+    unverified here is the same as `SecretRevealModalBrowserGaps`'/
+    `NewSecretModalBrowserGaps`' own gap, carried in `living-notes.md`
+    alongside `SEC-A02`'s and `SEC-A04`'s.
+
+    Skipped unconditionally rather than by default-exclude tag, so `mix
+    test` always reports them as skipped instead of silently passing zero
+    assertions. None carry `@tag action:` — the describe block above
+    records what is actually proven.
+    """
+
+    use ExUnit.Case, async: true
+
+    @moduletag :browser
+    @moduletag skip: "no browser driver in this repo — see docs/adr/0008-test-strategy.md"
+
+    test "pressing Escape while the picker is open closes it and saves nothing" do
+    end
+
+    test "clicking the backdrop outside the picker box closes it and saves nothing" do
+    end
+
+    test "focus moves into the picker on open and returns to #var-env_names-edit on dismissal" do
+    end
+
+    test "Tab is trapped inside the picker while it is open" do
+    end
+  end
 end

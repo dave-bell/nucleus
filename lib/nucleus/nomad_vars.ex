@@ -73,10 +73,36 @@ defmodule Nucleus.NomadVars do
   `{:error, %Error{kind: :conflict}}` or any other error, the error is
   returned unchanged and nothing is emitted — `DEX-A06`'s failure branch.
 
-  This is the same function DEX-S3/DEX-S4 use to write `env_names`, with the
-  audit event swapped at the call site (`env_names_updated`) rather than
-  inside `update/5` — this function stays name-agnostic about which key it
-  is writing.
+  ## `update_env_names/4` shares this function's write, not its audit call
+
+  `write_key/4` below is the part `update/5` and `update_env_names/4`
+  actually share: validate, then `Store.write/2` under CAS, with no audit
+  side effect of its own. Each public function calls `write_key/4` and then
+  emits its *own* event — `nomad_var_updated` here, `env_names_updated`
+  there — because `AUD-A04` (`docs/requirements/Audit-and-Compliance.md`)
+  requires the audit trail to record exactly which environments were added
+  and removed for a set-based change, and `nomad_var_updated`'s catalogue
+  entry has no room for that (`details_allowed: [:path, :key]` —
+  deliberately no `value`, so by extension no diff). Two events exist
+  because two audit *shapes* are required, not because two write paths
+  exist.
+
+  ## `update_env_names/4`'s `items`, not the issue plan's `current_value`
+
+  The issue plan gives this function the signature `(new_names,
+  expected_modify_index, current_value, scope)` — no `items` parameter at
+  all. That omits exactly what the "`update/5`, not `update/4`" section
+  above already established `write_key/4` needs: the full current `Items`
+  map, because `Store.write/2` replaces the entire map on the wire. Rather
+  than carry both `items` *and* a separately-supplied `current_value` (two
+  sources of truth for the same fact — `items` already contains whatever
+  `env_names` currently is, or does not contain the key at all), this
+  function takes `items` alone and derives the current selection from it
+  (`Map.get(items, "env_names") |> EnvNames.parse/1`). A caller passes the
+  same reassembled `items` map `update/5` already expects — see
+  `NucleusWeb.DataExportLive`'s `save_edit/3` for the `Map.new(variables)`
+  precedent — not a second, independently-tracked value that could drift
+  from it.
 
   ## `update/5` validates `value`'s shape itself, not only the LiveView's form
 
@@ -98,12 +124,14 @@ defmodule Nucleus.NomadVars do
 
   alias Nucleus.Audit
   alias Nucleus.Backend.Error
+  alias Nucleus.NomadVars.EnvNames
   alias Nucleus.NomadVars.Store
   alias Nucleus.NomadVars.Value
   alias Nucleus.NomadVars.VariableSet
   alias Nucleus.Scope
 
   @boundary Store.boundary()
+  @env_names_key "env_names"
 
   @doc """
   Reads this tenant's Data Export variable set, with no audit side effect.
@@ -176,9 +204,7 @@ defmodule Nucleus.NomadVars do
         ) :: {:ok, VariableSet.t()} | {:error, Error.t()}
   def update(key, value, items, expected_modify_index, %Scope{} = scope)
       when is_binary(key) and is_binary(value) and is_map(items) do
-    with :ok <- validate_value(key, value),
-         {:ok, %VariableSet{} = var_set} <-
-           Store.write(Map.put(items, key, value), expected_modify_index) do
+    with {:ok, %VariableSet{} = var_set} <- write_key(key, value, items, expected_modify_index) do
       :ok =
         Audit.emit(:nomad_var_updated,
           user: Scope.audit_user(scope),
@@ -189,6 +215,80 @@ defmodule Nucleus.NomadVars do
       {:ok, var_set}
     end
   end
+
+  @doc """
+  Replaces `env_names` with `new_names` in the caller-supplied `items` map,
+  writing the whole map back via `Store.write/2` under check-and-set against
+  `expected_modify_index` (`DEX-A10`) — the `env_names`-specific sibling of
+  `update/5`.
+
+  `items` plays the exact same role it does for `update/5`: the caller's own
+  current `Items` map, not re-fetched here. The add/remove delta
+  (`DEX-A10`'s audit requirement, `AUD-A04`) is computed from `items`'
+  *current* `env_names` entry (parsed via `EnvNames.parse/1`) against
+  `new_names`, before `write_key/4` is ever called — so the delta reflects
+  what the caller actually asked to change, independent of whether the
+  write itself goes on to succeed.
+
+  On `{:ok, var_set}`, emits `env_names_updated` (`details: %{path:
+  var_set.path, added: delta.added, removed: delta.removed}` — both always
+  present, an empty list rather than an absent key even when one side of
+  the delta is empty) — not `nomad_var_updated`; see the moduledoc's
+  "`update_env_names/4` shares this function's write, not its audit call"
+  section for why the two events differ. On `{:error, %Error{kind:
+  :conflict}}` or any other error, the error is returned unchanged and
+  nothing is emitted, identical to `update/5`'s failure contract.
+
+  `new_names == []` (Data Export enabled for zero environments,
+  `EnvNames`'s own "No `:unset`/`\"none\"` sentinel" section) is a valid
+  selection, not an error — `write_key/4`'s validation gives `env_names`
+  an exemption from `Value.validate/1`'s non-empty rule for exactly this
+  reason. Deselecting every environment and saving does not fail.
+  """
+  @spec update_env_names(
+          new_names :: [String.t()],
+          items :: %{String.t() => String.t()},
+          expected_modify_index :: non_neg_integer(),
+          Scope.t()
+        ) :: {:ok, VariableSet.t()} | {:error, Error.t()}
+  def update_env_names(new_names, items, expected_modify_index, %Scope{} = scope)
+      when is_list(new_names) and is_map(items) do
+    current_names = items |> Map.get(@env_names_key) |> EnvNames.parse()
+    delta = EnvNames.diff(current_names, new_names)
+    value = EnvNames.serialize(new_names)
+
+    with {:ok, %VariableSet{} = var_set} <-
+           write_key(@env_names_key, value, items, expected_modify_index) do
+      :ok =
+        Audit.emit(:env_names_updated,
+          user: Scope.audit_user(scope),
+          tenant: scope.tenant,
+          details: %{path: var_set.path, added: delta.added, removed: delta.removed}
+        )
+
+      {:ok, var_set}
+    end
+  end
+
+  # Shared by update/5 and update_env_names/4 — validate, then Store.write/2
+  # under CAS. No audit side effect of its own; see the moduledoc's
+  # "update_env_names/4 shares this function's write, not its audit call"
+  # section for why the audit emission stays with each public caller
+  # instead of living here.
+  defp write_key(key, value, items, expected_modify_index) do
+    with :ok <- validate_value(key, value) do
+      Store.write(Map.put(items, key, value), expected_modify_index)
+    end
+  end
+
+  # env_names is a set encoding, not free text — `Value.validate/1`'s
+  # non-empty rule does not apply to it. `EnvNames`'s own moduledoc ("No
+  # `:unset`/`"none"` sentinel") is explicit that `""` (zero environments
+  # selected) is a valid, representable choice for this key, not an
+  # incomplete value the way an empty free-text field would be. `""` skips
+  # straight to `:ok`; any other value still runs through `Value.validate/1`
+  # so the `@max_length` bound continues to apply.
+  defp validate_value(@env_names_key, ""), do: :ok
 
   defp validate_value(key, value) do
     case Value.validate(value) do

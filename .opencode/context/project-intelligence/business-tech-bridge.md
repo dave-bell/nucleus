@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.31 | Updated: 2026-09-14 -->
+<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.32 | Updated: 2026-09-15 -->
 
 # Business ↔ Tech Bridge
 
@@ -482,6 +482,28 @@ one-line addition `docs/adr/0023`'s `expanded_categories` required of each; `tes
 `Phoenix.LiveViewTest.live/2`-wrapping macros no prior ticket needed. `mix nucleus.trace --feature
 NAV` moves from 4/10 to 7/10; only `NAV-A08`–`A10` (the identity menu, sign-out, and the
 unauthenticated redirect — `NAV-S3`/`NAV-S4`) remain.
+
+`DEX-A10` and `A11` are now claimed and covered (`DEX-S4`/#76), the last of the fourteen `DEX-A*`
+ids — `mix nucleus.trace --feature DEX` now reports full coverage. `Nucleus.NomadVars` gains
+`update_env_names/4`, `update/5`'s `env_names`-specific sibling: both share the actual write
+mechanics via a newly-extracted `write_key/4` (validate, then `Store.write/2` under CAS), but each
+keeps its own audit call, since `update/5` emits `nomad_var_updated` unconditionally with no
+parameter for a caller to swap the event — the "swap only the audit event" reuse `docs/adr/0029`
+predicted was never actually available. `update_env_names/4` takes `items` (the same reassembled
+map `update/5` already expects), not the issue plan's separate `current_value` string, deriving
+the current selection via `Map.get(items, "env_names") |> EnvNames.parse/1` rather than tracking
+two sources of truth for the same fact. The comma-separated encoding itself is factored out of
+`DataExportLive`'s former private `parse_env_names/1` into `Nucleus.NomadVars.EnvNames`
+(`parse/1`/`serialize/1`/`diff/2`), shared by the picker (`DEX-S3`) and this save path. On success,
+`env_names_updated` records `added`/`removed` (`AUD-A04`), computed from `items`' current entry
+against the picker's `selected_names/1` *before* the write, so the delta is known even if the
+write itself fails. Caught in review, after the first pass shipped with `mix precommit` green:
+deselecting every environment and saving failed, because `EnvNames.serialize([])` writes `""` and
+`write_key/4`'s shared `Value.validate/1` call treats any empty string as invalid, contradicting
+`EnvNames`'s own "`[]` is a valid, representable choice" contract — fixed with an exemption scoped
+to the `env_names` key alone, not a change to `Value.validate/1`'s rule for every other key. See
+`docs/adr/0033` for the full reasoning, including the `save_env_picker` nil-picker guard the same
+review pass added for consistency with its `toggle_env`/`filter_envs` siblings.
 
 ## Tagging Convention
 
