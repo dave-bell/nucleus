@@ -54,6 +54,24 @@ assigns `false` once; the hook's two event clauses flip it thereafter.
 `has_element?/2` now returns different answers before and after `"toggle-user-menu"`, closing
 the exact gap the previous convention (`JS.toggle`/`JS.hide`) could never close.
 
+### The `.dropdown` container also needs daisyUI's `dropdown-open` class — DOM presence alone is not visibility
+
+`:if={@user_menu_open?}` correctly puts `#user-menu-panel` in the DOM when open and removes it
+when closed, but daisyUI's own `.dropdown` CSS separately gates `.dropdown-content`'s
+*visibility* on the container being `:focus-within` (or carrying `.dropdown-open`) —
+independent of whether `.dropdown-content` exists in the DOM at all. The previous
+`JS.toggle`/`JS.hide` convention never depended on this: it toggled the `hidden` Tailwind
+utility directly, bypassing daisyUI's focus-driven mechanism entirely. Relying on
+`:focus-within` after switching to a `phx-click` round-trip has no cross-browser guarantee — a
+server round-trip is not what gives an element focus, and Safari does not focus a clicked
+`<button>` at all, only a tabbed-to one. The fix threads the same `@user_menu_open?` assign onto
+the `#user-menu` container's class list (`@user_menu_open? && "dropdown-open"`), so visibility
+tracks the identical server state the DOM presence already tracks, with no dependency on focus
+surviving a patch. Caught after the first pass shipped: tests using `has_element?/2` for
+`#user-menu-panel`'s presence all passed, because the element genuinely is in the DOM — the gap
+only shows up visually, which no `Phoenix.LiveViewTest` assertion checks by default. A
+regression test now asserts `#user-menu.dropdown-open` directly, not just the panel's presence.
+
 ### `DELETE /logout` lives in the plain `:browser` pipeline, not `:assign_scope`/`:authenticated`
 
 Logging out must work even in a request where scope assignment would otherwise fail — a
