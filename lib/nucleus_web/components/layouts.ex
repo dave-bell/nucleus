@@ -311,12 +311,13 @@ defmodule NucleusWeb.Layouts do
                 phx-window-keydown="close-user-menu"
                 phx-key="Escape"
               >
-                <p class="font-semibold break-all text-sm">{@current_scope.user.email}</p>
+                <p class="break-all text-sm">{@current_scope.user.email}</p>
+                <div class="divider my-2"></div>
                 <.link
                   id="user-menu-logout"
                   href={~p"/logout"}
                   method="delete"
-                  class="btn btn-ghost btn-sm justify-start mt-3"
+                  class="btn btn-ghost btn-sm justify-start px-0 w-full"
                 >
                   Logout
                 </.link>
