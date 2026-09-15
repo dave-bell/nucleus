@@ -72,6 +72,32 @@ surviving a patch. Caught after the first pass shipped: tests using `has_element
 only shows up visually, which no `Phoenix.LiveViewTest` assertion checks by default. A
 regression test now asserts `#user-menu.dropdown-open` directly, not just the panel's presence.
 
+### `phx-click-away`/`phx-window-keydown` bind to `#user-menu`, not `#user-menu-panel`, and only while open
+
+The trigger button and `#user-menu-panel` are siblings — both direct children of `#user-menu`
+— not ancestor/descendant. `Phoenix.LiveView`'s client JS dispatches click-away for a click
+*before* that click's own `phx-click` runs (`bindClick`/`dispatchClickAway` in
+`phoenix_live_view.esm.js`), and click-away's containment check (`el.contains(startedAt)`) is
+against whichever element the `phx-click-away` attribute is on. Binding it to
+`#user-menu-panel` alone meant a click on the trigger button — outside the panel, by DOM
+structure — counted as "away", pushing `close-user-menu` and then the button's own
+`toggle-user-menu` for the same click: closes, then immediately reopens what it just closed.
+The user had no way to close the menu by clicking the icon again; only a real click elsewhere,
+Escape, or navigation worked. Caught in review, after the first pass shipped and passed every
+`has_element?/2` assertion — the bug is in event *ordering* across two separate pushes for one
+physical click, which `Phoenix.LiveViewTest` cannot reproduce (it drives each event
+individually, never a real click that dispatches both).
+
+Moving the binding to `#user-menu` (which contains both the button and the panel) fixes the
+containment check: a click on the button is now "contained", not "away", so click-away never
+fires for it, and only `toggle-user-menu` runs. The attribute's *presence*, not just the
+container's mounting, stays conditional on `@user_menu_open?` — `#user-menu` itself is mounted
+for every authenticated request (`:if={@current_scope}`), and `dispatchClickAway` matches every
+element bearing `phx-click-away` in the whole document on every click, so an unconditional
+binding would push `close-user-menu` on every click anywhere on the page, even with the menu
+already closed. A regression test asserts the attribute's presence tracks `@user_menu_open?`
+directly on `#user-menu`, and its absence on `#user-menu-panel`.
+
 ### `DELETE /logout` lives in the plain `:browser` pipeline, not `:assign_scope`/`:authenticated`
 
 Logging out must work even in a request where scope assignment would otherwise fail — a
