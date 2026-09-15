@@ -14,6 +14,11 @@ defmodule NucleusWeb.LiveCaseTest do
   test "live_secrets/2 mounts NucleusWeb.SecretsLive with current_scope assigned", %{conn: conn} do
     {:ok, view, _html} = live_secrets(conn, "prod")
 
+    # The identity control only renders the email once open (NAV-A08) —
+    # open it here just to prove `current_scope` reached the template; this
+    # is not itself an `action:` claim, see `shell_test.exs` for that.
+    render_click(view, "toggle-user-menu")
+
     assert has_element?(view, "#user-menu", "test-dev@example.com")
   end
 

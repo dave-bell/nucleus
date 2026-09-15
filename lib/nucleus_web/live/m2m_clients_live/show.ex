@@ -259,6 +259,7 @@ defmodule NucleusWeb.M2MClientsLive.Show do
       environments={@environments}
       expanded_categories={@expanded_categories}
       active_section={@active_section}
+      user_menu_open?={@user_menu_open?}
     >
       <States.misconfigured :if={@status == :misconfigured} />
       <States.unavailable :if={@status == :unavailable} />

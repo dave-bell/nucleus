@@ -65,6 +65,15 @@ defmodule NucleusWeb.Layouts do
     links below.
     """
 
+  attr :user_menu_open?, :boolean,
+    default: false,
+    doc: """
+    whether the header's user identity control (`NAV-A08`) is open,
+    toggled via `"toggle-user-menu"`/`"close-user-menu"` events handled by
+    `NucleusWeb.ShellHook`. Defaults to closed — for a caller that hasn't
+    wired the hook, the panel simply never renders.
+    """
+
   slot :inner_block, required: true
 
   def app(assigns) do
@@ -272,31 +281,28 @@ defmodule NucleusWeb.Layouts do
               <button
                 type="button"
                 class="btn btn-ghost btn-circle"
-                phx-click={JS.toggle(to: "#user-menu-panel")}
+                phx-click="toggle-user-menu"
                 aria-label={gettext("User menu")}
               >
                 <.icon name="hero-user-circle" class="size-6" />
               </button>
               <div
+                :if={@user_menu_open?}
                 id="user-menu-panel"
-                class="dropdown-content menu bg-base-100 rounded-box shadow-lg w-64 p-4 mt-2 z-10 hidden"
-                phx-click-away={JS.hide(to: "#user-menu-panel")}
-                phx-window-keydown={JS.hide(to: "#user-menu-panel")}
+                class="dropdown-content menu bg-base-100 rounded-box shadow-lg w-64 p-4 mt-2 z-10"
+                phx-click-away="close-user-menu"
+                phx-window-keydown="close-user-menu"
                 phx-key="Escape"
               >
                 <p class="font-semibold break-all text-sm">{@current_scope.user.email}</p>
-                <div class="mt-3">
-                  <p class="text-xs uppercase text-base-content/50 mb-1">Scopes</p>
-                  <%= if @current_scope.scopes == [] do %>
-                    <p class="text-sm text-base-content/60">No scopes granted</p>
-                  <% else %>
-                    <ul class="flex flex-wrap gap-1">
-                      <li :for={scope <- @current_scope.scopes}>
-                        <.badge>{scope}</.badge>
-                      </li>
-                    </ul>
-                  <% end %>
-                </div>
+                <.link
+                  id="user-menu-logout"
+                  href={~p"/logout"}
+                  method="delete"
+                  class="btn btn-ghost btn-sm justify-start mt-3"
+                >
+                  Logout
+                </.link>
               </div>
             </div>
           </div>

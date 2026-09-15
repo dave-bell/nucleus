@@ -186,14 +186,56 @@ defmodule NucleusWeb.ShellTest do
     assert has_element?(data_export_view, "#tenant-identifier")
   end
 
-  @tag :unit
-  test "shows the identity control with the dev email, and no sign-out control", %{conn: conn} do
-    {:ok, view, _html} = live(conn, ~p"/environments/prod/secrets")
+  describe "NAV-A08 — identity control" do
+    @tag :unit
+    @tag action: "NAV-A08"
+    test "#user-menu-panel is absent before toggle-user-menu, present after", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/environments/prod/secrets")
 
-    assert has_element?(view, "#user-menu", "test-dev@example.com")
-    refute has_element?(view, "#user-menu", "Sign out")
-    refute has_element?(view, "#user-menu", "Log out")
-    refute has_element?(view, "#user-menu", "Logout")
+      refute has_element?(view, "#user-menu-panel")
+
+      render_click(view, "toggle-user-menu")
+
+      assert has_element?(view, "#user-menu-panel")
+    end
+
+    @tag :unit
+    @tag action: "NAV-A08"
+    test "shows the identity control with the dev email, and now a Logout control (inverts the pre-NAV-S3 refutes)",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/environments/prod/secrets")
+
+      render_click(view, "toggle-user-menu")
+
+      assert has_element?(view, "#user-menu", "test-dev@example.com")
+      assert has_element?(view, ~s(#user-menu-logout[data-method="delete"][data-to="/logout"]))
+    end
+
+    @tag :unit
+    @tag action: "NAV-A08"
+    test "pressing Escape closes the open panel", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/environments/prod/secrets")
+
+      render_click(view, "toggle-user-menu")
+      assert has_element?(view, "#user-menu-panel")
+
+      render_keydown(view, "close-user-menu", %{"key" => "Escape"})
+
+      refute has_element?(view, "#user-menu-panel")
+    end
+
+    @tag :unit
+    @tag action: "NAV-A08"
+    test "the scopes block is gone, even for a scope with a non-empty scopes list", %{
+      conn: conn
+    } do
+      {:ok, view, _html} = live(conn, ~p"/environments/prod/secrets")
+
+      render_click(view, "toggle-user-menu")
+
+      refute has_element?(view, "#user-menu", "Scopes")
+      refute has_element?(view, "#user-menu", "No scopes granted")
+    end
   end
 
   @tag :unit
