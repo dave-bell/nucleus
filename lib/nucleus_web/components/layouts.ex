@@ -317,7 +317,7 @@ defmodule NucleusWeb.Layouts do
                   id="user-menu-logout"
                   href={~p"/logout"}
                   method="delete"
-                  class="btn btn-ghost btn-sm justify-start px-0 w-full"
+                  class="link link-hover text-sm"
                 >
                   Logout
                 </.link>
