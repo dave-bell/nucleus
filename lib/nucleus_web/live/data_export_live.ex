@@ -706,6 +706,7 @@ defmodule NucleusWeb.DataExportLive do
       current_scope={@current_scope}
       environments={@environments}
       expanded_categories={@expanded_categories}
+      active_section={@active_section}
     >
       <h1 class="text-lg font-semibold pb-4">Data Export</h1>
 

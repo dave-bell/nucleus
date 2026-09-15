@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/notes | Priority: high | Version: 1.31 | Updated: 2026-09-15 -->
+<!-- Context: project-intelligence/notes | Priority: high | Version: 1.32 | Updated: 2026-09-15 -->
 
 # Living Notes
 
@@ -134,6 +134,13 @@ deploys it.
   (`{:halt, socket}`) for the event the hook owns, fall through (`{:cont, socket}`) for every
   other event. First used for the sidebar's per-category expand/collapse toggle. See
   `docs/adr/0023-sidebar-environment-grouping-and-category-toggle-state.md`.
+- `Phoenix.LiveView.attach_hook/4` on the `:handle_params` stage, not a plain `on_mount` assign,
+  for shell-level state that must reflect the *current* route rather than only the route at
+  mount time — a same-module `<.link patch>` changes `handle_params` without remounting
+  (`docs/adr/0024`'s finding), which a value computed once in `on_mount` would not see rerun.
+  First used to derive the sidebar's active-section highlight from the request path on every
+  navigation, including one this codebase doesn't yet have (a same-module `patch`). See
+  `docs/adr/0032-active-section-highlighting-via-handle-params-attach-hook.md`.
 - `Nucleus.Audit.Sink.Test` falls back to `Process.get(:"$callers")` when the writing process
   has no direct `register/1` call — reaches a test's own `AuditCase` registration from inside a
   mounted LiveView, using the same ancestry chain Ecto's SQL Sandbox relies on. Any test
@@ -244,7 +251,7 @@ deploys it.
   caller to swap the event, so DEX-S4 shipped `update_env_names/4` instead, sharing only the
   actual write mechanics (extracted into `write_key/4`) while keeping its own `env_names_updated`
   call. See `docs/adr/0029-data-export-inline-edit-update-arity-and-conflict-copy.md` for the
-  arity correction and `docs/adr/0032-env-names-save-write-key-extraction-and-empty-selection-exemption.md`
+  arity correction and `docs/adr/0033-env-names-save-write-key-extraction-and-empty-selection-exemption.md`
   for why the predicted reuse didn't hold.
 - **Reusing a shared shape validator for a new key can silently inherit a rule that doesn't fit
   that key's own encoding.** `Nucleus.NomadVars.Value.validate/1` backs `update/5`'s non-empty
@@ -257,7 +264,7 @@ deploys it.
   environment and saving had been tried. Before reusing a shared validator for a new key, check
   whether that key's own valid-value space actually matches what the validator enforces, rather
   than assuming shared write plumbing implies shared validation rules. See
-  `docs/adr/0032-env-names-save-write-key-extraction-and-empty-selection-exemption.md`.
+  `docs/adr/0033-env-names-save-write-key-extraction-and-empty-selection-exemption.md`.
 - **A selection count and the list it labels must be counted the same way, or a stale entry
   makes them visibly disagree.** `NucleusWeb.DataExportLive.EnvironmentPicker`'s "Active (N)"
   badge first read `length(selected_names/1)` — the raw `MapSet` of selected short names — while

@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.31 | Updated: 2026-09-15 -->
+<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.32 | Updated: 2026-09-15 -->
 
 # Business ↔ Tech Bridge
 
@@ -106,8 +106,9 @@ coverage-denominator change, not just wording: the `NAV-A01`–`A12` / `12` row 
 
 **Most "Planned" columns are still unimplemented.** `NucleusWeb.Layouts` (app shell, header,
 sidebar) and `test/nucleus_web/live/shell_test.exs` now exist (EN-7) — a deliberate subset only.
-`NAV-A04`–`A07` are now claimed and covered too (`NAV-S1`/#53, see below); `NAV-A01`–`A03`,
-`A08`–`A10` remain uncovered, needing authentication and the Applications view.
+`NAV-A04`–`A07` are now claimed and covered too (`NAV-S1`/#53, see below); `NAV-A01`–`A03`
+are now also claimed and covered (`NAV-S2`/#88, see below); `A08`–`A10` remain uncovered,
+needing authentication (`AUTH-A10`) and the identity menu (`NAV-S3`/`NAV-S4`).
 `NucleusWeb.SecretsLive` and `test/nucleus_web/live/secrets_live_test.exs`
 also now exist (SEC-S1/#9, SEC-S2/#10, SEC-S3/#11, SEC-S4/#12, SEC-S5/#13, SEC-S6/#14) —
 `SEC-A01`–`A14`, `A17` are claimed and covered; the module validates and resolves the environment,
@@ -324,9 +325,10 @@ Every column's DOM id is fixed now, even Version/Image/Schedule, which render as
 placeholder cells — `APP-S2`/#59 fills in their content without touching this ticket's markup,
 the same service `docs/adr/0010`/`docs/adr/0018` performed for `SEC-S3`–`S6` and the M2M
 listing. The sidebar's Applications entry (`layouts.ex`) is now a real `<.link navigate>`,
-replacing the disabled placeholder EN-7 shipped; `NAV-A03`'s active-section highlighting remains
-unclaimed, matching `M2M-S2`'s identical precedent for its own sidebar link — the view existing
-does not by itself satisfy `NAV-A03`'s "selected item is visually distinguished" clause.
+replacing the disabled placeholder EN-7 shipped; `NAV-A03`'s active-section highlighting was
+still unclaimed at the time this ticket landed, matching `M2M-S2`'s identical precedent for its
+own sidebar link — the view existing does not by itself satisfy `NAV-A03`'s "selected item is
+visually distinguished" clause. `NAV-S2`/#88 (below) later claims it.
 
 `APP-A02`–`APP-A05` are now claimed and covered too (`APP-S2`/#59), completing all eight
 `APP-A*` actions. The three placeholder cells `APP-S1` left empty, plus the status text it
@@ -373,8 +375,8 @@ fallback for `:conflict`, which nothing here can produce yet. `DEX-A14`'s read-o
 enforced one layer below the UI already (`Nucleus.NomadVars.Store` defines no create/delete
 callback of any kind) and reproven by a negative test. The sidebar's Data Export entry
 (`layouts.ex`) is now a real `<.link navigate>`, replacing the disabled placeholder EN-7 shipped;
-`NAV-A03`'s active-section highlighting remains unclaimed, matching `M2M-S2`'s and `APP-S1`'s
-identical precedent.
+`NAV-A03`'s active-section highlighting was still unclaimed at the time this ticket landed,
+matching `M2M-S2`'s and `APP-S1`'s identical precedent. `NAV-S2`/#88 (below) later claims it.
 
 `DEX-A04`, `A05`, and `A06` are now claimed and covered (`DEX-S2`/#74):
 `NucleusWeb.DataExportLive` gains edit/save/cancel for every configuration key except `env_names`
@@ -438,6 +440,49 @@ the first pass mirrored `NucleusWeb.ApplicationsLive`'s own unconditional, synch
 LiveView's own primary content rather than shell chrome. See `docs/adr/0031` for the full
 reasoning and the alternatives rejected.
 
+`NAV-A01`–`A03` are now claimed and covered (`NAV-S2`/#88): `/` is deleted from `PageController`
+(the stock controller, `PageHTML`, and its 199-line marketing template are all deleted outright,
+along with the canary test that `html_response(conn, 200) =~ "Peace of mind..."` was the proof
+`NAV-A01` had never shipped) and re-added as a second route on `NucleusWeb.ApplicationsLive`'s
+existing `:index` action, inside the same `:authenticated` `live_session` — two routes, one
+module, no redirect hop, since Phoenix's router has no redirect macro and a tiny 302 plug would
+have been a needless extra hop to the exact same destination a direct route already reaches.
+The also-dead `:api` pipeline and its commented-out `scope "/api"` (leftover `phx.new`
+scaffolding for the `/api/*` layer `PRX-D1` decided against) are removed from `router.ex` in the
+same pass. `NucleusWeb.ActiveSection.for_path/1` (`lib/nucleus_web/live/active_section.ex`,
+`test/nucleus_web/live/active_section_test.exs`) is a new pure module, the same shape as
+`NucleusWeb.SidebarEnvironments.group/1`, mapping a request path to one of `:applications`,
+`:data_export`, `:m2m_clients`, `:environments`, or `nil` — `"/"` and `"/applications"` both
+resolve to `:applications` since both serve the same view; `/environments/...` and its `/secrets`
+child resolve to `:environments` (so no tenant-wide item stays highlighted with a stale selection
+left over from whichever sidebar link was clicked last to reach an environment), not to the
+Environments sidebar section itself, which this ticket does not touch; an unrecognized path
+resolves to `nil`, matching the shell's "remains visible, no broken page" contract. A new
+`NucleusWeb.ShellHook` (`lib/nucleus_web/live/shell_hook.ex`) is the third `on_mount` hook in the
+`:authenticated` `live_session`'s fixed order (after `ScopeHook`, `EnvironmentsHook` —
+`docs/adr/0006`), and the second use of `Phoenix.LiveView.attach_hook/4` in this codebase
+(`NucleusWeb.EnvironmentsHook`'s `:handle_event` hook, `docs/adr/0023`, is the first) — but at the
+`:handle_params` lifecycle stage, not `:handle_event` or plain `on_mount`, since
+`docs/adr/0024` already established that a `<.link patch>` between routes on the same LiveView
+module changes `handle_params` without a remount, which a value computed once in `on_mount` would
+miss. Named `ShellHook`, not `ActiveSectionHook`, because `NAV-S3` extends this same module with
+the identity menu's open/close events rather than stacking a fourth `on_mount` onto `docs/adr/0006`'s
+list. `NucleusWeb.Layouts.app/1` gains an `active_section` attr (default `nil`, matching every
+other shell-chrome attr's no-hook-wired fallback), and its three tenant-wide sidebar links gain
+real DOM ids (`#nav-applications`, `#nav-data-export`, `#nav-m2m-clients`) they never had before —
+`shell_test.exs`'s existing M2M/Data-Export navigation tests, which selected by link text, are
+updated to select by these ids now that both exist. Each link's `aria-current="page"` and a
+`menu-active` class variant are driven directly off `@active_section`, deleting the
+`layouts.ex` deferral comment this ticket was reserving space for since EN-7. All six
+`Layouts.app` call sites (`ApplicationsLive`, `DataExportLive`, `EnvironmentsLive`, `SecretsLive`,
+both `M2MClientsLive` views) thread `active_section={@active_section}` through, the same
+one-line addition `docs/adr/0023`'s `expanded_categories` required of each; `test/support/scope_hook_demo_live.ex`
+(EN-6), which wires neither hook, confirms the `nil` default renders with nothing highlighted.
+`NucleusWeb.LiveCase` gains `live_applications/1` and `live_m2m_clients/1`, the two
+`Phoenix.LiveViewTest.live/2`-wrapping macros no prior ticket needed. `mix nucleus.trace --feature
+NAV` moves from 4/10 to 7/10; only `NAV-A08`–`A10` (the identity menu, sign-out, and the
+unauthenticated redirect — `NAV-S3`/`NAV-S4`) remain.
+
 `DEX-A10` and `A11` are now claimed and covered (`DEX-S4`/#76), the last of the fourteen `DEX-A*`
 ids — `mix nucleus.trace --feature DEX` now reports full coverage. `Nucleus.NomadVars` gains
 `update_env_names/4`, `update/5`'s `env_names`-specific sibling: both share the actual write
@@ -457,7 +502,7 @@ deselecting every environment and saving failed, because `EnvNames.serialize([])
 `write_key/4`'s shared `Value.validate/1` call treats any empty string as invalid, contradicting
 `EnvNames`'s own "`[]` is a valid, representable choice" contract — fixed with an exemption scoped
 to the `env_names` key alone, not a change to `Value.validate/1`'s rule for every other key. See
-`docs/adr/0032` for the full reasoning, including the `save_env_picker` nil-picker guard the same
+`docs/adr/0033` for the full reasoning, including the `save_env_picker` nil-picker guard the same
 review pass added for consistency with its `toggle_env`/`filter_envs` siblings.
 
 ## Tagging Convention

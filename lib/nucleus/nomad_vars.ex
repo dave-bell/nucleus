@@ -75,22 +75,17 @@ defmodule Nucleus.NomadVars do
 
   ## `update_env_names/4` shares this function's write, not its audit call
 
-  The moduledoc above once claimed the audit event is "swapped at the call
-  site" while `env_names_updated` still lived inside a single shared
-  function — that was never actually true: `update/5` emits
-  `nomad_var_updated` unconditionally, every time, with no way for a caller
-  to opt out. Caught while implementing DEX-S4 (#76), the same way the
-  `update/5`-not-`update/4` correction above was caught while implementing
-  DEX-S2: `write_key/4` below is the actual shared part (validate, then
-  `Store.write/2` under CAS, with no audit side effect of its own).
-  `update/5` and `update_env_names/4` each call `write_key/4` and then emit
-  their *own* event — `nomad_var_updated` here, `env_names_updated` there —
-  because `AUD-A04` (`docs/requirements/Audit-and-Compliance.md`) requires
-  the audit trail to record exactly which environments were added and
-  removed for a set-based change, and `nomad_var_updated`'s catalogue entry
-  has no room for that (`details_allowed: [:path, :key]` — deliberately no
-  `value`, so by extension no diff). Two events exist because two audit
-  *shapes* are required, not because two write paths exist.
+  `write_key/4` below is the part `update/5` and `update_env_names/4`
+  actually share: validate, then `Store.write/2` under CAS, with no audit
+  side effect of its own. Each public function calls `write_key/4` and then
+  emits its *own* event — `nomad_var_updated` here, `env_names_updated`
+  there — because `AUD-A04` (`docs/requirements/Audit-and-Compliance.md`)
+  requires the audit trail to record exactly which environments were added
+  and removed for a set-based change, and `nomad_var_updated`'s catalogue
+  entry has no room for that (`details_allowed: [:path, :key]` —
+  deliberately no `value`, so by extension no diff). Two events exist
+  because two audit *shapes* are required, not because two write paths
+  exist.
 
   ## `update_env_names/4`'s `items`, not the issue plan's `current_value`
 

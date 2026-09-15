@@ -1,4 +1,4 @@
-# ADR-0032: `env_names` Save — `write_key/4` Extraction, `items` Not `current_value`, and the Empty-Selection Validation Exemption
+# ADR-0033: `env_names` Save — `write_key/4` Extraction, `items` Not `current_value`, and the Empty-Selection Validation Exemption
 
 ## Status
 

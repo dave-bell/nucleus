@@ -78,4 +78,30 @@ defmodule NucleusWeb.LiveCase do
       Phoenix.LiveViewTest.live(unquote(conn), "/data-export")
     end
   end
+
+  @doc """
+  Mounts `NucleusWeb.ApplicationsLive`, the `/applications` route the
+  sidebar links to (`APP-S1`, #58). Does not mount `/` — `/` and
+  `/applications` serve the same module and action (`NAV-A01`), so there is
+  nothing distinct for a second macro to prove.
+
+  A macro for the same reason as `live_secrets/2` above.
+  """
+  defmacro live_applications(conn) do
+    quote do
+      Phoenix.LiveViewTest.live(unquote(conn), "/applications")
+    end
+  end
+
+  @doc """
+  Mounts `NucleusWeb.M2MClientsLive.Index`, the `/m2m/clients` route the
+  sidebar links to (`M2M-S2`, #35).
+
+  A macro for the same reason as `live_secrets/2` above.
+  """
+  defmacro live_m2m_clients(conn) do
+    quote do
+      Phoenix.LiveViewTest.live(unquote(conn), "/m2m/clients")
+    end
+  end
 end

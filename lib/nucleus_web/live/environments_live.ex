@@ -128,6 +128,7 @@ defmodule NucleusWeb.EnvironmentsLive do
       current_scope={@current_scope}
       environments={@environments}
       expanded_categories={@expanded_categories}
+      active_section={@active_section}
     >
       <.empty_state
         :if={@environment_status == :invalid}
