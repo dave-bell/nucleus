@@ -87,28 +87,31 @@ defmodule NucleusWeb.Layouts do
               Tenant
             </p>
             <ul class="menu menu-sm p-0 group-data-[collapsed=true]:hidden">
-              <li class={@active_section == :applications && "menu-active"}>
+              <li>
                 <.link
                   id="nav-applications"
                   navigate={~p"/applications"}
+                  class={@active_section == :applications && "menu-active"}
                   aria-current={@active_section == :applications && "page"}
                 >
                   Applications
                 </.link>
               </li>
-              <li class={@active_section == :data_export && "menu-active"}>
+              <li>
                 <.link
                   id="nav-data-export"
                   navigate={~p"/data-export"}
+                  class={@active_section == :data_export && "menu-active"}
                   aria-current={@active_section == :data_export && "page"}
                 >
                   Data Export
                 </.link>
               </li>
-              <li class={@active_section == :m2m_clients && "menu-active"}>
+              <li>
                 <.link
                   id="nav-m2m-clients"
                   navigate={~p"/m2m/clients"}
+                  class={@active_section == :m2m_clients && "menu-active"}
                   aria-current={@active_section == :m2m_clients && "page"}
                 >
                   M2M Clients
