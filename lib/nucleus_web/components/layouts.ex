@@ -54,6 +54,17 @@ defmodule NucleusWeb.Layouts do
     every category collapsed — for a caller that hasn't wired the hook.
     """
 
+  attr :active_section, :atom,
+    default: nil,
+    doc: """
+    the sidebar section to visually distinguish as active (`NAV-A03`),
+    assigned by `NucleusWeb.ShellHook` from `NucleusWeb.ActiveSection.for_path/1`.
+    One of `:applications`, `:data_export`, `:m2m_clients`, `:environments`,
+    or `nil` (the default, matching an unrecognized path or a caller that
+    hasn't wired the hook) — `nil` highlights none of the three tenant-wide
+    links below.
+    """
+
   slot :inner_block, required: true
 
   def app(assigns) do
@@ -75,26 +86,34 @@ defmodule NucleusWeb.Layouts do
             <p class="text-xs font-semibold uppercase text-base-content/50 mb-2 px-2 group-data-[collapsed=true]:hidden">
               Tenant
             </p>
-            <%!--
-              NAV-A03 (active-section highlighting) is out of scope for
-              every item here, shipped or not.
-              M2M Clients (M2M-S2, #35), Applications (APP-S1, #58), and
-              Data Export (DEX-S1, #73) have shipped their real views —
-              replaced with working links, not placeholders.
-            --%>
             <ul class="menu menu-sm p-0 group-data-[collapsed=true]:hidden">
               <li>
-                <.link navigate={~p"/applications"}>
+                <.link
+                  id="nav-applications"
+                  navigate={~p"/applications"}
+                  class={@active_section == :applications && "menu-active"}
+                  aria-current={@active_section == :applications && "page"}
+                >
                   Applications
                 </.link>
               </li>
               <li>
-                <.link navigate={~p"/data-export"}>
+                <.link
+                  id="nav-data-export"
+                  navigate={~p"/data-export"}
+                  class={@active_section == :data_export && "menu-active"}
+                  aria-current={@active_section == :data_export && "page"}
+                >
                   Data Export
                 </.link>
               </li>
               <li>
-                <.link navigate={~p"/m2m/clients"}>
+                <.link
+                  id="nav-m2m-clients"
+                  navigate={~p"/m2m/clients"}
+                  class={@active_section == :m2m_clients && "menu-active"}
+                  aria-current={@active_section == :m2m_clients && "page"}
+                >
                   M2M Clients
                 </.link>
               </li>

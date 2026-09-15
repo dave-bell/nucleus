@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/notes | Priority: high | Version: 1.30 | Updated: 2026-09-14 -->
+<!-- Context: project-intelligence/notes | Priority: high | Version: 1.31 | Updated: 2026-09-14 -->
 
 # Living Notes
 
@@ -134,6 +134,13 @@ deploys it.
   (`{:halt, socket}`) for the event the hook owns, fall through (`{:cont, socket}`) for every
   other event. First used for the sidebar's per-category expand/collapse toggle. See
   `docs/adr/0023-sidebar-environment-grouping-and-category-toggle-state.md`.
+- `Phoenix.LiveView.attach_hook/4` on the `:handle_params` stage, not a plain `on_mount` assign,
+  for shell-level state that must reflect the *current* route rather than only the route at
+  mount time — a same-module `<.link patch>` changes `handle_params` without remounting
+  (`docs/adr/0024`'s finding), which a value computed once in `on_mount` would not see rerun.
+  First used to derive the sidebar's active-section highlight from the request path on every
+  navigation, including one this codebase doesn't yet have (a same-module `patch`). See
+  `docs/adr/0032-active-section-highlighting-via-handle-params-attach-hook.md`.
 - `Nucleus.Audit.Sink.Test` falls back to `Process.get(:"$callers")` when the writing process
   has no direct `register/1` call — reaches a test's own `AuditCase` registration from inside a
   mounted LiveView, using the same ancestry chain Ecto's SQL Sandbox relies on. Any test

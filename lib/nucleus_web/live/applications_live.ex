@@ -145,6 +145,7 @@ defmodule NucleusWeb.ApplicationsLive do
       current_scope={@current_scope}
       environments={@environments}
       expanded_categories={@expanded_categories}
+      active_section={@active_section}
     >
       <States.misconfigured :if={@status == :misconfigured} />
       <States.unavailable :if={@status == :unavailable} />
