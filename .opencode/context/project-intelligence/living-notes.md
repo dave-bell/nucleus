@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/notes | Priority: high | Version: 1.30 | Updated: 2026-09-14 -->
+<!-- Context: project-intelligence/notes | Priority: high | Version: 1.31 | Updated: 2026-09-15 -->
 
 # Living Notes
 
@@ -238,9 +238,26 @@ deploys it.
   from "the caller-supplied current items" without ever calling `Store.read/0` — and
   `Store.write/2` replaces the *entire* map on the wire, so there is no way to assemble it from
   only a key, a value, and an index. The shipped function is `update/5`, with `items` as its own
-  parameter. DEX-S3/S4 call this same function unchanged for `env_names`'s bulk update — expect
-  `update/5`, not the `/4` an unread issue body would suggest. See
-  `docs/adr/0029-data-export-inline-edit-update-arity-and-conflict-copy.md`.
+  parameter. **Correction**: DEX-S3's own ADR-0029 predicted DEX-S4 would call `update/5`
+  unchanged for `env_names`, "swapping only the audit event at the call site" — that prediction
+  did not hold. `update/5` emits `nomad_var_updated` unconditionally, with no parameter for a
+  caller to swap the event, so DEX-S4 shipped `update_env_names/4` instead, sharing only the
+  actual write mechanics (extracted into `write_key/4`) while keeping its own `env_names_updated`
+  call. See `docs/adr/0029-data-export-inline-edit-update-arity-and-conflict-copy.md` for the
+  arity correction and `docs/adr/0032-env-names-save-write-key-extraction-and-empty-selection-exemption.md`
+  for why the predicted reuse didn't hold.
+- **Reusing a shared shape validator for a new key can silently inherit a rule that doesn't fit
+  that key's own encoding.** `Nucleus.NomadVars.Value.validate/1` backs `update/5`'s non-empty
+  rule for every scalar variable value, which is correct there — but `update_env_names/4` routed
+  `env_names` through the same `write_key/4` (and therefore the same `Value.validate/1` call)
+  without checking whether "non-empty" actually applies to a *list-encoded* key, where `[]`
+  (`EnvNames.serialize([]) == ""`) is a legitimate value, not an incomplete one. Caught in review,
+  after the first pass shipped with `mix precommit` green — no test exercised
+  `update_env_names([], ...)` until review specifically asked whether deselecting every
+  environment and saving had been tried. Before reusing a shared validator for a new key, check
+  whether that key's own valid-value space actually matches what the validator enforces, rather
+  than assuming shared write plumbing implies shared validation rules. See
+  `docs/adr/0032-env-names-save-write-key-extraction-and-empty-selection-exemption.md`.
 - **A selection count and the list it labels must be counted the same way, or a stale entry
   makes them visibly disagree.** `NucleusWeb.DataExportLive.EnvironmentPicker`'s "Active (N)"
   badge first read `length(selected_names/1)` — the raw `MapSet` of selected short names — while
