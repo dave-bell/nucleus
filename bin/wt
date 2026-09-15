@@ -19,6 +19,9 @@
 #
 # Ticket IDs (EN-n, SEC-Sn) live in the GitHub issue *title*, not the issue
 # number. This script resolves by title prefix and never assumes ID == number.
+# Plain-titled issues (no "ID:" prefix, e.g. "Wrong sized button") have no ID
+# to resolve by — pass the bare issue number instead and resolution falls
+# back to matching on it directly, e.g. `bin/wt 91 m2m-back-button-size`.
 #
 set -euo pipefail
 
@@ -75,8 +78,22 @@ default_base() {
 # --- ticket resolution -------------------------------------------------------
 
 # Resolve a ticket ID to "number<TAB>title" via exact title-prefix match.
+#
+# Some tickets carry no ID prefix at all (plain bug/task titles like "Wrong
+# sized button", not "EN-3: ..."). For those, the caller passes the bare
+# issue number instead of a prefix, and resolution is by number directly.
 resolve_ticket() {
   local id="$1" matches count
+
+  if [[ "$id" =~ ^[0-9]+$ ]]; then
+    matches=$(gh issue list --repo "$REPO_SLUG" --state all --limit 200 \
+                --json number,title \
+                --jq ".[] | select(.number == ${id}) | \"\(.number)\t\(.title)\"")
+    [ -n "$matches" ] || die "no issue #${id} in ${REPO_SLUG}."
+    printf '%s' "$matches"
+    return 0
+  fi
+
   matches=$(gh issue list --repo "$REPO_SLUG" --state all --limit 200 \
               --json number,title \
               --jq ".[] | select(.title | startswith(\"${id}:\")) | \"\(.number)\t\(.title)\"")
