@@ -389,6 +389,17 @@ defmodule NucleusWeb.SecretsLiveTest do
       assert has_element?(view, "#secrets-table")
       assert has_element?(view, "#secrets-create-button")
     end
+
+    test "back to environment button is present and navigates to the environment", %{conn: conn} do
+      assert {:ok, view, _html} = live_secrets(conn, "prod")
+
+      assert has_element?(view, "#secrets-back-button")
+
+      # Verify the button has the correct navigation link
+      button_html = view |> element("#secrets-back-button") |> render()
+      assert button_html =~ "Back to environment"
+      assert button_html =~ ~p"/environments/prod"
+    end
   end
 
   describe "store unavailable (boundary: :secrets)" do
