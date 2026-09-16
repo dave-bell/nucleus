@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.32 | Updated: 2026-09-15 -->
+<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.33 | Updated: 2026-09-15 -->
 
 # Business ↔ Tech Bridge
 
@@ -482,6 +482,35 @@ one-line addition `docs/adr/0023`'s `expanded_categories` required of each; `tes
 `Phoenix.LiveViewTest.live/2`-wrapping macros no prior ticket needed. `mix nucleus.trace --feature
 NAV` moves from 4/10 to 7/10; only `NAV-A08`–`A10` (the identity menu, sign-out, and the
 unauthenticated redirect — `NAV-S3`/`NAV-S4`) remain.
+
+`NAV-A08` is now claimed and covered (`NAV-S3`/#89): `ShellHook` gains a second `attach_hook/4`,
+this time at `:handle_event`, for `"toggle-user-menu"`/`"close-user-menu"` — the third
+`attach_hook/4` use in this codebase, mirroring `EnvironmentsHook.toggle_category/3`'s
+halt/fall-through shape (`docs/adr/0023`) rather than `ActiveSection`'s own `:handle_params` hook.
+`:user_menu_open?` is a plain socket assign, not `SidebarNavState`-backed like
+`:expanded_categories` — the menu's transitions are all within one mount (`phx-click`,
+`phx-click-away`, `phx-window-keydown`), never a `navigate`, so there is no remount to survive
+and closing on navigation is correct, not a bug. `layouts.ex`'s `#user-menu-panel` is now
+`:if={@user_menu_open?}` instead of an always-mounted `class="hidden"` div — the change that
+actually makes `NAV-A08` provable, since `has_element?/2` finally returns different answers
+before and after `"toggle-user-menu"`. The granted-scopes `<ul>`/"No scopes granted" branch is
+deleted outright (`NAV-D2`'s narrowing), and a `<.link id="user-menu-logout" href={~p"/logout"}
+method="delete">` is added. All six `Layouts.app` call sites thread `user_menu_open?=` through
+alongside `active_section=`, the same one-line addition each already needed for `NAV-S2`. A new
+`NucleusWeb.SessionController.delete/2` calls `Plug.Conn.configure_session(drop: true)` and
+redirects to `/`, reached by a new `DELETE /logout` route in the plain `:browser` pipeline (not
+`:assign_scope`/`:authenticated` — logout must work even if scope assignment would otherwise
+fail). Because auth is deferred (`docs/adr/0005`, `current_scope.token` unconditionally `nil`),
+the observable effect is narrower than "logged out": the session and `nav_session_id` drop
+(clearing `NAV-A05`'s sidebar expand state), but the very next request is immediately
+re-identified as the same dev user — asserted as exactly that boundary in
+`test/nucleus_web/controllers/session_controller_test.exs`, not simulated as a real sign-out.
+Click-away dismissal is recorded as a `test/README.md` gap, matching the `SEC-A04`/`DEX-A11`/
+`APP-A02` partial-claim precedent — every other `NAV-A08` clause (open, close, Escape, email,
+Logout, scopes removed) is claimed and tagged. See `docs/adr/0034` for the full reasoning and
+the alternatives rejected. `mix nucleus.trace --feature NAV` moves from 7/10 to 8/10; only
+`NAV-A09`/`A10` (sign-out landing on a sign-in page, and the unauthenticated redirect — both
+`NAV-S4`, blocked on `AUTH-A01`) remain.
 
 `DEX-A10` and `A11` are now claimed and covered (`DEX-S4`/#76), the last of the fourteen `DEX-A*`
 ids — `mix nucleus.trace --feature DEX` now reports full coverage. `Nucleus.NomadVars` gains

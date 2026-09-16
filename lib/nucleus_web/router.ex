@@ -17,6 +17,15 @@ defmodule NucleusWeb.Router do
     plug NucleusWeb.Plugs.AssignScope
   end
 
+  # Plain :browser, not :assign_scope — logging out must work even if
+  # scope assignment would otherwise fail (NAV-S3). `configure_session/2`
+  # only needs `fetch_session`, which :browser already plugs.
+  scope "/", NucleusWeb do
+    pipe_through :browser
+
+    delete "/logout", SessionController, :delete
+  end
+
   scope "/", NucleusWeb do
     pipe_through [:browser, :assign_scope]
 

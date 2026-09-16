@@ -129,6 +129,7 @@ defmodule NucleusWeb.EnvironmentsLive do
       environments={@environments}
       expanded_categories={@expanded_categories}
       active_section={@active_section}
+      user_menu_open?={@user_menu_open?}
     >
       <.empty_state
         :if={@environment_status == :invalid}

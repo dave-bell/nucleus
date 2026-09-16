@@ -186,14 +186,108 @@ defmodule NucleusWeb.ShellTest do
     assert has_element?(data_export_view, "#tenant-identifier")
   end
 
-  @tag :unit
-  test "shows the identity control with the dev email, and no sign-out control", %{conn: conn} do
-    {:ok, view, _html} = live(conn, ~p"/environments/prod/secrets")
+  describe "NAV-A08 — identity control" do
+    @tag :unit
+    @tag action: "NAV-A08"
+    test "#user-menu-panel is absent before toggle-user-menu, present after", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/environments/prod/secrets")
 
-    assert has_element?(view, "#user-menu", "test-dev@example.com")
-    refute has_element?(view, "#user-menu", "Sign out")
-    refute has_element?(view, "#user-menu", "Log out")
-    refute has_element?(view, "#user-menu", "Logout")
+      refute has_element?(view, "#user-menu-panel")
+
+      render_click(view, "toggle-user-menu")
+
+      assert has_element?(view, "#user-menu-panel")
+    end
+
+    @tag :unit
+    @tag action: "NAV-A08"
+    test "#user-menu carries daisyUI's dropdown-open class once open, not just the panel's presence",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/environments/prod/secrets")
+
+      # daisyUI's `.dropdown` component hides `.dropdown-content` via CSS
+      # unless the container is `:focus-within` or carries `.dropdown-open`
+      # — `.dropdown-content` being present in the DOM (`:if=`) is not
+      # sufficient on its own for it to actually be visible, since a
+      # `phx-click` round-trip gives no cross-browser guarantee the trigger
+      # button keeps real focus afterwards (Safari never focuses a clicked
+      # `<button>` at all). Regression test for that gap.
+      refute has_element?(view, "#user-menu.dropdown-open")
+
+      render_click(view, "toggle-user-menu")
+
+      assert has_element?(view, "#user-menu.dropdown-open")
+
+      render_click(view, "toggle-user-menu")
+
+      refute has_element?(view, "#user-menu.dropdown-open")
+    end
+
+    @tag :unit
+    @tag action: "NAV-A08"
+    test "shows the identity control with the dev email, and now a Logout control (inverts the pre-NAV-S3 refutes)",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/environments/prod/secrets")
+
+      render_click(view, "toggle-user-menu")
+
+      assert has_element?(view, "#user-menu", "test-dev@example.com")
+      assert has_element?(view, ~s(#user-menu-logout[data-method="delete"][data-to="/logout"]))
+    end
+
+    @tag :unit
+    @tag action: "NAV-A08"
+    test "pressing Escape closes the open panel", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/environments/prod/secrets")
+
+      render_click(view, "toggle-user-menu")
+      assert has_element?(view, "#user-menu-panel")
+
+      render_keydown(view, "close-user-menu", %{"key" => "Escape"})
+
+      refute has_element?(view, "#user-menu-panel")
+    end
+
+    @tag :unit
+    @tag action: "NAV-A08"
+    test "click-away binds to #user-menu (which contains the trigger button), not #user-menu-panel alone, and only while open",
+         %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/environments/prod/secrets")
+
+      # Regression test for a real-browser bug that `has_element?/2` alone
+      # never caught: `Phoenix.LiveView`'s JS dispatches click-away *before*
+      # the clicked element's own `phx-click`. The trigger button is a
+      # sibling of `#user-menu-panel`, not its descendant — binding
+      # click-away to the panel alone means a click on the trigger button
+      # while open is "away" from the panel, so it would push
+      # `close-user-menu` and then `toggle-user-menu` for the same click,
+      # reopening what it just closed. Binding to `#user-menu` (which
+      # contains both) makes a click on the button "contained", not
+      # "away". The binding is also conditional on `@user_menu_open?`
+      # itself — asserted here as absent while closed — since `#user-menu`
+      # is otherwise mounted for every authenticated request, and an
+      # unconditional binding would push `close-user-menu` on every click
+      # anywhere on the page.
+      refute has_element?(view, ~s(#user-menu[phx-click-away]))
+
+      render_click(view, "toggle-user-menu")
+
+      assert has_element?(view, ~s(#user-menu[phx-click-away="close-user-menu"]))
+      refute has_element?(view, ~s(#user-menu-panel[phx-click-away]))
+    end
+
+    @tag :unit
+    @tag action: "NAV-A08"
+    test "the scopes block is gone, even for a scope with a non-empty scopes list", %{
+      conn: conn
+    } do
+      {:ok, view, _html} = live(conn, ~p"/environments/prod/secrets")
+
+      render_click(view, "toggle-user-menu")
+
+      refute has_element?(view, "#user-menu", "Scopes")
+      refute has_element?(view, "#user-menu", "No scopes granted")
+    end
   end
 
   @tag :unit

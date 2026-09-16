@@ -1,4 +1,4 @@
-# ADR-0034: A `ghost` Variant on `<.button/1>`, Reserving Colour for Mutation Actions
+# ADR-0035: A `ghost` Variant on `<.button/1>`, Reserving Colour for Mutation Actions
 
 ## Status
 
