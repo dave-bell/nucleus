@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.40 | Updated: 2026-09-15 -->
+<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.41 | Updated: 2026-09-15 -->
 
 # Decisions Log
 
@@ -59,6 +59,7 @@ job and the row should point rather than paraphrase.
 | 32 | Active-section highlighting — `/` becomes a second route on `ApplicationsLive`'s existing `:index` action (no redirect plug, no second module); `NucleusWeb.ActiveSection.for_path/1` is a pure path→section mapper, wired in via `NucleusWeb.ShellHook`, the second `attach_hook/4` use in this codebase but at `:handle_params` rather than `:handle_event` — chosen over a plain `on_mount` assign because `docs/adr/0024` already found a same-module `patch` changes `handle_params` without remounting; registered third in the `live_session`'s `on_mount` list, a position that is documentation only since it reads no other hook's state | 2026-09-14 | Decided | `docs/adr/0032-active-section-highlighting-via-handle-params-attach-hook.md` |
 | 33 | `env_names` save — `write_key/4` extracted as the actual shared part between `update/5` and the new `update_env_names/4` (validate, then CAS write; each caller keeps its own audit event), correcting `0029`'s own prediction that `update/5` would be reused unchanged; `update_env_names/4` takes `items` (not the issue plan's `current_value`) for the same whole-map-replacement reason `0029` gives `update/5`; an empty selection (`[]`) is exempted from `Value.validate/1`'s non-empty rule specifically for the `env_names` key — caught in review after the first pass shipped, since deselecting every environment and saving is reachable through the picker's ordinary UI | 2026-09-15 | Decided | `docs/adr/0033-env-names-save-write-key-extraction-and-empty-selection-exemption.md` |
 | 34 | Server-driven identity menu — `NucleusWeb.ShellHook` gains a second `attach_hook/4`, at `:handle_event` (third such use in this codebase), for `"toggle-user-menu"`/`"close-user-menu"`; `:user_menu_open?` is a plain socket assign, not `SidebarNavState`-backed, since the menu's transitions never involve `navigate`; `#user-menu-panel` becomes conditionally rendered (`:if`), closing `NAV-A08`'s previously-unprovable open/close gap — but DOM presence alone isn't visibility: daisyUI's `.dropdown` CSS separately gates `.dropdown-content` on `:focus-within`, unreliable after a `phx-click` round-trip (Safari never focuses a clicked `<button>`), so `#user-menu` also gets `dropdown-open` off the same assign, caught after the first pass shipped and passed its own `has_element?/2` tests; `phx-click-away`/`phx-window-keydown` bind to `#user-menu` (containing the trigger button), not `#user-menu-panel` alone — the sibling button otherwise counted as "away" from the panel, so a click on it while open pushed close-then-reopen for the same click, caught in review since `Phoenix.LiveViewTest` cannot reproduce one click dispatching two ordered pushes; the binding's presence, not just the container's mounting, stays conditional on `@user_menu_open?` to avoid pushing `close-user-menu` on every click on the page; `DELETE /logout` (`NucleusWeb.SessionController`) sits in the plain `:browser` pipeline, not `:assign_scope`, and only drops the session — no token to revoke under deferred auth | 2026-09-15 | Decided | `docs/adr/0034-server-driven-identity-menu-and-logout-controller.md` |
+| 35 | `<.button/1>` gains a `ghost` variant for navigation actions ("back", "manage"), reserving colour for mutation actions ("new") per #91; M2M's back-to-clients link and environments' manage-secrets link both move off bespoke `class` strings and onto it, now matching sibling buttons' default (non-`btn-sm`) size; no `size` attr added — deferred until a call site actually needs one | 2026-09-15 | Decided | `docs/adr/0035-button-ghost-variant-for-navigation-actions.md` |
 
 No **"re-platform" decision** (fresh start) and no **inherited ADRs** — the wiki's `ADR-0001`–
 `ADR-0007` are reference only; adopting one is a decision made on its own merits.
@@ -80,7 +81,7 @@ the ADR it points at stays findable.
 
 ## Onboarding Checklist
 
-- [ ] Read the Decision Index above; `adr/0001`–`0034` are binding
+- [ ] Read the Decision Index above; `adr/0001`–`0035` are binding
 - [ ] New formal ADRs belong in `docs/adr/`, with only an index row mirrored here — the wiki's
       ADR-0001–0007 are reference only, not adopted
 - [ ] Know which decisions are pending (see `living-notes.md`)

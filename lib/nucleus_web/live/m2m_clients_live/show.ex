@@ -282,9 +282,9 @@ defmodule NucleusWeb.M2MClientsLive.Show do
       <div :if={@status == :ok} id="m2m-client-detail">
         <div class="flex items-center justify-between gap-4 pb-4">
           <h1 class="text-lg font-semibold">{@detail.client_name}</h1>
-          <.link navigate={~p"/m2m/clients"} class="btn btn-sm btn-ghost">
+          <.button navigate={~p"/m2m/clients"} variant="ghost">
             Back to clients
-          </.link>
+          </.button>
         </div>
 
         <dl class="grid grid-cols-1 gap-4">

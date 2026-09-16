@@ -159,13 +159,13 @@ defmodule NucleusWeb.EnvironmentsLive do
       <div :if={@environment_status == :ok} id="environment-detail">
         <div class="flex items-center justify-between gap-4 pb-4">
           <h1 class="text-lg font-semibold">{@environment.label || @environment.short_name}</h1>
-          <.link
+          <.button
             id="manage-secrets-link"
             navigate={~p"/environments/#{@environment.short_name}/secrets"}
-            class="btn btn-primary"
+            variant="ghost"
           >
             Manage Secrets
-          </.link>
+          </.button>
         </div>
 
         <.description_list>
