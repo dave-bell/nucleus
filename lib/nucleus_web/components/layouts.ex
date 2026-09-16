@@ -65,6 +65,15 @@ defmodule NucleusWeb.Layouts do
     links below.
     """
 
+  attr :user_menu_open?, :boolean,
+    default: false,
+    doc: """
+    whether the header's user identity control (`NAV-A08`) is open,
+    toggled via `"toggle-user-menu"`/`"close-user-menu"` events handled by
+    `NucleusWeb.ShellHook`. Defaults to closed — for a caller that hasn't
+    wired the hook, the panel simply never renders.
+    """
+
   slot :inner_block, required: true
 
   def app(assigns) do
@@ -268,35 +277,82 @@ defmodule NucleusWeb.Layouts do
           <div class="flex-none flex items-center gap-2">
             <.theme_toggle />
 
-            <div :if={@current_scope} id="user-menu" class="dropdown dropdown-end">
+            <%!--
+              `phx-click-away`/`phx-window-keydown` live on this outer
+              `#user-menu` container, not on `#user-menu-panel` — the
+              trigger button below is a *sibling* of the panel, not its
+              descendant, so binding click-away to the panel alone means a
+              click on the trigger button is "away" from the panel too.
+              `Phoenix.LiveView`'s JS dispatches click-away *before* the
+              clicked element's own `phx-click`
+              (`bindClick`/`dispatchClickAway` in
+              `phoenix_live_view.esm.js`), so a click on the button while
+              open would push `close-user-menu` (→ `false`) and then
+              `toggle-user-menu` (→ negates `false` → `true`) for the same
+              click — net effect, the menu never closes by clicking the
+              icon again. Binding to this container instead, which
+              contains both the button and the panel, makes a click on the
+              button "contained", not "away", so only `toggle-user-menu`
+              fires.
+
+              The attributes themselves are conditional on
+              `@user_menu_open?`, not just the container's own mounting
+              (`:if={@current_scope}`, true for every authenticated
+              request) — `dispatchClickAway` matches every element bearing
+              `phx-click-away` in the whole document on every click,
+              regardless of app state, so an unconditional binding here
+              would push `close-user-menu` on every click anywhere on the
+              page, even with the menu already closed.
+            --%>
+            <%!--
+              daisyUI's `.dropdown` component gates `.dropdown-content`'s
+              visibility on `:focus-within` (or the `.dropdown-open` class)
+              in its own CSS, independently of whether `.dropdown-content`
+              is even in the DOM — relying on focus here would mean the
+              panel exists (per `:if={@user_menu_open?}`) but stays
+              `display: none` unless the trigger button still has real
+              browser focus after the `phx-click` round-trip, which no
+              browser guarantees (Safari never focuses a clicked `<button>`
+              at all). `dropdown-open` makes visibility track the same
+              server assign the DOM presence already tracks, with no
+              dependency on focus surviving a patch.
+            --%>
+            <div
+              :if={@current_scope}
+              id="user-menu"
+              class={["dropdown dropdown-end", @user_menu_open? && "dropdown-open"]}
+              {if(@user_menu_open?,
+                do: %{
+                  "phx-click-away" => "close-user-menu",
+                  "phx-window-keydown" => "close-user-menu",
+                  "phx-key" => "Escape"
+                },
+                else: %{}
+              )}
+            >
               <button
                 type="button"
                 class="btn btn-ghost btn-circle"
-                phx-click={JS.toggle(to: "#user-menu-panel")}
+                phx-click="toggle-user-menu"
                 aria-label={gettext("User menu")}
               >
                 <.icon name="hero-user-circle" class="size-6" />
               </button>
               <div
+                :if={@user_menu_open?}
                 id="user-menu-panel"
-                class="dropdown-content menu bg-base-100 rounded-box shadow-lg w-64 p-4 mt-2 z-10 hidden"
-                phx-click-away={JS.hide(to: "#user-menu-panel")}
-                phx-window-keydown={JS.hide(to: "#user-menu-panel")}
-                phx-key="Escape"
+                class="dropdown-content menu bg-base-100 rounded-box shadow-lg w-64 p-4 mt-2 z-10"
               >
-                <p class="font-semibold break-all text-sm">{@current_scope.user.email}</p>
-                <div class="mt-3">
-                  <p class="text-xs uppercase text-base-content/50 mb-1">Scopes</p>
-                  <%= if @current_scope.scopes == [] do %>
-                    <p class="text-sm text-base-content/60">No scopes granted</p>
-                  <% else %>
-                    <ul class="flex flex-wrap gap-1">
-                      <li :for={scope <- @current_scope.scopes}>
-                        <.badge>{scope}</.badge>
-                      </li>
-                    </ul>
-                  <% end %>
-                </div>
+                <p class="break-all text-sm">{@current_scope.user.email}</p>
+                <div class="divider my-2"></div>
+                <.link
+                  id="user-menu-logout"
+                  href={~p"/logout"}
+                  method="delete"
+                  class="link link-hover text-sm"
+                >
+                  Logout
+                </.link>
               </div>
             </div>
           </div>

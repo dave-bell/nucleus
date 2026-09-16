@@ -28,18 +28,22 @@ covered:
 | Escape and backdrop-click dismissal of the environment picker | `DEX-A11` | Same `data-cancel` chain as `SEC-A04`; claimed here through the picker's own Cancel button instead |
 | The `beforeunload` warning dialog itself | `M2M-A10` | `window.beforeunload` is a browser API; the hook cannot be executed |
 | The rendered status colour itself (as opposed to the CSS class) | `APP-A02` | Actual pixel colour is not observable through `Phoenix.LiveViewTest`; only the class attribute is |
+| Click-away dismissal of the user menu | `NAV-A08` | `phx-click-away` reaches the server via a real DOM click outside the element; no `LiveViewTest` helper drives a "click elsewhere" |
 
 For these, assert the *wiring* (hook attached, `phx-window-keydown` bound,
 `on_cancel` set) — never tag the test `action:` for that ID, since the test
-does not prove the requirement's `Then` clauses. `SEC-A04`, `DEX-A11`, and
-`APP-A02` are partial cases: each `Then` *is* proven through a mechanism
-`Phoenix.LiveViewTest` can drive — `SEC-A04` and `DEX-A11` through their
-respective modal's Close/Cancel button (a plain event `render_click/1` can
-push), `APP-A02` through the per-status CSS class
+does not prove the requirement's `Then` clauses. `SEC-A04`, `DEX-A11`,
+`APP-A02`, and `NAV-A08` are partial cases: each `Then` *is* proven through a
+mechanism `Phoenix.LiveViewTest` can drive — `SEC-A04` and `DEX-A11` through
+their respective modal's Close/Cancel button (a plain event `render_click/1`
+can push), `APP-A02` through the per-status CSS class
 (`has_element?(view, "#job-...-status.badge-success")`, asserted pairwise
-distinct across `running`/`pending`/`dead`) — so the tag is claimed there and
-only the un-drivable remainder (backdrop/Escape dismissal; the rendered
-pixel) stays an open gap. See
+distinct across `running`/`pending`/`dead`), `NAV-A08` through
+`render_click/2` (open/close, email, Logout) and `render_keydown/3` (Escape,
+via the real `"close-user-menu"` event `phx-window-keydown` pushes) — so the
+tag is claimed there and only the un-drivable remainder (backdrop/Escape
+dismissal for the earlier three; the true click-away for `NAV-A08`; the
+rendered pixel) stays an open gap. See
 `docs/adr/0012-secret-reveal-modal-and-icon-only-copy-affordances.md` and
 `docs/adr/0026-applications-row-formatters-and-status-colour-test-gap.md`
 respectively.
