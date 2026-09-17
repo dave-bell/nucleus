@@ -639,7 +639,16 @@ defmodule NucleusWeb.SecretsLive do
       <div :if={@environment_status == :ok}>
         <div class="flex items-center justify-between gap-4 pb-4">
           <h1 class="text-lg font-semibold">Secrets</h1>
-          <.button id="secrets-create-button" phx-click="new_secret">New secret</.button>
+          <div class="flex items-center gap-2">
+            <.button id="secrets-create-button" phx-click="new_secret">New secret</.button>
+            <.button
+              id="secrets-back-button"
+              navigate={~p"/environments/#{@environment}"}
+              variant="ghost"
+            >
+              Back to environment
+            </.button>
+          </div>
         </div>
 
         <.empty_state
