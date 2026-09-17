@@ -279,7 +279,7 @@ defmodule Nucleus.SecretsTest do
       refute record.resource == "DATABASE_URL"
     end
 
-    @tag action: "SEC-A03"
+    @tag action: "AUD-A02"
     test "the AUD-A02 guard — the value appears in no audit record" do
       Secrets.reveal("prod", "DATABASE_URL", @scope)
 
@@ -358,7 +358,7 @@ defmodule Nucleus.SecretsTest do
       assert length(events) == 1
     end
 
-    @tag action: "SEC-A06"
+    @tag action: "AUD-A02"
     test "the AUD-A02 guard — refute_audit_contains/1 for both the old and the new value" do
       Secrets.update("prod", "DATABASE_URL", "new-value", @scope)
 
@@ -532,7 +532,7 @@ defmodule Nucleus.SecretsTest do
       assert_audit_event(:secret_created, user: "auser")
     end
 
-    @tag action: "SEC-A09"
+    @tag action: "AUD-A02"
     test "the AUD-A02 guard — the value appears in no audit record" do
       Secrets.create("prod", "NEW_KEY", "new-secret-value", @scope)
 

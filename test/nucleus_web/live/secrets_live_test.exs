@@ -1187,7 +1187,7 @@ defmodule NucleusWeb.SecretsLiveTest do
       assert has_element?(view, "#flash-error")
     end
 
-    @tag action: "SEC-A05"
+    @tag action: "AUD-A02"
     test "a forged phx-value-key containing '..' produces an error and no crash", %{conn: conn} do
       assert {:ok, view, _html} = live_secrets(conn, "prod")
 

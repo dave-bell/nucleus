@@ -468,7 +468,7 @@ defmodule Nucleus.M2MTest do
       assert_no_audit_event(:m2m_client_viewed)
     end
 
-    @tag action: "M2M-A03"
+    @tag action: "AUD-A02"
     test "the seeded client's secret never appears in the audit trail" do
       assert {:ok, _detail} = M2M.view(@valid_client_id, @scope)
       refute_audit_contains(@valid_client_secret)
@@ -518,13 +518,13 @@ defmodule Nucleus.M2MTest do
       assert audit_events() |> Enum.filter(&(&1.event == :m2m_client_created)) |> length() == 1
     end
 
-    @tag action: "M2M-A08"
+    @tag action: "AUD-A02"
     test "the actual generated secret never appears in the audit trail" do
       assert {:ok, credentials} = M2M.create("OPS-5005", "audit-check", 15, @scope)
       refute_audit_contains(credentials.client_secret)
     end
 
-    @tag action: "M2M-A08"
+    @tag action: "AUD-A02"
     test "the secret appears in no captured log output, on the success path and on each failure path" do
       log =
         capture_log(fn ->
