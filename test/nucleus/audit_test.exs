@@ -63,6 +63,7 @@ defmodule Nucleus.AuditTest do
     end
 
     @tag :unit
+    @tag action: "AUD-A02"
     test "a value: key raises — the explicit AUD-A02 guard" do
       error =
         assert_raise ArgumentError, fn ->
@@ -149,6 +150,7 @@ defmodule Nucleus.AuditTest do
 
   describe "emit/2 sink failure (AUD-A07)" do
     @tag :unit
+    @tag action: "AUD-A07"
     test "a raising sink propagates rather than being swallowed" do
       original = Application.fetch_env!(:nucleus, Audit)
       Application.put_env(:nucleus, Audit, Keyword.put(original, :sink, Sink.Raising))
@@ -156,6 +158,26 @@ defmodule Nucleus.AuditTest do
 
       assert_raise RuntimeError, "boom: the sink is down", fn ->
         Audit.emit(:secret_viewed, tenant: "acme", resource: "x")
+      end
+    end
+  end
+
+  describe "catalogue-drift guard" do
+    @tag :unit
+    @tag action: "AUD-A02"
+    test "no event's catalogue allows a value-bearing field name" do
+      value_bearing = ~w(value secret plaintext new_value password token)a
+
+      for event <- Nucleus.Audit.Event.events() do
+        spec = Nucleus.Audit.Event.spec(event)
+
+        for field <- value_bearing do
+          refute field in spec.allowed,
+                 "#{event} allows top-level :#{field}"
+
+          refute field in spec.details_allowed,
+                 "#{event} allows details.#{field}"
+        end
       end
     end
   end

@@ -214,7 +214,7 @@ defmodule Nucleus.NomadVarsTest do
       assert updated.items["destination_bucket"] == items["destination_bucket"]
     end
 
-    @tag action: "DEX-A05"
+    @tag action: "AUD-A02"
     test "emits nomad_var_updated on success, with path and key in details and no value anywhere" do
       {:ok, %VariableSet{items: items, modify_index: modify_index}} = NomadVars.fetch(@scope)
 
@@ -235,6 +235,23 @@ defmodule Nucleus.NomadVarsTest do
 
       refute Map.has_key?(event.details, :value)
       refute Map.has_key?(event, :value)
+    end
+
+    @tag action: "AUD-A02"
+    test "the AUD-A02 guard — the written value appears in no audit record" do
+      {:ok, %VariableSet{items: items, modify_index: modify_index}} = NomadVars.fetch(@scope)
+      distinctive_value = "this-exact-value-#{System.unique_integer()}"
+
+      assert {:ok, %VariableSet{}} =
+               NomadVars.update(
+                 "description",
+                 distinctive_value,
+                 items,
+                 modify_index,
+                 @scope
+               )
+
+      refute_audit_contains(distinctive_value)
     end
   end
 
@@ -386,6 +403,20 @@ defmodule Nucleus.NomadVarsTest do
 
       assert Map.has_key?(event.details, :added)
       assert Map.has_key?(event.details, :removed)
+    end
+
+    @tag action: "AUD-A02"
+    test "the AUD-A02 guard — no key values appear in audit records" do
+      {:ok, %VariableSet{items: items, modify_index: modify_index}} = NomadVars.fetch(@scope)
+      # Use the existing keys in the fixture but verify neither value appears
+
+      assert {:ok, _updated} =
+               NomadVars.update_env_names(["prod", "qa"], items, modify_index, @scope)
+
+      # Verify that environment names (which are keys being added/removed) are in the
+      # details as expected, but no values from the items map appear in the audit trail
+      refute_audit_contains(items["description"])
+      refute_audit_contains(items["destination_bucket"])
     end
   end
 

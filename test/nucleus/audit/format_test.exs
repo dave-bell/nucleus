@@ -65,6 +65,7 @@ defmodule Nucleus.Audit.FormatTest do
 
   describe "the AUD-A05 guard" do
     @tag :unit
+    @tag action: "AUD-A05"
     test "the same event produces the same field set under both formats" do
       full =
         event(%{
@@ -100,6 +101,7 @@ defmodule Nucleus.Audit.FormatTest do
     end
 
     @tag :unit
+    @tag action: "AUD-A05"
     test "holds for a record with nil optional fields, as a real secret_viewed emits" do
       # secret_viewed never carries reason, source_ip, or details — nil
       # top-level fields are exactly the case that must not vanish from one

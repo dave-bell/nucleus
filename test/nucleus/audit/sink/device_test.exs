@@ -23,6 +23,7 @@ defmodule Nucleus.Audit.Sink.DeviceTest do
     end
 
     @tag :unit
+    @tag action: "AUD-A06"
     test ":stderr default is distinct from the Logger device (AUD-A06)" do
       configured = Application.fetch_env!(:nucleus, Nucleus.Audit) |> Keyword.get(:device)
 
