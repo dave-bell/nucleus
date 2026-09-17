@@ -88,10 +88,11 @@ would have reopened exactly this hole, since nothing would then stop a
 `value` key from hiding inside it. The per-event required/allowed field
 lists live in `Nucleus.Audit.Event.spec/1`.
 
-The `@type event` union covers all eleven catalogued events, so a future
+The `@type event` union covers all ten catalogued events, so a future
 feature does not invent its own spelling — only the three Secrets events are
-wired to a call site by this ticket. `auth_failure` and the Nomad Variable
-and M2M events are defined but unused until EN-6 and their owning features.
+wired to a call site by this ticket. `auth_failure` is defined but unused
+until EN-6; the Nomad Variable and M2M events are wired as part of their
+owning feature tickets.
 
 ### Format is decided strictly after recording, never before
 
