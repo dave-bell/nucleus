@@ -429,7 +429,7 @@ defmodule Nucleus.M2MTest do
       refute Map.has_key?(detail, :client_secret)
     end
 
-    @tag action: "M2M-A03"
+    @tag action: "AUD-A01"
     test "emits exactly one m2m_client_viewed, with client_name in details and the tenant set" do
       assert {:ok, detail} = M2M.view(@valid_client_id, @scope)
 
@@ -506,7 +506,7 @@ defmodule Nucleus.M2MTest do
       assert {:error, %Error{kind: :invalid}} = M2M.create("OPS-5003", "Not Valid!", 15, @scope)
     end
 
-    @tag action: "M2M-A08"
+    @tag action: "AUD-A01"
     test "emits exactly one m2m_client_created, with client_name and ticket_id in details" do
       assert {:ok, credentials} = M2M.create("OPS-5004", "reporting", 15, @scope)
 
@@ -670,7 +670,7 @@ defmodule Nucleus.M2MTest do
       assert after_rotation.created_date == before_rotation.created_date
     end
 
-    @tag action: "M2M-A11"
+    @tag action: "AUD-A01"
     test "emits exactly one m2m_secret_rotated, with client_name in details and the tenant set" do
       assert {:ok, credentials} = M2M.create("OPS-7007", "rotate-check", 15, @scope)
       assert {:ok, _rotated} = M2M.rotate(credentials.client_id, @scope)

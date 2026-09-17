@@ -253,7 +253,7 @@ defmodule Nucleus.SecretsTest do
       assert secret.value == @db_url_value
     end
 
-    @tag action: "SEC-A03"
+    @tag action: "AUD-A01"
     test "emits exactly one secret_viewed with resource equal to the full path" do
       assert {:ok, secret} = Secrets.reveal("prod", "DATABASE_URL", @scope)
 
@@ -348,7 +348,7 @@ defmodule Nucleus.SecretsTest do
                Secrets.reveal("prod", "DATABASE_URL", @scope)
     end
 
-    @tag action: "SEC-A06"
+    @tag action: "AUD-A01"
     test "emits exactly one secret_updated with the full path as resource" do
       assert {:ok, ref} = Secrets.update("prod", "DATABASE_URL", "new-value", @scope)
 
@@ -504,7 +504,7 @@ defmodule Nucleus.SecretsTest do
       refute Map.has_key?(ref, :value)
     end
 
-    @tag action: "SEC-A09"
+    @tag action: "AUD-A01"
     test "emits exactly one secret_created with the full path as resource" do
       assert {:ok, ref} = Secrets.create("prod", "NEW_KEY", "new-secret-value", @scope)
 

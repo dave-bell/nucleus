@@ -954,7 +954,7 @@ defmodule NucleusWeb.SecretsLiveTest do
       refute html =~ jwt_value
     end
 
-    @tag action: "SEC-A03"
+    @tag action: "AUD-A01"
     test "emits a secret_viewed audit event", %{conn: conn} do
       assert {:ok, view, _html} = live_secrets(conn, "prod")
       row_id = row_id(view, "DATABASE_URL")
@@ -1003,7 +1003,7 @@ defmodule NucleusWeb.SecretsLiveTest do
       assert has_element?(view, "#secrets-table")
     end
 
-    @tag action: "SEC-A04"
+    @tag action: "AUD-A01"
     test "hiding emits no audit event", %{conn: conn} do
       assert {:ok, view, _html} = live_secrets(conn, "prod")
       row_id = row_id(view, "DATABASE_URL")

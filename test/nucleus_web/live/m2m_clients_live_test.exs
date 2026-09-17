@@ -1252,7 +1252,7 @@ defmodule NucleusWeb.M2MClientsLiveTest do
       end
     end
 
-    @tag action: "M2M-A03"
+    @tag action: "AUD-A01"
     test "one m2m_client_viewed per open; a subsequent unrelated event on the same view emits no second one",
          %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/m2m/clients/#{@valid_client_id}")
