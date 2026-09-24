@@ -5,35 +5,41 @@ defmodule Nucleus.NomadVars.EnvNamesTest do
 
   describe "diff/2 — the add/remove delta, DEX-A10/AUD-A04" do
     @tag :unit
+    @tag action: "AUD-A04"
     test "added-only: everything in new not in current" do
       assert EnvNames.diff(["prod"], ["prod", "staging"]) ==
                %{added: ["staging"], removed: []}
     end
 
     @tag :unit
+    @tag action: "AUD-A04"
     test "removed-only: everything in current not in new" do
       assert EnvNames.diff(["prod", "staging"], ["prod"]) ==
                %{added: [], removed: ["staging"]}
     end
 
     @tag :unit
+    @tag action: "AUD-A04"
     test "both added and removed at once" do
       assert EnvNames.diff(["prod", "staging"], ["prod", "qa"]) ==
                %{added: ["qa"], removed: ["staging"]}
     end
 
     @tag :unit
+    @tag action: "AUD-A04"
     test "identical lists — neither added nor removed, still a fully-shaped delta" do
       assert EnvNames.diff(["prod", "staging"], ["prod", "staging"]) ==
                %{added: [], removed: []}
     end
 
     @tag :unit
+    @tag action: "AUD-A04"
     test "both empty" do
       assert EnvNames.diff([], []) == %{added: [], removed: []}
     end
 
     @tag :unit
+    @tag action: "AUD-A04"
     test "both sides are sorted, regardless of input order — deterministic audit output" do
       assert EnvNames.diff(["staging", "prod"], ["qa", "dev"]) ==
                %{added: ["dev", "qa"], removed: ["prod", "staging"]}

@@ -573,7 +573,7 @@ defmodule NucleusWeb.DataExportLiveTest do
       assert has_element?(view, "#flash-info")
     end
 
-    @tag action: "DEX-A04"
+    @tag action: "AUD-A01"
     test "the underlying store reflects the new value, and the audit event carries no value", %{
       conn: conn
     } do
@@ -976,7 +976,8 @@ defmodule NucleusWeb.DataExportLiveTest do
       assert has_element?(view, "#var-env_names-value", "staging")
     end
 
-    @tag action: "DEX-A10"
+    @tag action: "AUD-A01"
+    @tag action: "AUD-A04"
     test "emits env_names_updated with the added/removed delta, and no nomad_var_updated",
          %{conn: conn} do
       {:ok, view, _html} = live_data_export(conn)
@@ -1034,7 +1035,8 @@ defmodule NucleusWeb.DataExportLiveTest do
       assert has_element?(view, "#var-env_names-value", "dev")
     end
 
-    @tag action: "DEX-A10"
+    @tag action: "AUD-A01"
+    @tag action: "AUD-A04"
     test "deselecting every environment and saving succeeds — an empty selection is valid, not rejected",
          %{conn: conn} do
       {:ok, view, _html} = live_data_export(conn)

@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/notes | Priority: high | Version: 1.32 | Updated: 2026-09-15 -->
+<!-- Context: project-intelligence/notes | Priority: high | Version: 1.33 | Updated: 2026-09-17 -->
 
 # Living Notes
 
@@ -108,6 +108,19 @@ deploys it.
 ### Code Patterns Worth Preserving
 - `@tag action: "SEC-A03"` on tests, enabling `mix test --only action:SEC-A03` — see
   `business-tech-bridge.md`.
+- `@tag action:` uses one map key, so ExUnit keeps only the *last* value when a test needs to
+  claim more than one action ID — confirmed empirically (a stacked pair resolves to whichever
+  tag is written last; `mix test --only action:<earlier one>` selects nothing for that test,
+  while `mix nucleus.trace`'s text scan still credits both, since it doesn't run ExUnit at all).
+  Two survival strategies, both used across `AUD-S1`/`AUD-S2`: (1) when a test already claims ID
+  A and a new ticket also proves ID B, swap the tag to B only after confirming a sibling test in
+  the same `describe` block still independently claims A — never leave A orphaned; (2) when a
+  single test is the best proof for two genuinely new IDs at once (e.g. an `env_names_updated`
+  assertion proving both `AUD-A01` attribution and `AUD-A04`'s delta), stack both tags and accept
+  that only the last-written one is `--only`-selectable, provided the first ID has independent
+  coverage elsewhere (it should, from strategy 1's own tests) — do not invent a list-valued
+  `@tag action: [...]`; `mix nucleus.trace`'s regex requires a quoted string immediately after
+  `action:` and won't credit list elements past the first.
 - For a `Local` boundary implementation whose write contract has a decision to make against the
   *current* value (check-and-set, or anything else that isn't an unconditional replace), do the
   read, the decision, and the write all inside the callback passed to

@@ -140,7 +140,7 @@ defmodule Nucleus.NomadVarsTest do
       assert is_integer(var_set.modify_index)
     end
 
-    @tag action: "DEX-A03"
+    @tag action: "AUD-A01"
     test "emits exactly one nomad_vars_listed, with the path in details and the tenant set" do
       assert {:ok, var_set} = NomadVars.list(@scope)
 
@@ -214,7 +214,7 @@ defmodule Nucleus.NomadVarsTest do
       assert updated.items["destination_bucket"] == items["destination_bucket"]
     end
 
-    @tag action: "AUD-A02"
+    @tag action: "AUD-A01"
     test "emits nomad_var_updated on success, with path and key in details and no value anywhere" do
       {:ok, %VariableSet{items: items, modify_index: modify_index}} = NomadVars.fetch(@scope)
 
@@ -343,7 +343,8 @@ defmodule Nucleus.NomadVarsTest do
       assert updated.items["destination_bucket"] == items["destination_bucket"]
     end
 
-    @tag action: "DEX-A10"
+    @tag action: "AUD-A01"
+    @tag action: "AUD-A04"
     test "emits env_names_updated with the correct added/removed lists, and no nomad_var_updated alongside it" do
       {:ok, %VariableSet{items: items, modify_index: modify_index}} = NomadVars.fetch(@scope)
 
@@ -358,7 +359,8 @@ defmodule Nucleus.NomadVarsTest do
       assert_no_audit_event(:nomad_var_updated)
     end
 
-    @tag action: "DEX-A10"
+    @tag action: "AUD-A01"
+    @tag action: "AUD-A04"
     test "a save where nothing changed still succeeds and emits added: [], removed: [] — an explicit no-op, not an error" do
       {:ok, %VariableSet{items: items, modify_index: modify_index}} = NomadVars.fetch(@scope)
 
@@ -373,7 +375,8 @@ defmodule Nucleus.NomadVarsTest do
       )
     end
 
-    @tag action: "DEX-A10"
+    @tag action: "AUD-A01"
+    @tag action: "AUD-A04"
     test "deselecting every environment writes env_names as \"\" and succeeds — an empty selection is valid, not an error" do
       {:ok, %VariableSet{items: items, modify_index: modify_index}} = NomadVars.fetch(@scope)
 
@@ -388,7 +391,8 @@ defmodule Nucleus.NomadVarsTest do
       )
     end
 
-    @tag action: "DEX-A10"
+    @tag action: "AUD-A01"
+    @tag action: "AUD-A04"
     test "the added/removed details are always present even when one side of the delta is empty" do
       {:ok, %VariableSet{items: items, modify_index: modify_index}} = NomadVars.fetch(@scope)
 

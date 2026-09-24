@@ -74,6 +74,7 @@ defmodule Nucleus.AuditTest do
     end
 
     @tag :unit
+    @tag action: "AUD-A01"
     test "a caller-supplied timestamp is rejected; the emitted timestamp is UTC and current" do
       error =
         assert_raise ArgumentError, fn ->
@@ -178,6 +179,65 @@ defmodule Nucleus.AuditTest do
           refute field in spec.details_allowed,
                  "#{event} allows details.#{field}"
         end
+      end
+    end
+  end
+
+  describe "AUD-A01 exhaustiveness — every catalogued event" do
+    @tag :unit
+    @tag action: "AUD-A01"
+    test "every event's spec requires :tenant plus an identifying field" do
+      for event <- Nucleus.Audit.Event.events() do
+        spec = Nucleus.Audit.Event.spec(event)
+        assert :tenant in spec.required, "#{event} does not require :tenant"
+
+        identifying? =
+          :resource in spec.required or
+            Enum.any?(spec.details_required, &(&1 in [:path, :key, :client_name]))
+
+        assert identifying?, "#{event} has no required identifying field"
+      end
+    end
+
+    # The maintained call-site list AUD-A01 requires: every catalogued event
+    # must actually be emitted somewhere, not merely specced. Each entry is
+    # the {module, function, arity} that calls `Audit.emit/2` for that event.
+    # `auth_failure` is the one named exception — AUD-S4, blocked on
+    # authentication (docs/adr/0005-deferred-authentication.md). Adding a new
+    # catalogued event with no entry here fails this test loudly, forcing a
+    # decision instead of silently passing.
+    @wired_call_sites %{
+      nomad_vars_listed: {Nucleus.NomadVars, :list, 1},
+      nomad_var_updated: {Nucleus.NomadVars, :update, 5},
+      env_names_updated: {Nucleus.NomadVars, :update_env_names, 4},
+      secret_created: {Nucleus.Secrets, :create, 4},
+      secret_viewed: {Nucleus.Secrets, :reveal, 3},
+      secret_updated: {Nucleus.Secrets, :update, 4},
+      m2m_client_created: {Nucleus.M2M, :create, 4},
+      m2m_client_viewed: {Nucleus.M2M, :view, 2},
+      m2m_secret_rotated: {Nucleus.M2M, :rotate, 2}
+    }
+    @known_unwired [:auth_failure]
+
+    @tag :unit
+    @tag action: "AUD-A01"
+    test "every catalogued event except auth_failure has a live call site" do
+      catalogued = MapSet.new(Nucleus.Audit.Event.events())
+      wired = MapSet.new(Map.keys(@wired_call_sites))
+      unwired = MapSet.new(@known_unwired)
+
+      assert MapSet.union(wired, unwired) == catalogued,
+             "catalogue drift: every event must be either wired (in @wired_call_sites) " <>
+               "or explicitly named unwired (in @known_unwired)"
+
+      assert MapSet.disjoint?(wired, unwired),
+             "an event cannot be both wired and named as a known exemption"
+
+      for {event, {module, function, arity}} <- @wired_call_sites do
+        Code.ensure_loaded!(module)
+
+        assert function_exported?(module, function, arity),
+               "#{event}'s claimed call site #{inspect(module)}.#{function}/#{arity} does not exist"
       end
     end
   end
