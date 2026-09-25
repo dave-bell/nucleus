@@ -109,9 +109,10 @@ config :nucleus, Nucleus.Scope, tenant_namespace: "local"
 # Compliance audit trail (SOC2 CC7.2 / HIPAA 164.312(b)) — bypasses Logger and
 # writes synchronously to a dedicated sink, distinct from application logs
 # (AUD-A06/A07). See lib/nucleus/audit.ex and
-# docs/adr/0004-audit-emission.md. dev overrides format to :text; test
-# overrides sink to Nucleus.Audit.Sink.Test; runtime.exs reads AUDIT_FORMAT
-# and AUDIT_DEVICE.
+# docs/adr/0004-audit-emission.md and docs/adr/0036-structured-prod-logging.md.
+# dev overrides format to :text; test overrides sink to
+# Nucleus.Audit.Sink.Test; runtime.exs reads AUDIT_DEVICE (format has no
+# runtime override — it follows the build environment).
 config :nucleus, Nucleus.Audit,
   sink: Nucleus.Audit.Sink.Device,
   format: :json,

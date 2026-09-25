@@ -174,21 +174,11 @@ if Application.get_env(:nucleus, :backends, [])[:nomad_jobs] ==
     token: nomad_token
 end
 
-# Audit sink overrides. AUDIT_FORMAT is "json" or "text" (see
-# Nucleus.Audit.Format); anything else raises at boot rather than silently
-# falling back — a typo here should not silently change what a compliance
-# pipeline receives. AUDIT_DEVICE is "stdout", "stderr", or a file path
-# opened once at boot in append mode.
-if audit_format = System.get_env("AUDIT_FORMAT") do
-  format =
-    case Nucleus.Audit.Format.cast(audit_format) do
-      {:ok, format} -> format
-      :error -> raise "AUDIT_FORMAT must be \"json\" or \"text\", got: #{inspect(audit_format)}"
-    end
-
-  config :nucleus, Nucleus.Audit, format: format
-end
-
+# Audit sink device override. AUDIT_DEVICE is "stdout", "stderr", or a file
+# path opened once at boot in append mode. There is no runtime override for
+# audit's format — it follows the build environment (:json in prod, :text in
+# dev) the same way application logs do; see
+# docs/adr/0036-structured-prod-logging.md.
 if audit_device = System.get_env("AUDIT_DEVICE") do
   device =
     case Nucleus.Audit.Sink.Device.cast_device_name(audit_device) do
@@ -205,8 +195,9 @@ end
 # unconditionally — Nucleus.Scope.verify_provider_at_boot!/0 calls it during
 # Nucleus.Application.start/2, so a misread flag fails the boot rather than
 # silently keeping the disabled provider. Anything else raises here, at boot,
-# rather than being silently treated as "false" — same reasoning as
-# AUDIT_FORMAT above. See docs/adr/0005-deferred-authentication.md.
+# rather than being silently treated as "false" — same reasoning as the
+# boot-time validation elsewhere in this file. See
+# docs/adr/0005-deferred-authentication.md.
 case System.get_env("AUTH_ENABLED") do
   nil ->
     :ok
