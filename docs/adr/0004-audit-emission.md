@@ -212,3 +212,5 @@ available on the socket after the initial connect; capturing it belongs to
   `Nucleus.Audit.Sink.Test`
 - SEC-S4/S5/S6 — wire the three Secrets events at their call sites; EN-6 —
   auth, `auth_failure`, and LiveView source-IP capture
+- `docs/runbook/audit-retention-test.md` — the operator checklist (AUD-S3)
+  that translates this ADR's "Operational dependency" section into action
