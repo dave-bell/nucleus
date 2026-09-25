@@ -72,13 +72,15 @@ compromise of the application it's auditing.
 
 ## 5. Verification checklist
 
-Run this after any change to `AUDIT_FORMAT`, `AUDIT_DEVICE`, or the log
-pipeline configuration, and periodically as part of routine compliance
+Run this after any change to `AUDIT_DEVICE` or the log pipeline
+configuration, and periodically as part of routine compliance
 verification:
 
-- [ ] `AUDIT_FORMAT` and `AUDIT_DEVICE` are set as intended for this
-      environment (unset `AUDIT_FORMAT` defaults to `json`; unset
-      `AUDIT_DEVICE` defaults to `:stderr`).
+- [ ] `AUDIT_DEVICE` is set as intended for this environment (unset
+      defaults to `:stderr`).
+- [ ] In production, audit output is structured JSON (audit's format has no
+      runtime override — it follows the build environment, `:json` in prod,
+      `:text` in dev — see `docs/adr/0036-structured-prod-logging.md`).
 - [ ] The configured device (`:stderr` unless overridden) is captured by the
       deployment's log pipeline as a stream **distinct from `:stdout`** —
       confirm this by inspecting the log pipeline's routing configuration,
@@ -94,6 +96,8 @@ verification:
 
 - `docs/adr/0004-audit-emission.md` — "Operational dependency" section, the
   source this runbook translates into operator action
+- `docs/adr/0036-structured-prod-logging.md` — why audit format follows the
+  build environment rather than a runtime variable
 - `docs/adr/0001-no-local-datastore.md` — the stateless constraint that
   makes retention the deployment's responsibility, not Nucleus's
 - `docs/requirements/Audit-and-Compliance.md` — `AUD-A06`'s binding text and
