@@ -109,8 +109,8 @@ defmodule Nucleus.Audit.Event do
     m2m_client_created: %{
       allowed: [:user, :tenant, :details],
       required: [:tenant],
-      details_allowed: [:client_name, :ticket_id],
-      details_required: [:client_name, :ticket_id]
+      details_allowed: [:client_name, :ticket_id, :token_validity_minutes],
+      details_required: [:client_name, :ticket_id, :token_validity_minutes]
     },
     m2m_secret_rotated: %{
       allowed: [:user, :tenant, :details],

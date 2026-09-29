@@ -147,6 +147,20 @@ defmodule Nucleus.AuditTest do
       assert error.message =~ "missing required field(s)"
       assert error.message =~ ":path"
     end
+
+    @tag :unit
+    test "m2m_client_created without token_validity_minutes raises — it is required, not optional" do
+      error =
+        assert_raise ArgumentError, fn ->
+          Audit.emit(:m2m_client_created,
+            tenant: "acme",
+            details: %{client_name: "svc-billing", ticket_id: "OPS-1"}
+          )
+        end
+
+      assert error.message =~ "missing required field(s)"
+      assert error.message =~ ":token_validity_minutes"
+    end
   end
 
   describe "emit/2 sink failure (AUD-A07)" do
