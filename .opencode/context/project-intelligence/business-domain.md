@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/business | Priority: high | Version: 1.1 | Updated: 2026-08-14 -->
+<!-- Context: project-intelligence/business | Priority: high | Version: 1.2 | Updated: 2026-09-29 -->
 
 # Business Domain
 
@@ -67,7 +67,7 @@ These five principles are binding constraints. Product/safety constraints are li
 | **Read + update only** | Except for M2M client creation and secret creation, Nucleus never creates or deletes configuration. Irreversible operations are out of scope. | This file |
 | **Stateless** | No database of its own. Every displayed value is read live from a backing system. | `technical-domain.md` |
 | **Pluggable backends** | Backing systems are reached through swappable interfaces. | `technical-domain.md` |
-| **Token passthrough** | The signed-in user's own access token is forwarded, so their permissions apply end-to-end. | `technical-domain.md` |
+| **Service credentials, not token passthrough** | Nucleus does not forward the signed-in user's session to any backing API — each backend is reached with its own service credential. Reworded by `AUTH-D1` (`docs/adr/0038`); see `technical-domain.md`. | `technical-domain.md` |
 
 ## Success Metrics
 

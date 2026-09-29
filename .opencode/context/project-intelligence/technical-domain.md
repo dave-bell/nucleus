@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/technical | Priority: high | Version: 1.1 | Updated: 2026-08-07 -->
+<!-- Context: project-intelligence/technical | Priority: high | Version: 1.2 | Updated: 2026-09-29 -->
 
 # Technical Domain
 
@@ -106,7 +106,7 @@ All three are external, tenant-owned, and read live — there is no local mirror
 |------------|--------|--------|
 | **Stateless — no own datastore** | Adopted from wiki Core model | Every value is fetched live per request. No cache of secrets or config survives a restart. **Structurally enforced since EN-1**: there is no repo, no `ecto_sql`, no database config. Adding one reopens `docs/adr/0001-no-local-datastore.md`. Audit records go to an external log pipeline (EN-5), never a local table. |
 | **Pluggable backends** | Adopted from wiki Core model | Nomad, Parameter Store, the tenant API, and Cognito must sit behind swappable interfaces so a backing system can be replaced without changing behaviour. **Scaffolding landed in EN-2**: `Nucleus.Backend` (registry + per-boundary `real`/`local` selection), `Nucleus.Backend.Error` (six neutral kinds, returned never raised), `Nucleus.Backend.Faults` (latency/error injection). Every behaviour declares `health_check/0`. Auth is deliberately *not* swappable. See `docs/adr/0002-backend-adapter-boundaries.md`. |
-| **Token passthrough** | Adopted from wiki Core model | Nucleus holds no authorisation model of its own for backing APIs; it forwards the signed-in user's access token. **Non-trivial in LiveView** — the token must be held against a long-lived stateful socket and mid-session expiry handled. See `living-notes.md` and requirement `SEC-A18`. |
+| **Service credentials, not token passthrough** | Adopted from wiki Core model, reworded by `AUTH-D1` (`docs/adr/0038`) | Nucleus holds no authorisation model of its own for backing APIs, but it does not forward the signed-in user's session either — no access token is ever obtained or retained past the sign-in callback. Every backend is reached with its own service credential instead: Parameter Store already does this via an assumed AWS role (`docs/adr/0002-backend-adapter-boundaries.md`); the Tenant API's credential type is `EN-13`'s open question. |
 | **Fail closed on validation** | Requirements (`SEC-A15`–`SEC-A17`) | Environment names are validated against the tenant's backing API before any path is constructed. If validation is unavailable, requests are rejected, never passed through unvalidated. |
 | **Single tenant per deployment** | Business constraint | Namespace is deployment configuration, not runtime state. |
 | **Desktop only** | Business constraint | No responsive/mobile layout work required. |
@@ -151,4 +151,4 @@ Monitoring: LiveDashboard at /dev/dashboard (dev only, unauthenticated — must 
 - `business-domain.md` - Why this technical foundation exists
 - `business-tech-bridge.md` - Requirement ID → module → test mapping
 - `decisions-log.md` - Decision history
-- `living-notes.md` - Token passthrough risk, open questions
+- `living-notes.md` - Open questions, and the Archive for resolved ones (including token passthrough, `AUTH-D1`)
