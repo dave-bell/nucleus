@@ -29,24 +29,6 @@ defmodule Nucleus.Audit.Format do
   def encode(%Event{} = event, :json), do: encode_json(event)
   def encode(%Event{} = event, :text), do: encode_text(event)
 
-  @doc """
-  Casts an `AUDIT_FORMAT` value (`"json"` or `"text"`) to a `format()`.
-
-  Returns `:error` for anything else so `config/runtime.exs` can raise with
-  the offending value rather than silently falling back to a default — a
-  typo here should not silently change what a compliance pipeline receives.
-
-      iex> Nucleus.Audit.Format.cast("json")
-      {:ok, :json}
-
-      iex> Nucleus.Audit.Format.cast("bogus")
-      :error
-  """
-  @spec cast(String.t()) :: {:ok, format()} | :error
-  def cast("json"), do: {:ok, :json}
-  def cast("text"), do: {:ok, :text}
-  def cast(_other), do: :error
-
   defp encode_json(event) do
     map = %{
       event: Atom.to_string(event.event),

@@ -28,5 +28,13 @@ config :swoosh, local: false
 # Do not print debug messages in production
 config :logger, level: :info
 
+# Structured JSON application logs in production only — dev and test keep the
+# default plain-text formatter (see config/dev.exs). Not a runtime toggle: the
+# format follows the build environment, matching Nucleus.Audit's approach
+# (see docs/adr/0036-structured-prod-logging.md). :request_id metadata carries
+# the correlation id set by Plug.RequestId across the request/log boundary.
+config :logger, :default_handler,
+  formatter: {LoggerJSON.Formatters.Basic, metadata: [:request_id]}
+
 # Runtime production configuration, including reading
 # of environment variables, is done on config/runtime.exs.

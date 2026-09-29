@@ -132,18 +132,4 @@ defmodule Nucleus.Audit.FormatTest do
       assert json_keys == text_keys
     end
   end
-
-  describe "cast/1" do
-    @tag :unit
-    test "maps the AUDIT_FORMAT values to real formats" do
-      assert Format.cast("json") == {:ok, :json}
-      assert Format.cast("text") == {:ok, :text}
-    end
-
-    @tag :unit
-    test "returns :error for anything else" do
-      assert Format.cast("bogus") == :error
-      assert Format.cast("") == :error
-    end
-  end
 end
