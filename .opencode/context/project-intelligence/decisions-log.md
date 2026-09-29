@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.42 | Updated: 2026-09-25 -->
+<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.43 | Updated: 2026-09-28 -->
 
 # Decisions Log
 
@@ -61,6 +61,7 @@ job and the row should point rather than paraphrase.
 | 34 | Server-driven identity menu — `NucleusWeb.ShellHook` gains a second `attach_hook/4`, at `:handle_event` (third such use in this codebase), for `"toggle-user-menu"`/`"close-user-menu"`; `:user_menu_open?` is a plain socket assign, not `SidebarNavState`-backed, since the menu's transitions never involve `navigate`; `#user-menu-panel` becomes conditionally rendered (`:if`), closing `NAV-A08`'s previously-unprovable open/close gap — but DOM presence alone isn't visibility: daisyUI's `.dropdown` CSS separately gates `.dropdown-content` on `:focus-within`, unreliable after a `phx-click` round-trip (Safari never focuses a clicked `<button>`), so `#user-menu` also gets `dropdown-open` off the same assign, caught after the first pass shipped and passed its own `has_element?/2` tests; `phx-click-away`/`phx-window-keydown` bind to `#user-menu` (containing the trigger button), not `#user-menu-panel` alone — the sibling button otherwise counted as "away" from the panel, so a click on it while open pushed close-then-reopen for the same click, caught in review since `Phoenix.LiveViewTest` cannot reproduce one click dispatching two ordered pushes; the binding's presence, not just the container's mounting, stays conditional on `@user_menu_open?` to avoid pushing `close-user-menu` on every click on the page; `DELETE /logout` (`NucleusWeb.SessionController`) sits in the plain `:browser` pipeline, not `:assign_scope`, and only drops the session — no token to revoke under deferred auth | 2026-09-15 | Decided | `docs/adr/0034-server-driven-identity-menu-and-logout-controller.md` |
 | 35 | `<.button/1>` gains a `ghost` variant for navigation actions ("back", "manage"), reserving colour for mutation actions ("new") per #91; M2M's back-to-clients link and environments' manage-secrets link both move off bespoke `class` strings and onto it, now matching sibling buttons' default (non-`btn-sm`) size; no `size` attr added — deferred until a call site actually needs one | 2026-09-15 | Decided | `docs/adr/0035-button-ghost-variant-for-navigation-actions.md` |
 | 36 | Structured production logging — both `Logger` and `Nucleus.Audit` become JSON in production, selected by build environment (`MIX_ENV`), never a runtime variable; `AUDIT_FORMAT` and `Nucleus.Audit.Format.cast/1` removed outright, `logger_json`'s `LoggerJSON.Formatters.Basic` wired into `config/prod.exs` only, `AUDIT_DEVICE` unaffected; amends `0004`'s format-selection mechanism, not its per-event-after-recording decision | 2026-09-25 | Decided | `docs/adr/0036-structured-prod-logging.md` |
+| 37 | `m2m_client_created` keeps `token_validity_minutes`, widening the master catalogue (`Audit-and-Compliance.md`) and `event.ex`'s `details_allowed`/`details_required` to match the feature page, rather than trimming the feature page to match the (narrower) master catalogue as first recommended; recorded in minutes as entered, not Cognito's seconds; supersedes `0020`'s "Negative" note that left this exact drift as known debt | 2026-09-28 | Decided | `docs/adr/0037-m2m-client-created-token-validity-minutes-audit-field.md` |
 
 No **"re-platform" decision** (fresh start) and no **inherited ADRs** — the wiki's `ADR-0001`–
 `ADR-0007` are reference only; adopting one is a decision made on its own merits.
@@ -82,7 +83,7 @@ the ADR it points at stays findable.
 
 ## Onboarding Checklist
 
-- [ ] Read the Decision Index above; `adr/0001`–`0036` are binding
+- [ ] Read the Decision Index above; `adr/0001`–`0037` are binding
 - [ ] New formal ADRs belong in `docs/adr/`, with only an index row mirrored here — the wiki's
       ADR-0001–0007 are reference only, not adopted
 - [ ] Know which decisions are pending (see `living-notes.md`)
