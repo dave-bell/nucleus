@@ -24,7 +24,7 @@ defmodule Nucleus.AuditCaseTest do
   test "assert_audit_event/2 matches a subset of a details map" do
     Audit.emit(:m2m_client_created,
       tenant: "acme",
-      details: %{client_name: "svc-billing", ticket_id: "TICKET-1"}
+      details: %{client_name: "svc-billing", ticket_id: "TICKET-1", token_validity_minutes: 15}
     )
 
     assert_audit_event(:m2m_client_created, details: %{client_name: "svc-billing"})

@@ -139,10 +139,16 @@ defmodule Nucleus.M2M do
      the form; this function's own test proves `M2M-A17` through this call,
      not a second copy of the range check).
   6. On success only, `Audit.emit(:m2m_client_created, ...)` with `details:
-     %{client_name:, ticket_id:}` — exactly the keys
+     %{client_name:, ticket_id:, token_validity_minutes:}` — exactly the keys
      `Nucleus.Audit.Event`'s catalogue allowlists for this event
-     (`lib/nucleus/audit/event.ex`). `user` comes from
-     `Nucleus.Scope.audit_user/1`, matching every other emit in this module.
+     (`lib/nucleus/audit/event.ex`). `token_validity_minutes` is recorded in
+     minutes as entered — the value this function was called with, not
+     Cognito's `token_validity_seconds` — so the audit field matches its own
+     name; the client detail view (`M2M-A03`/`M2M-A16`) reads this back live
+     from Cognito, which is why the audit trail is the only lasting record
+     if a client is later changed or deleted directly in Cognito, bypassing
+     Nucleus. `user` comes from `Nucleus.Scope.audit_user/1`, matching every
+     other emit in this module.
 
   Returns the `Nucleus.M2M.ClientCredentials` struct — the only value in the
   system carrying a secret. It must travel no further than the caller's
@@ -166,7 +172,11 @@ defmodule Nucleus.M2M do
         Audit.emit(:m2m_client_created,
           user: Scope.audit_user(scope),
           tenant: scope.tenant,
-          details: %{client_name: client_name, ticket_id: ticket_id}
+          details: %{
+            client_name: client_name,
+            ticket_id: ticket_id,
+            token_validity_minutes: token_validity_minutes
+          }
         )
 
       {:ok, credentials}

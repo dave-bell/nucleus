@@ -507,12 +507,16 @@ defmodule Nucleus.M2MTest do
     end
 
     @tag action: "AUD-A01"
-    test "emits exactly one m2m_client_created, with client_name and ticket_id in details" do
+    test "emits exactly one m2m_client_created, with client_name, ticket_id, and token_validity_minutes in details" do
       assert {:ok, credentials} = M2M.create("OPS-5004", "reporting", 15, @scope)
 
       assert_audit_event(:m2m_client_created,
         tenant: "local",
-        details: %{client_name: credentials.client_name, ticket_id: "OPS-5004"}
+        details: %{
+          client_name: credentials.client_name,
+          ticket_id: "OPS-5004",
+          token_validity_minutes: 15
+        }
       )
 
       assert audit_events() |> Enum.filter(&(&1.event == :m2m_client_created)) |> length() == 1
