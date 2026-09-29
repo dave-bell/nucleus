@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.43 | Updated: 2026-09-28 -->
+<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.44 | Updated: 2026-09-29 -->
 
 # Decisions Log
 
@@ -62,6 +62,7 @@ job and the row should point rather than paraphrase.
 | 35 | `<.button/1>` gains a `ghost` variant for navigation actions ("back", "manage"), reserving colour for mutation actions ("new") per #91; M2M's back-to-clients link and environments' manage-secrets link both move off bespoke `class` strings and onto it, now matching sibling buttons' default (non-`btn-sm`) size; no `size` attr added — deferred until a call site actually needs one | 2026-09-15 | Decided | `docs/adr/0035-button-ghost-variant-for-navigation-actions.md` |
 | 36 | Structured production logging — both `Logger` and `Nucleus.Audit` become JSON in production, selected by build environment (`MIX_ENV`), never a runtime variable; `AUDIT_FORMAT` and `Nucleus.Audit.Format.cast/1` removed outright, `logger_json`'s `LoggerJSON.Formatters.Basic` wired into `config/prod.exs` only, `AUDIT_DEVICE` unaffected; amends `0004`'s format-selection mechanism, not its per-event-after-recording decision | 2026-09-25 | Decided | `docs/adr/0036-structured-prod-logging.md` |
 | 37 | `m2m_client_created` keeps `token_validity_minutes`, widening the master catalogue (`Audit-and-Compliance.md`) and `event.ex`'s `details_allowed`/`details_required` to match the feature page, rather than trimming the feature page to match the (narrower) master catalogue as first recommended; recorded in minutes as entered, not Cognito's seconds; supersedes `0020`'s "Negative" note that left this exact drift as known debt | 2026-09-28 | Decided | `docs/adr/0037-m2m-client-created-token-validity-minutes-audit-field.md` |
+| 38 | Session-based authentication, no token passthrough — Cognito Hosted UI + server-side callback writes a session cookie re-validated at request/mount granularity; two session timers replace silent refresh; `SEC-A18` reworded to Nucleus's own credential expiry, not the user's session; closes both `0005`'s deferred open questions | 2026-09-29 | Decided | `docs/adr/0038-session-based-authentication-no-token-passthrough.md` |
 
 No **"re-platform" decision** (fresh start) and no **inherited ADRs** — the wiki's `ADR-0001`–
 `ADR-0007` are reference only; adopting one is a decision made on its own merits.
@@ -83,7 +84,7 @@ the ADR it points at stays findable.
 
 ## Onboarding Checklist
 
-- [ ] Read the Decision Index above; `adr/0001`–`0037` are binding
+- [ ] Read the Decision Index above; `adr/0001`–`0038` are binding
 - [ ] New formal ADRs belong in `docs/adr/`, with only an index row mirrored here — the wiki's
       ADR-0001–0007 are reference only, not adopted
 - [ ] Know which decisions are pending (see `living-notes.md`)

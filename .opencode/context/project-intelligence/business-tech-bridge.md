@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.33 | Updated: 2026-09-15 -->
+<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.34 | Updated: 2026-09-29 -->
 
 # Business ↔ Tech Bridge
 
@@ -34,12 +34,12 @@ Then re-check the table below for new or renamed action IDs.
 
 ## Core Mapping
 
-**105 actions across 9 pages.** Action IDs are stable and never renumbered, so they are safe
+**104 actions across 9 pages.** Action IDs are stable and never renumbered, so they are safe
 to cite from test names and bug reports.
 
 | Requirement page | Action IDs | Count | Planned Phoenix surface | Planned test file |
 |------------------|-----------|-------|-------------------------|-------------------|
-| `Authentication-and-Access.md` | `AUTH-A01`–`A11` | 11 | Cognito Hosted UI redirect + session plug; `NucleusWeb.AuthController`, `on_mount` hook | `test/nucleus_web/auth_test.exs` |
+| `Authentication-and-Access.md` | `AUTH-A01`–`A14`, minus `A07`/`A11` | 12 | Cognito Hosted UI redirect + server-side callback; a session cookie re-validated by the `:assign_scope` plug and a halting LiveView mount hook; `Phoenix.Presence` for the active-sessions view | `test/nucleus_web/auth_test.exs` |
 | `Application-Shell-and-Navigation.md` | `NAV-A01`–`A10` | 10 | `NucleusWeb.Layouts` (app shell, header, sidebar) | `test/nucleus_web/live/shell_test.exs` |
 | `Applications.md` | `APP-A01`–`A08` | 8 | `NucleusWeb.ApplicationsLive` (read-only Nomad jobs) | `test/nucleus_web/live/applications_live_test.exs` |
 | `Environments.md` | `ENV-A01`–`A07` | 7 | `NucleusWeb.EnvironmentsLive` | `test/nucleus_web/live/environments_live_test.exs` |
@@ -47,7 +47,7 @@ to cite from test names and bug reports.
 | `Secrets.md` | `SEC-A01`–`A18` | 18 | `NucleusWeb.SecretsLive` + SSM Parameter Store client | `test/nucleus_web/live/secrets_live_test.exs` |
 | `M2M-Clients.md` | `M2M-A01`–`A18`, minus `A09` | 17 | `NucleusWeb.M2MClientsLive.Index` + `.Show` + Cognito client | `test/nucleus_web/live/m2m_clients_live_test.exs` |
 | `Audit-and-Compliance.md` | `AUD-A01`–`A07` | 7 | `Nucleus.Audit` (emit-only; no local store — stateless constraint) | `test/nucleus/audit_test.exs` |
-| `Platform-Operations.md` | `OPS-A01`–`A13` | 13 | Health/readiness endpoints, config reference | `test/nucleus_web/ops_test.exs` |
+| `Platform-Operations.md` | `OPS-A01`–`A13`, minus `A04`/`A07` | 11 | Health/readiness endpoints, config reference | `test/nucleus_web/ops_test.exs` |
 
 `API-Proxy.md` (`PRX-A01`–`A07`, 7 actions) is deleted outright (`PRX-D1`), fulfilling the
 promise `NAV-D2` logged above: this application is server-side rendered Phoenix/LiveView, so
@@ -103,6 +103,34 @@ repo-wide removal of the rest of that layer is **PRX-D1**, out of scope here). T
 are actually removed this time, so — unlike `ENV-A05`/`APP-A03`/`APP-A04` above — this is a
 coverage-denominator change, not just wording: the `NAV-A01`–`A12` / `12` row becomes
 `NAV-A01`–`A10` / `10`, and the page total above drops from `114` to `112`.
+
+`AUTH-D1` rewrites `Authentication-and-Access.md` for a LiveView server session — Cognito Hosted
+UI plus a server-side callback that writes a signed session cookie, re-validated at HTTP-request
+and LiveView-mount granularity, never at `handle_event` — closing both of `living-notes.md`'s
+outstanding auth open questions outright (token passthrough over a socket; whether the original
+eleven actions still describe the intended flow) rather than narrowing them further. `AUTH-A06`
+and the old `A07` merge into one "no valid session redirects to sign-in" action, keeping the `A06`
+ID; `A11` (identity display) is removed outright, folded into `NAV-A08`, which already covered
+it. Three new actions land at `A12`–`A14` (an active-sessions view built on `Phoenix.Presence`,
+termination by another signed-in user, and the terminated-session reconnect page), so the page's
+ID range is `AUTH-A01`–`A14` with two gaps (`A07`, `A11`) rather than a contiguous run — the same
+gap convention `M2M-A09`'s drop established, not a renumbering. Net: `11` actions → `12`.
+`Platform-Operations.md` drops `OPS-A04` (a frontend runtime-config endpoint; there is no
+frontend left to configure) and `OPS-A07` (bearer-tokens-never-via-cookies; the session *is* now
+a cookie, so that rule is obsolete, not satisfied) outright, the same gap convention:
+`OPS-A01`–`A13` with two gaps (`A04`, `A07`). Net: `13` actions → `11`. `Secrets.md`'s `SEC-A18`
+is reworded to state the `:auth_expired`/user-session distinction `docs/adr/0002` already draws —
+still `18` actions, wording only, no ID change, the same pattern as `ENV-A05`/`APP-A03`/`APP-A04`
+above. `Application-Shell-and-Navigation.md` (`NAV-A08`–`A10`, still `10`) and
+`Audit-and-Compliance.md` (`AUD-A03`'s narrowed "when," plus three new events — `sign_in`,
+`sign_out`, `session_terminated` — still `7`, since no `AUD-A*` ID was added or removed) also
+change in wording only. Combined, the page total above drops from `105` to `104`.
+`mix nucleus.trace`'s own count-canary test (`test/mix/tasks/nucleus_trace_test.exs`) is updated
+in this same ticket to `104` — `AUTH-D1`'s own acceptance criteria call for no `test/` changes,
+but leaving a stale canary would fail `mix precommit` outright, and `PRX-D1`/`NAV-D2` both
+already set the precedent of updating this exact canary alongside a page-count-changing wiki
+amendment. See `docs/adr/0038-session-based-authentication-no-token-passthrough.md` for the full
+decision record.
 
 **Most "Planned" columns are still unimplemented.** `NucleusWeb.Layouts` (app shell, header,
 sidebar) and `test/nucleus_web/live/shell_test.exs` now exist (EN-7) — a deliberate subset only.

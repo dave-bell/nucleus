@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/notes | Priority: high | Version: 1.33 | Updated: 2026-09-17 -->
+<!-- Context: project-intelligence/notes | Priority: high | Version: 1.34 | Updated: 2026-09-29 -->
 
 # Living Notes
 
@@ -30,47 +30,13 @@
 
 | Question | Stakeholders | Status | Next Action |
 |----------|--------------|--------|-------------|
-| How does token passthrough work over a LiveView socket? | Tech lead, security | Open | Design spike against `AUTH-*` and `SEC-A18` |
-| Do the wiki's `AUTH-A01`–`A11` still describe the intended flow? | Product, tech lead | Open | Review the 11 actions against a LiveView design |
 | Where does Nucleus deploy, and via what CI? | Ops | Open | Confirm target; no CI exists in this repo |
 | Should `mix nucleus.trace` gate `precommit`? | Tech lead | Open | Report-only since EN-8; revisit once Secrets (`SEC-*`) is complete — gating now would block every open SEC ticket |
 
 ### Open Question Details
 
-**Token passthrough across a long-lived LiveView socket**
-*Context*: Token passthrough is a binding constraint — Nucleus forwards the signed-in user's
-own access token so their permissions apply end-to-end. This is straightforward in a
-request/response API. It is materially harder in LiveView, where a stateful WebSocket
-outlives the HTTP request that authenticated it. The token must be carried into the socket,
-kept out of assigns that get diffed to the client, and refreshed or failed cleanly when it
-expires mid-session. The requirements already anticipate the expiry case in `SEC-A18`
-("session has expired, ask to re-authenticate, retry succeeds").
-*Stakeholders*: Tech lead, security reviewer
-*Options*: (a) token in the signed session, read at `on_mount`, re-verified per backend call;
-(b) short-lived token in socket state with an explicit refresh path; (c) a per-user
-server-side credential holder process — note (c) is in tension with the stateless constraint.
-*Timeline*: Blocks all three backend integrations; needed before the first feature LiveView.
-*Status*: Open — narrowed again by EN-6. `Nucleus.Scope` (`lib/nucleus/scope.ex`) now carries
-a `token` field, always `nil` while auth is disabled, and `NucleusWeb.Plugs.AssignScope`
-defensively forces `token` to `nil` before writing the scope into the session regardless of
-what a provider returns — a floor, not an answer. Which of options (a)/(b)/(c) above actually
-holds the token once one is real, and how it survives a socket reconnect, is still open and
-deferred to the real auth ticket. See `docs/adr/0005-deferred-authentication.md`.
-
-**Do the wiki's `AUTH-*` actions still describe the intended flow?**
-*Context*: `Authentication-and-Access.md` defines `AUTH-A01`–`A11`. These were written against
-the earlier prototype's redirect-and-API-call flow. Cognito Hosted UI federated to the
-corporate IdP is still the intended entry point, but session lifecycle and sign-out behaviour
-over a LiveView socket may not match action-for-action. Unlike other pages, where only the
-`API:` line is transport-specific, here the *behaviour itself* may differ.
-*Stakeholders*: Product owner, tech lead
-*Options*: Re-verify each of the 11 actions; amend the wiki where LiveView genuinely differs.
-Amend the wiki — do not silently reinterpret, since the wiki is the binding source.
-*Timeline*: Before implementing authentication.
-*Status*: Open — EN-6 built the `Nucleus.Scope`/`Nucleus.Scope.Provider` seam against the
-current eleven actions without re-verifying them, and deliberately implements none of
-`AUTH-A01`–`A11` (no `@tag action:` in its tests) so `mix nucleus.trace` cannot report false
-coverage. Re-verification is still needed before the real auth ticket, not before this one.
+*(both prior entries here — token passthrough, and whether `AUTH-*` still describes the intended
+flow — were resolved by `AUTH-D1`; see Archive)*
 
 ## Known Issues
 
@@ -316,6 +282,36 @@ deploys it.
 
 Moved here for historical reference.
 
+**Do the wiki's `AUTH-*` actions still describe the intended flow?** — *was: Open Question*
+*Resolved*: 2026-09-29 by `AUTH-D1` (issue #111).
+*Outcome*: Re-verified and amended, not silently reinterpreted — the option this question's own
+entry called for. `Authentication-and-Access.md` is rewritten for a LiveView server session:
+Cognito Hosted UI plus a server-side callback writing a signed session cookie, re-validated at
+HTTP-request and LiveView-mount granularity (never `handle_event`). `AUTH-A06`/old-`A07` merge;
+`A11` (identity display) is removed, folded into `NAV-A08`; three new actions land at
+`A12`–`A14` (an active-sessions view on `Phoenix.Presence`, termination, and the
+terminated-session reconnect page). Eleven actions become twelve, with the two retired IDs left
+as gaps rather than renumbered.
+*See*: `docs/requirements/Authentication-and-Access.md`, `business-tech-bridge.md`,
+`docs/adr/0038-session-based-authentication-no-token-passthrough.md`.
+
+**Token passthrough across a long-lived LiveView socket** — *was: Open Question*
+*Resolved*: 2026-09-29 by `AUTH-D1` (issue #111).
+*Outcome*: Dropped as a constraint, not resolved to one of options (a)/(b)/(c) this question's
+own entry listed — none of them apply once there is no token to carry. Nucleus is
+server-side rendered with no frontend token store; a callback exchanges the Cognito
+authorization code for tokens once, writes a session (user id, email, `signed_in_at`), and
+discards the tokens — none survive past that point, so there is nothing to hold against a
+socket, refresh, or fail mid-session. Every backing API is reached with its own service
+credential instead (Parameter Store already does this via an assumed AWS role); `EN-13`
+implements the code side of this decision (removing `Nucleus.Scope.token`'s consumer in
+`Nucleus.TenantApi.Http`). `SEC-A18` is rewritten to match: the credential that expires
+mid-session is Nucleus's *own* AWS role, never the user's session — `docs/adr/0002`'s
+`:auth_expired` kind already drew that line.
+*See*: `docs/requirements/Authentication-and-Access.md`, `docs/requirements/Secrets.md`,
+`docs/adr/0002-backend-adapter-boundaries.md`, `docs/adr/0005-deferred-authentication.md`,
+`docs/adr/0038-session-based-authentication-no-token-passthrough.md`.
+
 **Sidebar category collapsed on every child selection** — *was: not previously tracked — found and fixed same session, on the NAV-S1 branch before its PR opened*
 *Resolved*: 2026-08-25 by NAV-S1 (issue #53).
 *Outcome*: `:expanded_categories` (`docs/adr/0023`) was a plain socket assign, and every sidebar
@@ -400,7 +396,7 @@ datastore requires adding a dependency and configuration, a visible and reviewab
 ## Onboarding Checklist
 
 - [ ] Review known technical debt and understand impact
-- [ ] Know the open questions, especially token passthrough
+- [ ] Know the open questions
 - [ ] Initialise the `docs/requirements/` submodule
 - [ ] Be aware of the gotchas above
 - [ ] Know that `mix precommit` must pass before finishing
