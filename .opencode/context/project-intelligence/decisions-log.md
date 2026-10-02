@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.44 | Updated: 2026-09-29 -->
+<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.45 | Updated: 2026-10-02 -->
 
 # Decisions Log
 
@@ -63,12 +63,14 @@ job and the row should point rather than paraphrase.
 | 36 | Structured production logging — both `Logger` and `Nucleus.Audit` become JSON in production, selected by build environment (`MIX_ENV`), never a runtime variable; `AUDIT_FORMAT` and `Nucleus.Audit.Format.cast/1` removed outright, `logger_json`'s `LoggerJSON.Formatters.Basic` wired into `config/prod.exs` only, `AUDIT_DEVICE` unaffected; amends `0004`'s format-selection mechanism, not its per-event-after-recording decision | 2026-09-25 | Decided | `docs/adr/0036-structured-prod-logging.md` |
 | 37 | `m2m_client_created` keeps `token_validity_minutes`, widening the master catalogue (`Audit-and-Compliance.md`) and `event.ex`'s `details_allowed`/`details_required` to match the feature page, rather than trimming the feature page to match the (narrower) master catalogue as first recommended; recorded in minutes as entered, not Cognito's seconds; supersedes `0020`'s "Negative" note that left this exact drift as known debt | 2026-09-28 | Decided | `docs/adr/0037-m2m-client-created-token-validity-minutes-audit-field.md` |
 | 38 | Session-based authentication, no token passthrough — Cognito Hosted UI + server-side callback writes a session cookie re-validated at request/mount granularity; two session timers replace silent refresh; `SEC-A18` reworded to Nucleus's own credential expiry, not the user's session; closes both `0005`'s deferred open questions | 2026-09-29 | Decided | `docs/adr/0038-session-based-authentication-no-token-passthrough.md` |
+| 39 | Tenant API service credential — Nucleus calls the Tenant API with its own Cognito M2M client-credentials token (option b; a Nucleus-only Terraform client), fetched by the `Nucleus.TenantApi` facade and passed down as the implementations' unchanged `token` argument, so `list_environments/1` becomes `/0` for callers only; the token source is a sixth boundary, `:service_token` (`SERVICE_TOKEN_BACKEND`), with a canned `.Local` driver so dev and test run the production path; cache holds until `expires_in` − 60s, single-flight, never caches errors; `invalidate/2` is token-scoped so concurrent 401s cannot drop a fresh token; `health_check` stays anonymous (diverging from the decision comment); `Nucleus.Scope.token` deleted; supersedes `0005`'s `token` field and closes `0038`'s last open item | 2026-10-02 | Decided | `docs/adr/0039-tenant-api-service-credential.md` |
 
 No **"re-platform" decision** (fresh start) and no **inherited ADRs** — the wiki's `ADR-0001`–
 `ADR-0007` are reference only; adopting one is a decision made on its own merits.
 
-**Next decision likely needed** (`living-notes.md`): how a real token is held/refreshed across a
-live socket — narrowed by EN-6 to a fixed `Nucleus.Scope.token` field, open on *how*.
+**Next decision likely needed** (`living-notes.md`): how Tenant API calls are attributed to the
+signed-in user, once Nucleus first *writes* to it — today it only reads, so calls are attributed
+to the Nucleus service (`0039`).
 
 ## Deprecated Decisions
 
@@ -84,7 +86,7 @@ the ADR it points at stays findable.
 
 ## Onboarding Checklist
 
-- [ ] Read the Decision Index above; `adr/0001`–`0038` are binding
+- [ ] Read the Decision Index above; `adr/0001`–`0039` are binding
 - [ ] New formal ADRs belong in `docs/adr/`, with only an index row mirrored here — the wiki's
       ADR-0001–0007 are reference only, not adopted
 - [ ] Know which decisions are pending (see `living-notes.md`)
