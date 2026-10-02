@@ -102,8 +102,8 @@ defmodule Nucleus.Secrets do
   """
   @spec list(environment :: String.t(), scope :: Scope.t()) ::
           {:ok, [SecretRef.t()]} | {:error, Error.t()}
-  def list(environment, %Scope{token: token}) when is_binary(environment) do
-    with {:ok, _environment} <- Environments.fetch(environment, token),
+  def list(environment, %Scope{}) when is_binary(environment) do
+    with {:ok, _environment} <- Environments.fetch(environment),
          {:ok, refs} <- Store.list_secrets(environment) do
       {:ok, sort(refs)}
     end
@@ -151,9 +151,9 @@ defmodule Nucleus.Secrets do
   """
   @spec reveal(environment :: String.t(), key :: String.t(), scope :: Scope.t()) ::
           {:ok, Secret.t()} | {:error, Error.t()}
-  def reveal(environment, key, %Scope{token: token} = scope)
+  def reveal(environment, key, %Scope{} = scope)
       when is_binary(environment) and is_binary(key) do
-    with {:ok, _environment} <- Environments.fetch(environment, token),
+    with {:ok, _environment} <- Environments.fetch(environment),
          :ok <- Key.validate(key),
          {:ok, secret} <- Store.get_secret(environment, key) do
       :ok =
@@ -219,9 +219,9 @@ defmodule Nucleus.Secrets do
           value :: String.t(),
           scope :: Scope.t()
         ) :: {:ok, SecretRef.t()} | {:error, Error.t()}
-  def update(environment, key, value, %Scope{token: token} = scope)
+  def update(environment, key, value, %Scope{} = scope)
       when is_binary(environment) and is_binary(key) and is_binary(value) do
-    with {:ok, _environment} <- Environments.fetch(environment, token),
+    with {:ok, _environment} <- Environments.fetch(environment),
          :ok <- Key.validate(key),
          :ok <- Value.validate(value),
          {:ok, ref} <- Store.update_secret(environment, key, value) do
@@ -289,9 +289,9 @@ defmodule Nucleus.Secrets do
           value :: String.t(),
           scope :: Scope.t()
         ) :: {:ok, SecretRef.t()} | {:error, Error.t()}
-  def create(environment, key, value, %Scope{token: token} = scope)
+  def create(environment, key, value, %Scope{} = scope)
       when is_binary(environment) and is_binary(key) and is_binary(value) do
-    with {:ok, _environment} <- Environments.fetch(environment, token),
+    with {:ok, _environment} <- Environments.fetch(environment),
          :ok <- Key.validate(key),
          :ok <- Value.validate(value),
          {:ok, ref} <- Store.create_secret(environment, key, value) do

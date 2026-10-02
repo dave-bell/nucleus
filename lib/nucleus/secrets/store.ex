@@ -23,8 +23,7 @@ defmodule Nucleus.Secrets.Store do
 
   ## No `token` argument
 
-  Unlike `Nucleus.TenantApi`, none of these callbacks take the signed-in
-  user's access token. Parameter Store is reached with credentials Nucleus
+  None of these callbacks take the signed-in user's access token. Parameter Store is reached with credentials Nucleus
   obtains for itself by assuming a role, not with the user's token — which is
   precisely why `SEC-A18` (server-side credentials expiring mid-session) is a
   distinct failure mode from the user's own session expiring.

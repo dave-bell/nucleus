@@ -23,18 +23,21 @@ config :nucleus, NucleusWeb.Endpoint,
 # docs/adr/0002-backend-adapter-boundaries.md.
 #
 # These are the `real` implementations, delivered by EN-3, EN-4, EN-10, EN-11,
-# and EN-12. dev and test override all five to the `.Local` implementations so
-# a fresh clone needs no credentials; runtime.exs allows a per-boundary
-# override via SECRETS_BACKEND, TENANT_API_BACKEND, M2M_BACKEND,
-# NOMAD_JOBS_BACKEND, and NOMAD_VARS_BACKEND.
+# EN-12, and EN-13 (:service_token). dev and test override all six to the
+# `.Local` implementations so a fresh clone needs no credentials; runtime.exs
+# allows a per-boundary override via SECRETS_BACKEND, TENANT_API_BACKEND,
+# M2M_BACKEND, NOMAD_JOBS_BACKEND, NOMAD_VARS_BACKEND, and
+# SERVICE_TOKEN_BACKEND.
 #
 # There is deliberately no `auth` boundary. Authentication is never swappable.
+# :service_token is Nucleus's own credential for the tenant API, not auth.
 config :nucleus, :backends,
   secrets: Nucleus.Secrets.Store.Aws,
   tenant_api: Nucleus.TenantApi.Http,
   m2m: Nucleus.M2M.Clients.Cognito,
   nomad_jobs: Nucleus.NomadJobs.Http,
-  nomad_vars: Nucleus.NomadVars.Store.Http
+  nomad_vars: Nucleus.NomadVars.Store.Http,
+  service_token: Nucleus.TenantApi.ServiceToken.Cognito
 
 # The tenant's backing API — the authority on environments. `base_url` has no
 # default on purpose: there is no sensible host to fall back to, and a boundary
@@ -45,6 +48,14 @@ config :nucleus, :backends,
 # an unbounded call here would hang a LiveView mount.
 config :nucleus, Nucleus.TenantApi.Http,
   base_url: nil,
+  connect_timeout_ms: 5_000,
+  receive_timeout_ms: 10_000
+
+# Nucleus's own Cognito M2M client, for the :service_token boundary's real
+# driver. No defaults for the client or the domain, for the same reason as
+# `base_url` above; runtime.exs fills them in and refuses to boot without them
+# when that driver is selected. The timeouts are separate for the same reason.
+config :nucleus, Nucleus.TenantApi.ServiceToken.Cognito,
   connect_timeout_ms: 5_000,
   receive_timeout_ms: 10_000
 

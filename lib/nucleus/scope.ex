@@ -15,11 +15,6 @@ defmodule Nucleus.Scope do
     `nil` means unauthenticated; `authenticated?/1` is the read.
   - `tenant` — the tenant namespace this session is scoped to, from
     `tenant_namespace/0` (`TENANT_NAMESPACE`).
-  - `token` — the user's access token, for passthrough to backing APIs.
-    **Always `nil` for the whole of EN-6.** The field exists now so that
-    retrofitting it later is a substitution, not a refactor of every
-    backing-API call site — see `docs/adr/0005-deferred-authentication.md`.
-    Never populate this with a fabricated value.
   - `scopes` — `[String.t()]`, the granted access scopes (`AUTH-A11` /
     `NAV-A08`). Always `[]` while auth is disabled.
   - `source_ip` — the caller's source IP, captured once at connect
@@ -27,27 +22,26 @@ defmodule Nucleus.Scope do
     socket) because `X-Forwarded-For` is unavailable on later `handle_event`
     calls. EN-5's audit emitter reads this field, never a `Plug.Conn`.
 
-  ## Never render this struct wholesale
+  ## No token
 
-  LiveView diffs *rendered output*, not raw assigns — a token sitting in
-  `socket.assigns.current_scope.token` is never shipped to the client unless
-  something renders it. That is a constraint on template authors, not an
-  ambient guarantee: never write `inspect(@current_scope)` or similar in a
-  debug block, in this ticket or later once `token` is populated.
+  A scope carries no credential. Nucleus keeps no user token after sign-in and
+  reaches every backend with a service credential instead — see
+  `docs/adr/0038-session-based-authentication-no-token-passthrough.md` and
+  `docs/adr/0039-tenant-api-service-credential.md`. This struct is written into
+  the (signed, not encrypted) session cookie, so it must stay free of secrets.
   """
 
   require Logger
 
   alias Nucleus.Scope.Provider
 
-  defstruct user: nil, tenant: nil, token: nil, scopes: [], source_ip: nil
+  defstruct user: nil, tenant: nil, scopes: [], source_ip: nil
 
   @type user :: %{email: String.t() | nil, username: String.t() | nil}
 
   @type t :: %__MODULE__{
           user: user() | nil,
           tenant: String.t() | nil,
-          token: String.t() | nil,
           scopes: [String.t()],
           source_ip: String.t() | nil
         }

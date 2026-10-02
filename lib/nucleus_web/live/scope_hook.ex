@@ -17,13 +17,12 @@ defmodule NucleusWeb.ScopeHook do
 
   ## Never render `@current_scope` wholesale
 
-  LiveView diffs rendered output, not raw assigns, so a token sitting in
-  `socket.assigns.current_scope.token` is never sent to the client on its
-  own. That is a constraint on template authors, not an ambient guarantee —
+  LiveView diffs rendered output, not raw assigns, so nothing in
+  `socket.assigns.current_scope` reaches the client unless a template renders
+  it. That is a constraint on template authors, not an ambient guarantee —
   never write `inspect(@current_scope)`, or any other rendering of the whole
-  struct, in a template. `token` is always `nil` for the whole of EN-6, but
-  the guard needs to exist before it is ever populated — see
-  `docs/adr/0005-deferred-authentication.md`.
+  struct, in a template. The scope carries no token (`Nucleus.Scope`), but it
+  does carry the user's identity and source IP.
   """
 
   import Phoenix.Component, only: [assign: 3]

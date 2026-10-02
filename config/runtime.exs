@@ -24,7 +24,7 @@ config :nucleus, NucleusWeb.Endpoint,
   http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
 # Per-boundary backend override: SECRETS_BACKEND / TENANT_API_BACKEND /
-# M2M_BACKEND, each "real" or "local". Unset boundaries keep whatever the
+# M2M_BACKEND / SERVICE_TOKEN_BACKEND (and the Nomad ones), each "real" or "local". Unset boundaries keep whatever the
 # compile-time config chose — "real" in prod, "local" in dev and test.
 #
 # Selection is per boundary, not one global switch: Parameter Store needs a
@@ -42,20 +42,43 @@ end
 
 # The tenant's backing API. Needed only when the :tenant_api boundary is running
 # its real implementation — a developer running fully local must not have to
-# invent a URL to boot the app.
-#
-# There is deliberately **no boot-time check** that the base URL is present. A
-# missing one surfaces as `%Nucleus.Backend.Error{kind: :not_configured}` on the
-# call, because the adapter must never crash and must never fall back to a
-# default host. A boot check could not be written usefully anyway: prod defaults
-# to the real implementation with TENANT_API_BACKEND *unset*, so it would have to
-# fire on a variable's absence rather than on its value.
+# invent a URL to boot the app. Gated on the configured implementation, after the
+# per-boundary override loop above, like the :secrets, :m2m and Nomad blocks: a
+# missing or blank TENANT_API_BASE_URL is a deployment mistake and raises at
+# boot, rather than surfacing as `:not_configured` on the first call.
+# `Nucleus.TenantApi.Http` still answers `:not_configured` for an unparseable
+# value, as the backstop.
 #
 # The timeouts are different — a value that is present but not a number is a
 # typo, and `String.to_integer/1` raising at boot is the right response to it.
+required_env = fn name, boundary ->
+  case System.get_env(name) do
+    value when value in [nil, ""] ->
+      raise "environment variable #{name} is missing (required when the #{boundary} boundary runs its real implementation)"
+
+    value ->
+      value
+  end
+end
+
+# Whether `boundary` is running its real implementation, counting the
+# per-boundary override read above. `config/3` calls in this file are not visible
+# to `Application.get_env/3` until the file has been fully evaluated, so asking
+# the application environment alone would miss `*_BACKEND=real`, and would still
+# demand the variables under `*_BACKEND=local`.
+real? = fn boundary ->
+  effective =
+    case System.get_env(Nucleus.Backend.env_var(boundary)) do
+      mode when mode in [nil, ""] -> Application.get_env(:nucleus, :backends, [])[boundary]
+      mode -> Nucleus.Backend.impl_for_mode!(boundary, mode)
+    end
+
+  effective == Nucleus.Backend.impl_for_mode!(boundary, :real)
+end
+
 tenant_api_config =
   [
-    base_url: System.get_env("TENANT_API_BASE_URL"),
+    base_url: if(real?.(:tenant_api), do: required_env.("TENANT_API_BASE_URL", ":tenant_api")),
     connect_timeout_ms: System.get_env("TENANT_API_CONNECT_TIMEOUT_MS"),
     receive_timeout_ms: System.get_env("TENANT_API_RECEIVE_TIMEOUT_MS")
   ]
@@ -67,6 +90,24 @@ tenant_api_config =
 
 if tenant_api_config != [] do
   config :nucleus, Nucleus.TenantApi.Http, tenant_api_config
+end
+
+# Nucleus's own Cognito M2M client, for the :service_token boundary's real
+# driver (docs/adr/0039-tenant-api-service-credential.md) — the credential it
+# uses to call the tenant API. Read only when that driver is selected; dev and
+# test run the canned Local one and need none of this. All four are required
+# then, so a deploy without them fails at boot, not on the first page load.
+#
+# These are a distinct client from COGNITO_CLIENT_ID / COGNITO_CLIENT_SECRET (the
+# sign-in client) — the `_API` suffix is the whole difference, so a swapped pair
+# is a real risk the names cannot prevent. COGNITO_DOMAIN is a bare host, no
+# scheme: the token endpoint is https://{COGNITO_DOMAIN}/oauth2/token.
+if real?.(:service_token) do
+  config :nucleus, Nucleus.TenantApi.ServiceToken.Cognito,
+    domain: required_env.("COGNITO_DOMAIN", ":service_token"),
+    client_id: required_env.("COGNITO_CLIENT_ID_API", ":service_token"),
+    client_secret: required_env.("COGNITO_CLIENT_SECRET_API", ":service_token"),
+    scope: required_env.("COGNITO_SCOPE", ":service_token")
 end
 
 # The cluster/deployment segments of every Parameter Store path

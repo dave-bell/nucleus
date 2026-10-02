@@ -14,8 +14,7 @@ defmodule NucleusWeb.SessionController do
   (`docs/adr/0005-deferred-authentication.md`,
   `Nucleus.Scope.Provider.Disabled`), dropping the session does not end a
   real session — there is no token to revoke
-  (`current_scope.token` is unconditionally `nil`,
-  `plugs/assign_scope.ex:45`). The observable effect today is narrower:
+  (`Nucleus.Scope` has no token field). The observable effect today is narrower:
   the session cookie is dropped, so `nav_session_id`
   (`plugs/assign_scope.ex`) is reset and `NAV-A05`'s per-session sidebar
   expand state clears — but the very next request is immediately

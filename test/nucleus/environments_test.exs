@@ -11,14 +11,14 @@ defmodule Nucleus.EnvironmentsTest do
     A `Nucleus.TenantApi` implementation that raises if it is ever called.
 
     Swapped in for the one test that asserts `SEC-A15`'s "zero adapter calls"
-    guarantee: if `Environments.fetch/2` called `list_environments/1` after an
+    guarantee: if `Environments.fetch/1` called `list_environments/0` after an
     invalid name, this module raising is how the test would know.
     """
     @behaviour Nucleus.TenantApi
 
     @impl Nucleus.TenantApi
     def list_environments(_token) do
-      raise "list_environments/1 was called — SEC-A15 requires zero adapter calls for an invalid name"
+      raise "list_environments/0 was called — SEC-A15 requires zero adapter calls for an invalid name"
     end
 
     @impl Nucleus.TenantApi
@@ -90,10 +90,10 @@ defmodule Nucleus.EnvironmentsTest do
   describe "fetch/2 — SEC-A15 zero adapter calls" do
     @tag action: "SEC-A15"
     @tag :unit
-    test "an invalid name never reaches TenantApi.list_environments/1" do
+    test "an invalid name never reaches TenantApi.list_environments/0" do
       use_exploding_tenant_api()
 
-      assert {:error, %Error{kind: :invalid}} = Environments.fetch("..", nil)
+      assert {:error, %Error{kind: :invalid}} = Environments.fetch("..")
     end
   end
 
@@ -101,7 +101,7 @@ defmodule Nucleus.EnvironmentsTest do
     @tag action: "SEC-A16"
     @tag :unit
     test "a well-formed unknown name resolves to :not_found" do
-      assert {:error, %Error{kind: :not_found}} = Environments.fetch("nope", nil)
+      assert {:error, %Error{kind: :not_found}} = Environments.fetch("nope")
     end
   end
 
@@ -111,7 +111,7 @@ defmodule Nucleus.EnvironmentsTest do
     test "an unavailable tenant API resolves to :unavailable" do
       force_error(:tenant_api, :unavailable)
 
-      assert {:error, %Error{kind: :unavailable}} = Environments.fetch("prod", nil)
+      assert {:error, %Error{kind: :unavailable}} = Environments.fetch("prod")
     end
 
     @tag action: "SEC-A17"
@@ -119,7 +119,7 @@ defmodule Nucleus.EnvironmentsTest do
     test "a not_configured tenant API also fails closed as :unavailable" do
       force_error(:tenant_api, :not_configured)
 
-      assert {:error, %Error{kind: :unavailable}} = Environments.fetch("prod", nil)
+      assert {:error, %Error{kind: :unavailable}} = Environments.fetch("prod")
     end
   end
 
@@ -128,14 +128,14 @@ defmodule Nucleus.EnvironmentsTest do
     test "does not get rewritten to :unavailable" do
       force_error(:tenant_api, :auth_expired)
 
-      assert {:error, %Error{kind: :auth_expired}} = Environments.fetch("prod", nil)
+      assert {:error, %Error{kind: :auth_expired}} = Environments.fetch("prod")
     end
   end
 
   describe "fetch/2 — ENV-A06 archived environments resolve" do
     @tag :unit
     test "an archived environment is found, not treated as not_found" do
-      assert {:ok, environment} = Environments.fetch("legacy-qa", nil)
+      assert {:ok, environment} = Environments.fetch("legacy-qa")
       assert environment.short_name == "legacy-qa"
       assert environment.archived? == true
     end
@@ -144,7 +144,7 @@ defmodule Nucleus.EnvironmentsTest do
   describe "fetch/2 — happy path" do
     @tag :unit
     test "resolves a known, active environment" do
-      assert {:ok, environment} = Environments.fetch("prod", nil)
+      assert {:ok, environment} = Environments.fetch("prod")
       assert environment.short_name == "prod"
     end
   end

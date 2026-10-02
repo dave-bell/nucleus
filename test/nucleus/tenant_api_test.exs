@@ -5,18 +5,68 @@ defmodule Nucleus.TenantApiTest do
   alias Nucleus.Backend
   alias Nucleus.Backend.Error
   alias Nucleus.TenantApi
+  alias Nucleus.TenantApi.ServiceToken
+
+  defmodule RecordingApi do
+    @moduledoc false
+    # A tenant API that reports the token it was handed, and answers as told.
+    @behaviour Nucleus.TenantApi
+
+    @impl true
+    def list_environments(token) do
+      send(Application.fetch_env!(:nucleus, :tenant_api_test_pid), {:called_with, token})
+      Application.get_env(:nucleus, :tenant_api_test_answer, {:ok, []})
+    end
+
+    @impl true
+    def health_check, do: :ok
+  end
+
+  defmodule ScriptedIssuer do
+    @moduledoc false
+    # A `:service_token` driver that hands out "tok-1", "tok-2", ... and can be
+    # told to fail. Runs in the cache's fetch task, hence the Agent.
+    @behaviour Nucleus.TenantApi.ServiceToken
+
+    @impl true
+    def request_token do
+      pid = Application.fetch_env!(:nucleus, :tenant_api_test_pid)
+      n = Agent.get_and_update(ScriptedIssuer.Counter, fn n -> {n + 1, n + 1} end)
+      send(pid, {:token_requested, n})
+
+      case Application.get_env(:nucleus, :tenant_api_test_issuer_error) do
+        nil -> {:ok, %{token: "tok-#{n}", expires_in: 3_600}}
+        %Error{} = error -> {:error, error}
+      end
+    end
+
+    @impl true
+    def health_check, do: :ok
+  end
 
   setup do
     original = Application.get_env(:nucleus, :backends)
-    on_exit(fn -> Application.put_env(:nucleus, :backends, original) end)
+    Application.put_env(:nucleus, :tenant_api_test_pid, self())
+    ServiceToken.clear()
+
+    on_exit(fn ->
+      Application.put_env(:nucleus, :backends, original)
+      Application.delete_env(:nucleus, :tenant_api_test_pid)
+      Application.delete_env(:nucleus, :tenant_api_test_answer)
+      Application.delete_env(:nucleus, :tenant_api_test_issuer_error)
+      ServiceToken.clear()
+    end)
+
     :ok
   end
 
-  defp use_backend(module) do
+  defp use_backend(module), do: use_backend(:tenant_api, module)
+
+  defp use_backend(boundary, module) do
     Application.put_env(
       :nucleus,
       :backends,
-      Keyword.put(Application.get_env(:nucleus, :backends, []), :tenant_api, module)
+      Keyword.put(Application.get_env(:nucleus, :backends, []), boundary, module)
     )
   end
 
@@ -38,9 +88,9 @@ defmodule Nucleus.TenantApiTest do
   end
 
   describe "dispatch" do
-    test "list_environments/1 goes to the configured implementation" do
+    test "list_environments/0 goes to the configured implementation" do
       use_backend(Nucleus.TenantApi.Local)
-      assert {:ok, environments} = TenantApi.list_environments(nil)
+      assert {:ok, environments} = TenantApi.list_environments()
       assert environments != []
     end
 
@@ -54,33 +104,171 @@ defmodule Nucleus.TenantApiTest do
       # a test override both take effect. Two implementations that fail differently
       # is the cheapest way to prove the switch actually moved.
       use_backend(Nucleus.TenantApi.Local)
-      assert {:ok, _environments} = TenantApi.list_environments(nil)
+      assert {:ok, _environments} = TenantApi.list_environments()
 
       original_http = Application.get_env(:nucleus, Nucleus.TenantApi.Http)
       on_exit(fn -> Application.put_env(:nucleus, Nucleus.TenantApi.Http, original_http) end)
       Application.put_env(:nucleus, Nucleus.TenantApi.Http, base_url: nil)
       use_backend(Nucleus.TenantApi.Http)
 
-      assert {:error, %Error{kind: :not_configured}} = TenantApi.list_environments(nil)
+      assert {:error, %Error{kind: :not_configured}} = TenantApi.list_environments()
     end
   end
 
-  describe "the token argument" do
-    test "accepts a binary and nil, because auth is deferred to EN-6" do
-      use_backend(Nucleus.TenantApi.Local)
-
-      assert {:ok, _} = TenantApi.list_environments(nil)
-      assert {:ok, _} = TenantApi.list_environments("tok_abc123")
+  describe "the service credential" do
+    test "list_environments/0 takes no argument from the caller" do
+      refute function_exported?(TenantApi, :list_environments, 1)
+      assert function_exported?(TenantApi, :list_environments, 0)
     end
 
-    test "rejects anything else at the boundary rather than passing it down" do
+    test "fetches a token from the :service_token boundary and hands it down" do
+      use_backend(RecordingApi)
+
+      assert {:ok, []} = TenantApi.list_environments()
+
+      assert_received {:called_with, token}
+      assert token == Nucleus.TenantApi.ServiceToken.Local.token()
+    end
+
+    test "reuses a cached token across calls" do
+      use_backend(RecordingApi)
+      use_backend(:service_token, ScriptedIssuer)
+      start_counter()
+
+      assert {:ok, []} = TenantApi.list_environments()
+      assert {:ok, []} = TenantApi.list_environments()
+
+      assert_received {:called_with, "tok-1"}
+      assert_received {:called_with, "tok-1"}
+      assert_received {:token_requested, 1}
+      refute_received {:token_requested, 2}
+    end
+
+    test "a token that cannot be fetched is returned, and the tenant API is never called" do
+      error = Error.new(:unavailable, :service_token, "the issuer is down")
+      Application.put_env(:nucleus, :tenant_api_test_issuer_error, error)
+      start_counter()
+      use_backend(RecordingApi)
+      use_backend(:service_token, ScriptedIssuer)
+
+      assert TenantApi.list_environments() == {:error, error}
+      refute_received {:called_with, _token}
+    end
+
+    test "a tenant API :auth_expired invalidates the token, so the next call fetches a fresh one" do
+      start_counter()
+      use_backend(RecordingApi)
+      use_backend(:service_token, ScriptedIssuer)
+
+      rejected = Error.new(:auth_expired, :tenant_api, "the tenant API rejected our credentials")
+      Application.put_env(:nucleus, :tenant_api_test_answer, {:error, rejected})
+
+      assert TenantApi.list_environments() == {:error, rejected}
+      assert_received {:called_with, "tok-1"}
+
+      Application.put_env(:nucleus, :tenant_api_test_answer, {:ok, []})
+
+      assert {:ok, []} = TenantApi.list_environments()
+      assert_received {:called_with, "tok-2"}
+    end
+
+    test "other errors leave the cached token alone" do
+      start_counter()
+      use_backend(RecordingApi)
+      use_backend(:service_token, ScriptedIssuer)
+
+      down = Error.new(:unavailable, :tenant_api, "the tenant API is down")
+      Application.put_env(:nucleus, :tenant_api_test_answer, {:error, down})
+
+      assert TenantApi.list_environments() == {:error, down}
+      assert TenantApi.list_environments() == {:error, down}
+
+      assert_received {:called_with, "tok-1"}
+      assert_received {:called_with, "tok-1"}
+      refute_received {:token_requested, 2}
+    end
+
+    test "health_check/0 fetches no token" do
+      start_counter()
       use_backend(Nucleus.TenantApi.Local)
+      use_backend(:service_token, ScriptedIssuer)
 
-      # Built at runtime: the compiler's type checker rejects the literal, since
-      # the guard on list_environments/1 declares what it accepts.
-      not_a_token = Jason.decode!(~s({"token": "x"}))
+      assert TenantApi.health_check() == :ok
+      refute_received {:token_requested, _n}
+    end
 
-      assert_raise FunctionClauseError, fn -> TenantApi.list_environments(not_a_token) end
+    defp start_counter do
+      start_supervised!(%{
+        id: ScriptedIssuer.Counter,
+        start: {Agent, :start_link, [fn -> 0 end, [name: ScriptedIssuer.Counter]]}
+      })
+    end
+  end
+
+  describe "over HTTP" do
+    @stub __MODULE__
+
+    setup do
+      original = Application.get_env(:nucleus, Nucleus.TenantApi.Http)
+
+      Application.put_env(:nucleus, Nucleus.TenantApi.Http,
+        base_url: "https://tenant.example.com",
+        plug: {Req.Test, @stub}
+      )
+
+      on_exit(fn -> Application.put_env(:nucleus, Nucleus.TenantApi.Http, original) end)
+
+      start_counter()
+      use_backend(Nucleus.TenantApi.Http)
+      use_backend(:service_token, ScriptedIssuer)
+      :ok
+    end
+
+    defp answer(status) do
+      test_pid = self()
+
+      Req.Test.stub(@stub, fn conn ->
+        send(test_pid, {:tenant_api_request, Plug.Conn.get_req_header(conn, "authorization")})
+
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.resp(status, ~s([{"shortName": "prod"}]))
+      end)
+    end
+
+    test "sends Nucleus's service token as a bearer credential" do
+      answer(200)
+
+      assert {:ok, [%{short_name: "prod"}]} = TenantApi.list_environments()
+      assert_received {:tenant_api_request, ["Bearer tok-1"]}
+    end
+
+    for status <- [401, 403] do
+      test "a #{status} makes one request, returns :auth_expired, and the next call refetches" do
+        answer(unquote(status))
+
+        assert {:error, %Error{kind: :auth_expired}} = TenantApi.list_environments()
+
+        # Exactly one request: no retry here. The automatic retry is SEC-S7's.
+        assert_received {:tenant_api_request, ["Bearer tok-1"]}
+        refute_received {:tenant_api_request, _authorization}
+        assert_received {:token_requested, 1}
+
+        answer(200)
+
+        assert {:ok, [%{short_name: "prod"}]} = TenantApi.list_environments()
+        assert_received {:token_requested, 2}
+        assert_received {:tenant_api_request, ["Bearer tok-2"]}
+      end
+    end
+
+    test "a token that cannot be fetched means no request to the tenant API" do
+      error = Error.new(:auth_expired, :service_token, "cognito rejected the client")
+      Application.put_env(:nucleus, :tenant_api_test_issuer_error, error)
+      answer(200)
+
+      assert TenantApi.list_environments() == {:error, error}
+      refute_received {:tenant_api_request, _authorization}
     end
   end
 

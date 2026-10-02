@@ -36,14 +36,15 @@ defmodule NucleusWeb.ScopeHookTest do
   end
 
   @tag :unit
-  test "rendered HTML never contains the token, even though the guard is what matters here", %{
+  test "a scope carries no token, and rendered HTML never mentions one", %{
     conn: conn
   } do
     scope = %Scope{
       user: %{email: "carol@example.com", username: nil},
-      tenant: "acme",
-      token: nil
+      tenant: "acme"
     }
+
+    refute Map.has_key?(scope, :token)
 
     conn = Plug.Test.init_test_session(conn, %{current_scope: scope})
 
