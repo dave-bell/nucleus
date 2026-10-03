@@ -95,8 +95,10 @@ end
 # Nucleus's own Cognito M2M client, for the :service_token boundary's real
 # driver (docs/adr/0039-tenant-api-service-credential.md) — the credential it
 # uses to call the tenant API. Read only when that driver is selected; dev and
-# test run the canned Local one and need none of this. All four are required
+# test run the canned Local one and need none of this. All six are required
 # then, so a deploy without them fails at boot, not on the first page load.
+# COGNITO_REGION and COGNITO_USER_POOL_ID are for health_check/0 only: it probes
+# the pool's public JWKS document rather than paying for a token request.
 #
 # These are a distinct client from COGNITO_CLIENT_ID / COGNITO_CLIENT_SECRET (the
 # sign-in client) — the `_API` suffix is the whole difference, so a swapped pair
@@ -107,7 +109,9 @@ if real?.(:service_token) do
     domain: required_env.("COGNITO_DOMAIN", ":service_token"),
     client_id: required_env.("COGNITO_CLIENT_ID_API", ":service_token"),
     client_secret: required_env.("COGNITO_CLIENT_SECRET_API", ":service_token"),
-    scope: required_env.("COGNITO_SCOPE", ":service_token")
+    scope: required_env.("COGNITO_SCOPE", ":service_token"),
+    region: required_env.("COGNITO_REGION", ":service_token"),
+    user_pool_id: required_env.("COGNITO_USER_POOL_ID", ":service_token")
 end
 
 # The cluster/deployment segments of every Parameter Store path

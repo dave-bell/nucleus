@@ -32,6 +32,8 @@ defmodule Nucleus.TenantApi.ServiceToken.CognitoTest do
           client_id: "nucleus-api",
           client_secret: @secret,
           scope: "tenant/api",
+          region: "us-east-1",
+          user_pool_id: "us-east-1_AbC123",
           plug: {Req.Test, @stub}
         ],
         overrides
@@ -298,16 +300,62 @@ defmodule Nucleus.TenantApi.ServiceToken.CognitoTest do
   end
 
   describe "health_check/0" do
-    test "is :ok when the issuer hands out a token, and does not return it" do
-      respond(200, grant_body())
+    test "GETs the pool's public JWKS document, unauthenticated, and never asks for a token" do
+      test_pid = self()
+
+      stub(fn conn ->
+        send(test_pid, {:request, conn.method, conn.host, conn.request_path, conn.req_headers})
+        Plug.Conn.resp(conn, 200, ~s({"keys": []}))
+      end)
+
+      assert Cognito.health_check() == :ok
+
+      assert_received {:request, "GET", "cognito-idp.us-east-1.amazonaws.com",
+                       "/us-east-1_AbC123/.well-known/jwks.json", headers}
+
+      refute List.keymember?(headers, "authorization", 0)
+      refute_received {:request, _method, _host, "/oauth2/token", _headers}
+    end
+
+    test "any status below 500 means Cognito answered" do
+      for status <- [200, 403, 404] do
+        respond(status, "{}")
+        assert Cognito.health_check() == :ok
+      end
+    end
+
+    test "a 5xx is :unavailable" do
+      respond(503, "{}")
+
+      assert {:error, %Error{kind: :unavailable, details: %{status: 503}}} =
+               Cognito.health_check()
+    end
+
+    test "a transport failure is :unavailable" do
+      stub(&Req.Test.transport_error(&1, :econnrefused))
+
+      assert {:error, %Error{kind: :unavailable}} = Cognito.health_check()
+    end
+
+    test "is not affected by the client credentials" do
+      configure(client_id: nil, client_secret: nil, scope: nil)
+      respond(200, "{}")
 
       assert Cognito.health_check() == :ok
     end
 
-    test "carries the issuer's error" do
-      respond(400, "{}")
+    test "missing or malformed region and pool id are :not_configured with no request" do
+      stub(fn _conn -> flunk("no request should be attempted") end)
 
-      assert {:error, %Error{kind: :auth_expired}} = Cognito.health_check()
+      for overrides <- [
+            [region: nil],
+            [user_pool_id: nil],
+            [region: "us-east-1.evil.example/x"],
+            [user_pool_id: "../other"]
+          ] do
+        configure(overrides)
+        assert {:error, %Error{kind: :not_configured}} = Cognito.health_check()
+      end
     end
   end
 end

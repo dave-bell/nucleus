@@ -88,8 +88,9 @@ error and hide the boundary under test.
 ### Boot checks: two gates
 
 - `TENANT_API_BASE_URL` is required when `:tenant_api` runs its real implementation.
-- `COGNITO_DOMAIN`, `COGNITO_CLIENT_ID_API`, `COGNITO_CLIENT_SECRET_API` and `COGNITO_SCOPE`
-  are required when `:service_token` runs its real implementation. Blank counts as missing.
+- `COGNITO_DOMAIN`, `COGNITO_CLIENT_ID_API`, `COGNITO_CLIENT_SECRET_API`, `COGNITO_SCOPE`,
+  `COGNITO_REGION` and `COGNITO_USER_POOL_ID` are required when `:service_token` runs its real
+  implementation. Blank counts as missing. The last two serve only `health_check/0`, below.
 
 They are separate because the two boundaries are independent. `tenant_api` real with
 `service_token` local would send a canned token to the real API; the existing boot warning
@@ -102,6 +103,21 @@ The decision comment said a rejection should count as unhealthy, because Nucleus
 sends a credential. That is not implemented: a rejected credential is reported by
 `list_environments`, as `:auth_expired`, and reachability is what a probe is for. Revisit
 if a credential-aware readiness check is wanted.
+
+### `:service_token`'s `health_check` does not request a token
+
+Cognito bills every M2M token request ($0.00225, no free tier), so a readiness probe that
+fetched a token would cost money on every poll, where real traffic is cheap because the
+cache holds a token for its lifetime. `ServiceToken.Cognito.health_check/0` instead sends an
+unauthenticated `GET` to the pool's public JWKS document,
+`https://cognito-idp.{COGNITO_REGION}.amazonaws.com/{COGNITO_USER_POOL_ID}/.well-known/jwks.json`.
+Any status below 500 is healthy; a 5xx or transport failure is `:unavailable`. Region and
+pool id are matched strictly before they are spliced into the URL, and a missing or malformed
+one is `:not_configured` with no request attempted.
+
+This is a weaker check than the one it replaced: it shows Cognito is up, not that
+`COGNITO_DOMAIN` resolves or that the client credentials are accepted. A rejected credential
+still surfaces as `:auth_expired` on the first real fetch. Found in review of PR #118.
 
 ### `Nucleus.Scope.token` and the plumbing are deleted
 
@@ -157,6 +173,14 @@ concurrent mounts on an expired token is the normal case, not an edge.
 
 **A per-call mode check in the facade, returning `nil` for `Local`.** Rejected: dev would no
 longer exercise the production path, and every test double would need the same special case.
+
+**Health-check by requesting a token.** The first implementation. Rejected: it proves the
+credentials work, but bills a token request per poll.
+
+**Health-check by probing `https://{COGNITO_DOMAIN}/.well-known/jwks.json`.** Would test the
+host that serves `/oauth2/token` and need no new config. Not chosen: AWS's documentation
+only names the `cognito-idp` JWKS URI, and the hosted-UI domain serving that path is
+unverified.
 
 **Copy PLAT-faas's `Faas.Authentication.access_token/0` exactly.** Rejected in part: it caches
 a failed fetch as `{:ok, "nil"}` and ignores `expires_in` for a fixed lifetime. The approach
