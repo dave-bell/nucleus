@@ -2,7 +2,13 @@
 
 ## Status
 
-Accepted — 2026-08-11
+Accepted — 2026-08-11. **Partly superseded** (2026-10-02): the `Nucleus.Scope.token` field this
+ADR built, and its open question of how a real token would pass through a long-lived socket, are
+superseded by `0038-session-based-authentication-no-token-passthrough.md` and
+`0039-tenant-api-service-credential.md`. There is no user token to carry; the field, the
+`%{scope | token: nil}` line in `AssignScope`, and every token argument that forwarded it have been
+deleted. The rest of this ADR — the `Nucleus.Scope` seam, the `Disabled` provider, the boot
+warning — stands.
 
 Decided on [EN-6](https://github.com/dave-bell/nucleus/issues/6). Builds on
 `0002-backend-adapter-boundaries.md` (the boot-warning pattern) and

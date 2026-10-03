@@ -263,7 +263,7 @@ defmodule NucleusWeb.DataExportLive do
   second conditionally-rendered `<.modal id="env-picker-modal">`, mirroring
   the edit modal's own "never exists until open" shape.
 
-  Opening calls `Nucleus.TenantApi.list_environments/1` directly — not
+  Opening calls `Nucleus.TenantApi.list_environments/0` directly — not
   `EnvironmentsHook`'s `@environments` assign, which collapses every load
   error to `[]` and would misreport a genuine outage as "this tenant has
   zero environments." `{:error, %Error{}}` degrades to a flash and no modal
@@ -480,7 +480,7 @@ defmodule NucleusWeb.DataExportLive do
     {:noreply, socket}
   end
 
-  # `DEX-A07`: sourced from `Nucleus.TenantApi.list_environments/1` directly,
+  # `DEX-A07`: sourced from `Nucleus.TenantApi.list_environments/0` directly,
   # never from `EnvironmentsHook`'s `@environments` — that assign collapses
   # every load error to `[]` (`environments_hook.ex:81-84`), which would
   # render a genuine outage as "this tenant has zero environments" instead
@@ -490,7 +490,7 @@ defmodule NucleusWeb.DataExportLive do
   # from the same place a fresh page load would.
   @impl Phoenix.LiveView
   def handle_event("open_env_picker", _params, socket) do
-    case TenantApi.list_environments(socket.assigns.current_scope.token) do
+    case TenantApi.list_environments() do
       {:ok, environments} ->
         selected = EnvNames.parse(current_value(socket, @env_names_key))
         picker = EnvironmentPicker.new(available_environments(environments), selected)

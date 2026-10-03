@@ -6,15 +6,15 @@ defmodule NucleusWeb.EnvironmentsHook do
   `current_scope`.
 
   Attached via `live_session ..., on_mount: [{NucleusWeb.ScopeHook, :assign},
-  {NucleusWeb.EnvironmentsHook, :assign}]`, in that order — this hook reads
-  `current_scope.token` from the socket, so it must run after `ScopeHook`.
+  {NucleusWeb.EnvironmentsHook, :assign}]`, in that order, so `current_scope` is
+  already assigned by the time this hook runs.
   The sidebar is shell chrome shared by every page under the shell
   (`NAV-A02`), not a per-page concern, so no individual LiveView (including
   the future `SecretsLive`) fetches its own copy.
 
   ## Failure degrades to empty, never surfaces as an error (`NAV-A07`)
 
-  `Nucleus.TenantApi.list_environments/1` can fail
+  `Nucleus.TenantApi.list_environments/0` can fail
   (`{:error, Nucleus.Backend.Error.t()}`). This hook deliberately folds that
   into an empty list rather than exposing a `:failed`
   `Phoenix.LiveView.AsyncResult` state: `NAV-A07` and the wiki's error
@@ -64,21 +64,19 @@ defmodule NucleusWeb.EnvironmentsHook do
   import Phoenix.Component, only: [assign: 3]
   import Phoenix.LiveView, only: [assign_async: 3, attach_hook: 4]
 
-  alias Nucleus.Scope
   alias Nucleus.TenantApi
   alias NucleusWeb.SidebarNavState
 
   @spec on_mount(:assign, map(), map(), Phoenix.LiveView.Socket.t()) ::
           {:cont, Phoenix.LiveView.Socket.t()}
   def on_mount(:assign, _params, session, socket) do
-    token = scope_token(socket)
     nav_session_id = nav_session_id(session)
 
     socket =
       socket
       |> assign_async(:environments, fn ->
         environments =
-          case TenantApi.list_environments(token) do
+          case TenantApi.list_environments() do
             {:ok, environments} -> environments
             {:error, _reason} -> []
           end
@@ -99,13 +97,6 @@ defmodule NucleusWeb.EnvironmentsHook do
   end
 
   defp toggle_category(_event, _params, socket), do: {:cont, socket}
-
-  defp scope_token(socket) do
-    case socket.assigns[:current_scope] do
-      %Scope{token: token} -> token
-      _ -> nil
-    end
-  end
 
   # Falls back to a freshly generated id when the session predates
   # `NucleusWeb.Plugs.AssignScope` minting one (mirrors `NucleusWeb.ScopeHook`'s

@@ -34,8 +34,8 @@ defmodule NucleusWeb.SessionControllerTest do
         |> get(~p"/")
 
       # There is no real session to have ended (deferred authentication,
-      # `docs/adr/0005-deferred-authentication.md`; `current_scope.token`
-      # is unconditionally `nil`) — the next request is immediately
+      # `docs/adr/0005-deferred-authentication.md`; `Nucleus.Scope` has
+      # no token field) — the next request is immediately
       # re-identified as the same dev user. What genuinely changed is
       # `nav_session_id` (NAV-A05's sidebar expand state key), because the
       # session it lived in was dropped.

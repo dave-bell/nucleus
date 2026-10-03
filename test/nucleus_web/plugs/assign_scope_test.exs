@@ -19,10 +19,12 @@ defmodule NucleusWeb.Plugs.AssignScopeTest do
   end
 
   @tag :unit
-  test "stores the scope in the session, with token forced to nil", %{conn: conn} do
+  test "stores the scope in the session, which can carry no token", %{conn: conn} do
     conn = AssignScope.call(conn, [])
 
-    assert %Scope{token: nil} = Plug.Conn.get_session(conn, :current_scope)
+    assert %Scope{} = session_scope = Plug.Conn.get_session(conn, :current_scope)
+    assert session_scope == conn.assigns.current_scope
+    refute Map.has_key?(session_scope, :token)
   end
 
   @tag :unit

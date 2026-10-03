@@ -23,6 +23,11 @@ defmodule Nucleus.Application do
       # degrade to {:error, %Error{kind: :unavailable}} within list/1's own
       # budget, never take the calling LiveView process down with it.
       {Task.Supervisor, name: Nucleus.TaskSupervisor},
+      # Nucleus's own tenant-API access token, cached. Starts in every
+      # environment: it fetches lazily through the :service_token driver, which
+      # is the canned Local one wherever no Cognito client is configured. After
+      # the task supervisor, which it runs its fetches under.
+      Nucleus.TenantApi.ServiceToken,
       # Owns the ETS table backing the sidebar's per-session expand/collapse
       # state — see NucleusWeb.SidebarNavState's moduledoc for why this
       # exists outside any single LiveView process.

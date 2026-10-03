@@ -15,7 +15,7 @@ defmodule Nucleus.Environments do
     and is cheap enough to run before anything else — `SEC-A15` requires a
     path-traversal name be rejected "before any lookup is attempted".
   - `fetch/2` is the whole ladder: validate, then call out to
-    `Nucleus.TenantApi.list_environments/1`, then resolve. `validate_name/1`
+    `Nucleus.TenantApi.list_environments/0`, then resolve. `validate_name/1`
     is called as `fetch/2`'s first statement so an invalid name causes zero
     adapter calls — this is asserted directly in
     `test/nucleus/environments_test.exs`, not merely inferred from behaviour.
@@ -41,7 +41,7 @@ defmodule Nucleus.Environments do
   `SEC-A17`'s precondition is "the backing API is unreachable, **and no
   cached list is available**". With the stateless constraint (EN-1), that is
   the only state that ever exists — `fetch/2` never caches
-  `list_environments/1`'s result and never falls back to a stale list on
+  `list_environments/0`'s result and never falls back to a stale list on
   failure. Adding either would create an untested second path and weaken the
   fail-closed guarantee this module exists to provide.
 
@@ -49,7 +49,7 @@ defmodule Nucleus.Environments do
 
   `ENV-A06` requires an archived environment stay reachable by direct URL and
   usable for secrets management. `fetch/2` matches against every environment
-  `list_environments/1` returns, archived included — filtering archived ones
+  `list_environments/0` returns, archived included — filtering archived ones
   out of navigation is `NucleusWeb.EnvironmentsHook`'s job, not this one's.
   """
 
@@ -119,7 +119,7 @@ defmodule Nucleus.Environments do
 
   1. `validate_name/1` — on error, returns immediately. No adapter call, no
      path construction.
-  2. `Nucleus.TenantApi.list_environments/1` — an `:unavailable` or
+  2. `Nucleus.TenantApi.list_environments/0` — an `:unavailable` or
      `:not_configured` error is returned as `:unavailable` (`SEC-A17`);
      an `:auth_expired` error passes through unchanged, untouched by this
      module (`SEC-S7`'s concern).
@@ -129,10 +129,10 @@ defmodule Nucleus.Environments do
   Never caches the list and never falls back to a stale one — see the
   module doc.
   """
-  @spec fetch(term(), String.t() | nil) :: {:ok, Environment.t()} | {:error, Error.t()}
-  def fetch(name, token) do
+  @spec fetch(term()) :: {:ok, Environment.t()} | {:error, Error.t()}
+  def fetch(name) do
     with :ok <- validate_name(name) do
-      resolve(TenantApi.list_environments(token), name)
+      resolve(TenantApi.list_environments(), name)
     end
   end
 

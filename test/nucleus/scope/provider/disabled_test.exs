@@ -32,10 +32,10 @@ defmodule Nucleus.Scope.Provider.DisabledTest do
   end
 
   @tag :unit
-  test "token is always nil" do
+  test "the scope has no token field" do
     assert {:ok, scope} = Disabled.build(%{})
 
-    assert scope.token == nil
+    refute Map.has_key?(scope, :token)
   end
 
   @tag :unit

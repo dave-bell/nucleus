@@ -14,6 +14,7 @@ defmodule Nucleus.Backend do
   |---|---|---|---|
   | `:secrets` | AWS SSM Parameter Store, in the tenant's account | `Nucleus.Secrets.Store.Aws` | `Nucleus.Secrets.Store.Local` |
   | `:tenant_api` | Tenant backing API (authoritative environment list) | `Nucleus.TenantApi.Http` | `Nucleus.TenantApi.Local` |
+  | `:service_token` | Cognito token endpoint, for Nucleus's own tenant-API credential | `Nucleus.TenantApi.ServiceToken.Cognito` | `Nucleus.TenantApi.ServiceToken.Local` |
   | `:m2m` | Cognito App Clients, in this tenant's user pool | `Nucleus.M2M.Clients.Cognito` | `Nucleus.M2M.Clients.Local` |
   | `:nomad_jobs` | Nomad job list + detail, read-only | `Nucleus.NomadJobs.Http` | `Nucleus.NomadJobs.Local` |
   | `:nomad_vars` | Nomad Variables (Data Export config), read + write | `Nucleus.NomadVars.Store.Http` | `Nucleus.NomadVars.Store.Local` |
@@ -25,16 +26,19 @@ defmodule Nucleus.Backend do
 
   Authentication is deliberately absent. There is no `:auth` boundary and no
   `AUTH_BACKEND` — auth is the actual security boundary and is never swappable.
+  `:service_token` is not authentication: it issues Nucleus's *own* credential
+  for the tenant API (`docs/adr/0039-tenant-api-service-credential.md`) and says
+  nothing about who the signed-in user is or what they may do.
 
   ## Selection
 
-      config :nucleus, :backends, secrets: Nucleus.Secrets.Store.Aws, tenant_api: Nucleus.TenantApi.Http, m2m: Nucleus.M2M.Clients.Cognito, nomad_jobs: Nucleus.NomadJobs.Http, nomad_vars: Nucleus.NomadVars.Store.Http
+      config :nucleus, :backends, secrets: Nucleus.Secrets.Store.Aws, tenant_api: Nucleus.TenantApi.Http, m2m: Nucleus.M2M.Clients.Cognito, nomad_jobs: Nucleus.NomadJobs.Http, nomad_vars: Nucleus.NomadVars.Store.Http, service_token: Nucleus.TenantApi.ServiceToken.Cognito
 
-  `config/dev.exs` and `config/test.exs` override all five to the local
+  `config/dev.exs` and `config/test.exs` override all six to the local
   implementations, so a fresh clone runs and its tests pass with no
   credentials at all. `config/runtime.exs` allows a per-boundary override
   through `SECRETS_BACKEND`, `TENANT_API_BACKEND`, `M2M_BACKEND`,
-  `NOMAD_JOBS_BACKEND`, and `NOMAD_VARS_BACKEND`, each `"real"` (the default)
+  `NOMAD_JOBS_BACKEND`, `NOMAD_VARS_BACKEND`, and `SERVICE_TOKEN_BACKEND`, each `"real"` (the default)
   or `"local"`.
 
   Selection is per boundary rather than one global switch because the pain it
@@ -63,19 +67,23 @@ defmodule Nucleus.Backend do
     tenant_api: %{real: Nucleus.TenantApi.Http, local: Nucleus.TenantApi.Local},
     m2m: %{real: Nucleus.M2M.Clients.Cognito, local: Nucleus.M2M.Clients.Local},
     nomad_jobs: %{real: Nucleus.NomadJobs.Http, local: Nucleus.NomadJobs.Local},
-    nomad_vars: %{real: Nucleus.NomadVars.Store.Http, local: Nucleus.NomadVars.Store.Local}
+    nomad_vars: %{real: Nucleus.NomadVars.Store.Http, local: Nucleus.NomadVars.Store.Local},
+    service_token: %{
+      real: Nucleus.TenantApi.ServiceToken.Cognito,
+      local: Nucleus.TenantApi.ServiceToken.Local
+    }
   }
 
   @boundaries Enum.sort(Map.keys(@impls))
 
-  @type boundary :: :secrets | :tenant_api | :m2m | :nomad_jobs | :nomad_vars
+  @type boundary :: :secrets | :tenant_api | :m2m | :nomad_jobs | :nomad_vars | :service_token
   @type mode :: :real | :local
 
   @doc """
   Every known boundary.
 
       iex> Nucleus.Backend.boundaries()
-      [:m2m, :nomad_jobs, :nomad_vars, :secrets, :tenant_api]
+      [:m2m, :nomad_jobs, :nomad_vars, :secrets, :service_token, :tenant_api]
   """
   @spec boundaries() :: [boundary()]
   def boundaries, do: @boundaries

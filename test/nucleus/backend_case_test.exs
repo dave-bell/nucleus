@@ -34,13 +34,13 @@ defmodule Nucleus.BackendCaseTest do
   test "seed_environment appends an environment the local tenant API lists" do
     seed_environment(%{"shortName" => "backend-case-test-env", "label" => "Backend Case Test"})
 
-    assert {:ok, environments} = TenantApi.list_environments(nil)
+    assert {:ok, environments} = TenantApi.list_environments()
     assert Enum.any?(environments, &(&1.short_name == "backend-case-test-env"))
   end
 
   @tag :unit
   test "the previous test's seeded environment does not leak into this one" do
-    assert {:ok, environments} = TenantApi.list_environments(nil)
+    assert {:ok, environments} = TenantApi.list_environments()
     refute Enum.any?(environments, &(&1.short_name == "backend-case-test-env"))
   end
 

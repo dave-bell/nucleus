@@ -283,9 +283,9 @@ defmodule Nucleus.TenantApi.HttpTest do
 
     for status <- [400, 401, 403, 404, 429] do
       test "is :ok on #{status} — reachability, not permission" do
-        # A 401 means the service answered. Treating it as unhealthy would make
-        # every health check start failing the moment EN-6 makes anonymous calls
-        # unauthorised.
+        # A 401 means the service answered. The check sends no credential, so
+        # treating a rejection as unhealthy would fail it on every call; a
+        # rejected credential is `list_environments/1`'s `:auth_expired`.
         configure()
         respond(unquote(status), "{}")
 

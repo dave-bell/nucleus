@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.34 | Updated: 2026-09-29 -->
+<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.35 | Updated: 2026-10-02 -->
 
 # Business ↔ Tech Bridge
 
@@ -98,7 +98,7 @@ absence of work. `NAV-A08` is narrowed to drop its granted-scopes clause and gai
 option instead; the companion clause on `AUTH-A11` (`Authentication-and-Access.md`) is struck
 to match, so the two pages no longer disagree on whether scopes are shown. The NAV page's last
 `/api/*` contract row (`GET /api/proxy/environments`) is also removed — `NucleusWeb.EnvironmentsHook`
-calls `Nucleus.TenantApi.list_environments/2` directly, with no proxy hop to specify (the
+calls `Nucleus.TenantApi.list_environments/0` directly, with no proxy hop to specify (the
 repo-wide removal of the rest of that layer is **PRX-D1**, out of scope here). Two action IDs
 are actually removed this time, so — unlike `ENV-A05`/`APP-A03`/`APP-A04` above — this is a
 coverage-denominator change, not just wording: the `NAV-A01`–`A12` / `12` row becomes
@@ -131,6 +131,17 @@ but leaving a stale canary would fail `mix precommit` outright, and `PRX-D1`/`NA
 already set the precedent of updating this exact canary alongside a page-count-changing wiki
 amendment. See `docs/adr/0038-session-based-authentication-no-token-passthrough.md` for the full
 decision record.
+
+`EN-13` implements the code side of `AUTH-D1`'s "service credentials, not token passthrough" and
+touches no requirement ID, so no coverage count moves. What changes is the seam under `SEC-A15`–
+`SEC-A17` and `ENV-A*`/`NAV-A*`: every caller of `Nucleus.TenantApi.list_environments` (and
+`Nucleus.Environments.fetch`) drops its token argument, now `/0` and `/1` respectively; the token
+is fetched inside the `Nucleus.TenantApi` facade from `Nucleus.TenantApi.ServiceToken`, backed by a
+new `:service_token` boundary (`.Cognito` real, `.Local` canned). Tests:
+`test/nucleus/tenant_api_test.exs` (the facade, including a 401/403 making exactly one request and
+the next call refetching), `test/nucleus/tenant_api/service_token_test.exs` (the cache), and
+`test/nucleus/tenant_api/service_token/{cognito,local}_test.exs`. See
+`docs/adr/0039-tenant-api-service-credential.md`.
 
 **Most "Planned" columns are still unimplemented.** `NucleusWeb.Layouts` (app shell, header,
 sidebar) and `test/nucleus_web/live/shell_test.exs` now exist (EN-7) — a deliberate subset only.
@@ -436,7 +447,7 @@ trigger (`#var-env_names-edit`) opening a second conditionally-rendered modal
 (`#env-picker-modal`), never the generic edit path — `NucleusWeb.DataExportLive.EnvironmentPicker`
 (a real shared module, mirroring `M2MClientsLive.Format`'s "own file, own tests" precedent) holds
 one `MapSet` of selected short names against the tenant's full non-archived, name-sorted
-environment list, plus a filter string. Opening calls `Nucleus.TenantApi.list_environments/1`
+environment list, plus a filter string. Opening calls `Nucleus.TenantApi.list_environments/0`
 directly — never `EnvironmentsHook`'s `@environments`, which collapses every load error to `[]`
 and would misreport a genuine outage as zero environments — and re-derives pre-selection from
 `env_names`'s current stored value (`parse_env_names/1`, tolerant of the same blank/whitespace
@@ -528,7 +539,7 @@ alongside `active_section=`, the same one-line addition each already needed for 
 `NucleusWeb.SessionController.delete/2` calls `Plug.Conn.configure_session(drop: true)` and
 redirects to `/`, reached by a new `DELETE /logout` route in the plain `:browser` pipeline (not
 `:assign_scope`/`:authenticated` — logout must work even if scope assignment would otherwise
-fail). Because auth is deferred (`docs/adr/0005`, `current_scope.token` unconditionally `nil`),
+fail). Because auth is deferred (`docs/adr/0005`; `Nucleus.Scope` has no token field since EN-13),
 the observable effect is narrower than "logged out": the session and `nav_session_id` drop
 (clearing `NAV-A05`'s sidebar expand state), but the very next request is immediately
 re-identified as the same dev user — asserted as exactly that boundary in
