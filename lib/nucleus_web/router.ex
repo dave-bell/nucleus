@@ -33,7 +33,7 @@ defmodule NucleusWeb.Router do
     # view can be added under this scope without current_scope or the
     # sidebar's environment list (AGENTS.md,
     # docs/adr/0005-deferred-authentication.md). EnvironmentsHook runs after
-    # ScopeHook — it reads current_scope.token off the socket. ShellHook runs
+    # ScopeHook, as the shell's assigns are ordered. ShellHook runs
     # third; it only reads the connection URI to derive the active sidebar
     # section (NAV-A03), never current_scope, so its position relative to
     # the other two is not load-bearing (see its moduledoc).

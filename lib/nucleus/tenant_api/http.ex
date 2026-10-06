@@ -22,8 +22,8 @@ defmodule Nucleus.TenantApi.Http do
   fail for different reasons, and one knob for both forces one of them wrong.
 
   `redirect: false`. A redirect is an unexpected response from this API, and
-  following one risks carrying the user's `Authorization` header to whatever host
-  the redirect names. It maps to `:unavailable` like any other unexpected status.
+  following one risks carrying the `Authorization` header — Nucleus's service
+  token — to whatever host the redirect names. It maps to `:unavailable` like any other unexpected status.
 
   ## A bad element fails the whole call
 
@@ -32,6 +32,14 @@ defmodule Nucleus.TenantApi.Http do
   name — that value builds Parameter Store paths, so a silently absent one is a
   security-adjacent defect rather than a cosmetic one. See
   `Nucleus.TenantApi.Environment.from_api_list/1`.
+
+  ## The token is an argument
+
+  `list_environments/1` sends the token it is given as `Authorization: Bearer`.
+  Where it comes from is `Nucleus.TenantApi`'s business — it fetches Nucleus's own
+  service token and passes it down (`docs/adr/0039-tenant-api-service-credential.md`)
+  — so this module neither fetches nor invalidates one, and a test can hand it
+  any value. A blank or `nil` token sends no header rather than an empty one.
 
   ## Never log the token, never log the body
 
@@ -99,9 +107,9 @@ defmodule Nucleus.TenantApi.Http do
     request_id = request_id()
 
     # Reachability, not permission. Any status at all means the service answered,
-    # so 401 and 403 are healthy — without that, every health check would start
-    # failing the moment EN-6 makes anonymous calls unauthorised. The body is
-    # discarded undecoded: a malformed list is a listing problem, not an
+    # so 401 and 403 are healthy. The check sends no token: it has none to send,
+    # and a rejected credential is a listing problem that `list_environments/1`
+    # reports as `:auth_expired`. The body is discarded undecoded: a malformed list is a listing problem, not an
     # unreachable dependency.
     case perform(nil, request_id) do
       {:response, status, _body} when status >= 500 ->
@@ -235,8 +243,8 @@ defmodule Nucleus.TenantApi.Http do
         [{"accept", "application/json"}, {"authorization", "Bearer " <> token}]
 
       _blank_or_nil ->
-        # Auth is deferred to EN-6, so an anonymous call is the norm today. Sending
-        # a header with an empty token would be worse than sending none.
+        # `health_check/0` is anonymous, and so is any caller that has no token.
+        # Sending a header with an empty token would be worse than sending none.
         [{"accept", "application/json"}]
     end
   end

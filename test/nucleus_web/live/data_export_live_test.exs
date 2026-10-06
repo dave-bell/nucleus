@@ -814,7 +814,7 @@ defmodule NucleusWeb.DataExportLiveTest do
     end
 
     @tag action: "DEX-A07"
-    test "opening when list_environments/1 fails shows an error flash, not a crash, and does not open the modal",
+    test "opening when list_environments/0 fails shows an error flash, not a crash, and does not open the modal",
          %{conn: conn} do
       use_failing_tenant_api()
       {:ok, view, _html} = live_data_export(conn)

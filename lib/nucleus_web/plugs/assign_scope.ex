@@ -8,11 +8,9 @@ defmodule NucleusWeb.Plugs.AssignScope do
   `NucleusWeb.ScopeHook` reads the same source IP back out of the session for
   the LiveView socket that outlives this request.
 
-  The scope is also stored in the session, with `token` forced to `nil`
-  regardless of what the provider returned — the session is a signed, not
-  encrypted, cookie, and this is a defensive floor: it costs nothing today,
-  because EN-6 never populates `token`, and it means a future provider change
-  cannot leak a token into the session by omission.
+  The scope is also stored in the session. `Nucleus.Scope` has no token field,
+  so there is nothing credential-shaped to force out of it: the session is a
+  signed, not encrypted, cookie, and the struct simply cannot carry one.
 
   ## `nav_session_id`
 
@@ -42,7 +40,7 @@ defmodule NucleusWeb.Plugs.AssignScope do
 
     conn
     |> assign(:current_scope, scope)
-    |> put_session(:current_scope, %{scope | token: nil})
+    |> put_session(:current_scope, scope)
     |> ensure_nav_session_id()
   end
 

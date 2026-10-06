@@ -30,7 +30,15 @@ defmodule Nucleus.BackendTest do
   describe "boundaries/0" do
     @tag :unit
     test "covers secrets, tenant_api, m2m, nomad_jobs, and nomad_vars, and no auth boundary" do
-      assert Backend.boundaries() == [:m2m, :nomad_jobs, :nomad_vars, :secrets, :tenant_api]
+      assert Backend.boundaries() == [
+               :m2m,
+               :nomad_jobs,
+               :nomad_vars,
+               :secrets,
+               :service_token,
+               :tenant_api
+             ]
+
       refute :auth in Backend.boundaries()
     end
   end
@@ -55,7 +63,7 @@ defmodule Nucleus.BackendTest do
       assert error.message =~ "unknown backend boundary: :nomad"
 
       assert error.message =~
-               "Known boundaries: [:m2m, :nomad_jobs, :nomad_vars, :secrets, :tenant_api]"
+               "Known boundaries: [:m2m, :nomad_jobs, :nomad_vars, :secrets, :service_token, :tenant_api]"
     end
 
     @tag :unit

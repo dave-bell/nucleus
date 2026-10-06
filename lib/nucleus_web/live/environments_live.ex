@@ -99,7 +99,7 @@ defmodule NucleusWeb.EnvironmentsLive do
   defp fetch_environment(socket, environment) do
     socket = assign(socket, :environment_name, environment)
 
-    case Environments.fetch(environment, socket.assigns.current_scope.token) do
+    case Environments.fetch(environment) do
       {:ok, env} ->
         assign(socket, environment_status: :ok, environment: env)
 

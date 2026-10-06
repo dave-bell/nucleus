@@ -32,7 +32,6 @@ defmodule Nucleus.Scope.Provider.Disabled do
     scope = %Scope{
       user: %{email: Keyword.get(config, :email, @default_email), username: nil},
       tenant: Scope.tenant_namespace(),
-      token: nil,
       scopes: Keyword.get(config, :scopes, []),
       source_ip: Map.get(context, :source_ip)
     }
