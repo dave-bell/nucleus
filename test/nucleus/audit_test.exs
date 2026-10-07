@@ -205,8 +205,11 @@ defmodule Nucleus.AuditTest do
         spec = Nucleus.Audit.Event.spec(event)
         assert :tenant in spec.required, "#{event} does not require :tenant"
 
+        # The session-lifecycle events identify themselves by event name, user
+        # and reason: their wiki field lists carry no resource or path.
         identifying? =
-          :resource in spec.required or
+          event in [:sign_in, :sign_out, :auth_failure] or
+            :resource in spec.required or
             Enum.any?(spec.details_required, &(&1 in [:path, :key, :client_name]))
 
         assert identifying?, "#{event} has no required identifying field"
@@ -216,9 +219,7 @@ defmodule Nucleus.AuditTest do
     # The maintained call-site list AUD-A01 requires: every catalogued event
     # must actually be emitted somewhere, not merely specced. Each entry is
     # the {module, function, arity} that calls `Audit.emit/2` for that event.
-    # `auth_failure` is the one named exception — AUD-S4, blocked on
-    # authentication (docs/adr/0005-deferred-authentication.md). Adding a new
-    # catalogued event with no entry here fails this test loudly, forcing a
+    # Adding a new catalogued event with no entry here fails this test loudly, forcing a
     # decision instead of silently passing.
     @wired_call_sites %{
       nomad_vars_listed: {Nucleus.NomadVars, :list, 1},
@@ -229,13 +230,14 @@ defmodule Nucleus.AuditTest do
       secret_updated: {Nucleus.Secrets, :update, 4},
       m2m_client_created: {Nucleus.M2M, :create, 4},
       m2m_client_viewed: {Nucleus.M2M, :view, 2},
-      m2m_secret_rotated: {Nucleus.M2M, :rotate, 2}
+      m2m_secret_rotated: {Nucleus.M2M, :rotate, 2},
+      sign_out: {Nucleus.Auth.SessionRegistry, :announce_expiry, 2}
     }
-    @known_unwired [:auth_failure]
+    @known_unwired [:sign_in, :auth_failure]
 
     @tag :unit
     @tag action: "AUD-A01"
-    test "every catalogued event except auth_failure has a live call site" do
+    test "every catalogued event has a live call site" do
       catalogued = MapSet.new(Nucleus.Audit.Event.events())
       wired = MapSet.new(Map.keys(@wired_call_sites))
       unwired = MapSet.new(@known_unwired)

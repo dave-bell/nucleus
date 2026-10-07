@@ -71,9 +71,8 @@ defmodule Nucleus.AuditCaseTest do
 
   @tag :unit
   test "refute_audit_contains/1 fails when the value is present — proving the guard can fail" do
-    Audit.emit(:auth_failure,
+    Audit.emit(:nomad_vars_listed,
       tenant: "acme",
-      reason: "expired",
       details: %{path: "/leaked/s3cr3t-plaintext-value"}
     )
 

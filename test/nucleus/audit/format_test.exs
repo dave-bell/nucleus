@@ -69,9 +69,9 @@ defmodule Nucleus.Audit.FormatTest do
     test "the same event produces the same field set under both formats" do
       full =
         event(%{
-          event: :auth_failure,
+          event: :nomad_var_updated,
           reason: "token expired",
-          details: %{path: "/api/secrets"}
+          details: %{path: "/api/secrets", key: "FEATURE_FLAG"}
         })
 
       json_fields =
