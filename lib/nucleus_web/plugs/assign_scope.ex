@@ -27,8 +27,9 @@ defmodule NucleusWeb.Plugs.AssignScope do
   With `AUTH_ENABLED=false` the dev scope is assigned and nothing is checked.
 
   The scope is also stored in the session. `Nucleus.Scope` has no token field,
-  so there is nothing credential-shaped to force out of it: the session is a
-  signed, not encrypted, cookie, and the struct simply cannot carry one.
+  so there is nothing credential-shaped to force out of it: the struct simply
+  cannot carry one, whatever the cookie's protection (it is signed and
+  encrypted, `NucleusWeb.Endpoint`).
 
   ## `nav_session_id`
 

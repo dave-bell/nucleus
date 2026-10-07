@@ -1,14 +1,24 @@
 defmodule NucleusWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :nucleus
 
-  # The session will be stored in the cookie and signed,
-  # this means its contents can be read but not tampered with.
-  # Set :encryption_salt if you would also like to encrypt it.
+  # The session is stored in the cookie, signed and encrypted (`encryption_salt`):
+  # since AUTH-S1 it holds the signed-in user's email, and during sign-in the
+  # PKCE verifier, which is meant to stay private. Encryption is keyed from
+  # `secret_key_base`; the salts only separate the two derived keys and are not
+  # secret. Changing either salt signs everyone out.
+  #
+  # `secure: true` keeps the cookie off plain HTTP. `config/dev.exs` and
+  # `config/test.exs` turn it off (dev is served over http://localhost); every
+  # other environment gets `config/config.exs`'s `true`. `Application.compile_env!`
+  # has no fallback on purpose, so a missing setting is a compile error rather
+  # than a quietly insecure cookie.
   @session_options [
     store: :cookie,
     key: "_nucleus_key",
     signing_salt: "HS0ov6Hz",
-    same_site: "Lax"
+    encryption_salt: "Qn3vYk8xT2",
+    same_site: "Lax",
+    secure: Application.compile_env!(:nucleus, :session_cookie_secure)
   ]
 
   # :x_headers is declared here (EN-6) so NucleusWeb.ScopeHook can read

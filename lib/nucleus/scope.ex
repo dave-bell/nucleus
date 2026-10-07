@@ -28,7 +28,8 @@ defmodule Nucleus.Scope do
   reaches every backend with a service credential instead — see
   `docs/adr/0038-session-based-authentication-no-token-passthrough.md` and
   `docs/adr/0039-tenant-api-service-credential.md`. This struct is written into
-  the (signed, not encrypted) session cookie, so it must stay free of secrets.
+  the (signed and encrypted) session cookie and handed to every LiveView, so it must
+  stay free of secrets.
   """
 
   require Logger
