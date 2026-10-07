@@ -29,6 +29,8 @@ covered:
 | The `beforeunload` warning dialog itself | `M2M-A10` | `window.beforeunload` is a browser API; the hook cannot be executed |
 | The rendered status colour itself (as opposed to the CSS class) | `APP-A02` | Actual pixel colour is not observable through `Phoenix.LiveViewTest`; only the class attribute is |
 | Click-away dismissal of the user menu | `NAV-A08` | `phx-click-away` reaches the server via a real DOM click outside the element; no `LiveViewTest` helper drives a "click elsewhere" |
+| The Hosted UI round-trip: the browser's redirect to Cognito, the corporate IdP, and back to `/auth/callback` | `AUTH-A01`, `AUTH-A02` | A real redirect through a third-party site needs a browser and a real pool; everything on Nucleus's side of it is tested against a `Req.Test` stub and a generated signing key (`docs/requirements/Test-Strategy.md`). Manual/staging check |
+| A tab's automatic reconnect after the session's `live_socket_id` disconnect | `AUTH-A09` | The reconnect is the LiveView JS client's behaviour; the broadcast and the redirect on the resulting mount are each tested, not the client reconnecting between them |
 
 For these, assert the *wiring* (hook attached, `phx-window-keydown` bound,
 `on_cancel` set) — never tag the test `action:` for that ID, since the test

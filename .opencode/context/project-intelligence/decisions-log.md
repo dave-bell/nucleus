@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.45 | Updated: 2026-10-02 -->
+<!-- Context: project-intelligence/decisions | Priority: high | Version: 1.46 | Updated: 2026-10-07 -->
 
 # Decisions Log
 
@@ -64,6 +64,7 @@ job and the row should point rather than paraphrase.
 | 37 | `m2m_client_created` keeps `token_validity_minutes`, widening the master catalogue (`Audit-and-Compliance.md`) and `event.ex`'s `details_allowed`/`details_required` to match the feature page, rather than trimming the feature page to match the (narrower) master catalogue as first recommended; recorded in minutes as entered, not Cognito's seconds; supersedes `0020`'s "Negative" note that left this exact drift as known debt | 2026-09-28 | Decided | `docs/adr/0037-m2m-client-created-token-validity-minutes-audit-field.md` |
 | 38 | Session-based authentication, no token passthrough — Cognito Hosted UI + server-side callback writes a session cookie re-validated at request/mount granularity; two session timers replace silent refresh; `SEC-A18` reworded to Nucleus's own credential expiry, not the user's session; closes both `0005`'s deferred open questions | 2026-09-29 | Decided | `docs/adr/0038-session-based-authentication-no-token-passthrough.md` |
 | 39 | Tenant API service credential — Nucleus calls the Tenant API with its own Cognito M2M client-credentials token (option b; a Nucleus-only Terraform client), fetched by the `Nucleus.TenantApi` facade and passed down as the implementations' unchanged `token` argument, so `list_environments/1` becomes `/0` for callers only; the token source is a sixth boundary, `:service_token` (`SERVICE_TOKEN_BACKEND`), with a canned `.Local` driver so dev and test run the production path; cache holds until `expires_in` − 60s, single-flight, never caches errors; `invalidate/2` is token-scoped so concurrent 401s cannot drop a fresh token; `health_check` stays anonymous (diverging from the decision comment); `Nucleus.Scope.token` deleted; supersedes `0005`'s `token` field and closes `0038`'s last open item | 2026-10-02 | Decided | `docs/adr/0039-tenant-api-service-credential.md` |
+| 40 | Cognito sign-in and in-memory session lifecycle — written on `jose` + `Req`, not Ueberauth (`ueberauth_cognito` sends no `nonce` or PKCE and cannot be `Req.Test`-stubbed); `state`/`nonce`/PKCE, ID token only, nothing but claims kept; session cookie encrypted and `Secure` outside dev/test; a single-node `SessionRegistry` owns the idle clock, announces each expiry exactly once and remembers the last path for `AUTH-A09`'s return-to, since a socket cannot write a cookie; one `SessionCheck` shared by the plug and a now-halting `ScopeHook` (extended, not replaced); activity is navigation plus throttled events, never a per-`handle_event` check; `sign_in`/`sign_out` added and `auth_failure` loses its required `path`; logout ends the session; supersedes `0005`'s deferred-auth half | 2026-10-07 | Decided | `docs/adr/0040-cognito-sign-in-and-session-lifecycle.md` |
 
 No **"re-platform" decision** (fresh start) and no **inherited ADRs** — the wiki's `ADR-0001`–
 `ADR-0007` are reference only; adopting one is a decision made on its own merits.
@@ -73,6 +74,11 @@ signed-in user, once Nucleus first *writes* to it — today it only reads, so ca
 to the Nucleus service (`0039`).
 
 ## Deprecated Decisions
+
+Row **5**'s deferral of real authentication is superseded by row 40 (2026-10-07): the
+`Nucleus.Scope` seam, the `AUTH_ENABLED` switch and the disabled-by-default provider all stand,
+but `Nucleus.Scope.Provider.Cognito` is now real instead of a stub that raises. Row 39 had
+already superseded its `token` field. Read `0005`, then `0039`, then `0040`.
 
 Row **11**'s reveal *mechanics* are partially superseded by row 12 (2026-08-18): `:revealed` is a
 single `Secret` rather than a `%{key => Secret.t()}` map, and a reveal or hide no longer calls
@@ -86,7 +92,7 @@ the ADR it points at stays findable.
 
 ## Onboarding Checklist
 
-- [ ] Read the Decision Index above; `adr/0001`–`0039` are binding
+- [ ] Read the Decision Index above; `adr/0001`–`0040` are binding
 - [ ] New formal ADRs belong in `docs/adr/`, with only an index row mirrored here — the wiki's
       ADR-0001–0007 are reference only, not adopted
 - [ ] Know which decisions are pending (see `living-notes.md`)
