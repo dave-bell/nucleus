@@ -13,6 +13,7 @@ defmodule Nucleus.Auth.Config do
   | `:client_id` | `COGNITO_CLIENT_ID` | the sign-in client, not the `_API` M2M one |
   | `:client_secret` | `COGNITO_CLIENT_SECRET` | server-side only |
   | `:allowed_group` | `COGNITO_ALLOWED_GROUP` | `cognito:groups` must contain it |
+  | `:identity_provider` | `COGNITO_IDENTITY_PROVIDER` | the IdP's name in the pool; the authorize request names it so Cognito skips its chooser page |
   | `:idle_timeout` | `SESSION_IDLE_TIMEOUT` | seconds, default 900 |
   | `:max_age` | `SESSION_MAX_AGE` | seconds, default 28800 |
 
@@ -24,7 +25,15 @@ defmodule Nucleus.Auth.Config do
   and nowhere else, so a change of identity provider is a change to those two.
   """
 
-  @cognito_keys [:domain, :region, :user_pool_id, :client_id, :client_secret, :allowed_group]
+  @cognito_keys [
+    :domain,
+    :region,
+    :user_pool_id,
+    :client_id,
+    :client_secret,
+    :allowed_group,
+    :identity_provider
+  ]
 
   @default_idle_timeout 15 * 60
   @default_max_age 8 * 60 * 60
@@ -71,6 +80,9 @@ defmodule Nucleus.Auth.Config do
 
   @spec allowed_group() :: String.t()
   def allowed_group, do: fetch!(:allowed_group)
+
+  @spec identity_provider() :: String.t()
+  def identity_provider, do: fetch!(:identity_provider)
 
   @doc "The Hosted UI authorize endpoint."
   @spec authorize_url() :: String.t()

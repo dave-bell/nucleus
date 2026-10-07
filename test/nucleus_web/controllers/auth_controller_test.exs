@@ -101,6 +101,12 @@ defmodule NucleusWeb.AuthControllerTest do
       assert sent.query["scope"] == "openid email"
     end
 
+    test "names the identity provider so Cognito skips its own chooser page", %{conn: conn} do
+      {_conn, sent} = begin_sign_in(conn)
+
+      assert sent.query["identity_provider"] == identity_provider()
+    end
+
     test "never sends the client secret to the browser", %{conn: conn} do
       {_conn, sent} = begin_sign_in(conn)
       refute sent.url =~ client_secret()

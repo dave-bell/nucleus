@@ -9,7 +9,8 @@ defmodule Nucleus.Auth.ConfigTest do
     user_pool_id: "eu-west-1_abc",
     client_id: "cid",
     client_secret: "shh",
-    allowed_group: "nucleus-users"
+    allowed_group: "nucleus-users",
+    identity_provider: "Corp"
   ]
 
   setup do
@@ -37,6 +38,11 @@ defmodule Nucleus.Auth.ConfigTest do
   test "verify!/0 treats a blank value as missing" do
     Application.put_env(:nucleus, Nucleus.Auth, Keyword.put(@full, :allowed_group, ""))
     assert_raise RuntimeError, ~r/:allowed_group/, fn -> Config.verify!() end
+  end
+
+  test "verify!/0 requires the identity provider" do
+    Application.put_env(:nucleus, Nucleus.Auth, Keyword.delete(@full, :identity_provider))
+    assert_raise RuntimeError, ~r/:identity_provider/, fn -> Config.verify!() end
   end
 
   test "session timeouts default to 15 minutes idle and 8 hours max age" do

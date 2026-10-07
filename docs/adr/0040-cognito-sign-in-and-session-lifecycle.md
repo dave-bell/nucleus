@@ -52,7 +52,12 @@ failure mode for a flexibility nobody expects to use.
 ### The flow, and what is kept from it
 
 `POST /sign-in` mints a random `state`, `nonce` and PKCE verifier, stores them in the session, and
-redirects to the Hosted UI requesting `openid email` — no API scope. The callback treats the attempt
+redirects to the Hosted UI requesting `openid email` — no API scope. The authorize request also
+names the corporate identity provider (`identity_provider=`, from `COGNITO_IDENTITY_PROVIDER`), which
+makes Cognito redirect silently to that provider instead of showing its own provider-chooser page: the
+user goes from Nucleus's sign-in page to the corporate login, or straight through if that session is
+alive. Cognito still federates and issues the token, so nothing downstream changes, and `AUTH-A01`'s
+one-action sign-in page stands. The callback treats the attempt
 as spent whatever happens (the pending values are deleted first), then checks, in order: an
 IdP-reported `?error=`, the pending sign-in, `state` (constant-time compare), the `code`, the code
 exchange (confidential client, secret in an `Authorization: Basic` header, PKCE verifier sent), the
@@ -168,7 +173,8 @@ straight back in, which is commented where it would be discovered (`NucleusWeb.A
 ### Configuration
 
 `COGNITO_DOMAIN`, `COGNITO_REGION`, `COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID`,
-`COGNITO_CLIENT_SECRET`, `COGNITO_ALLOWED_GROUP` are all required when `AUTH_ENABLED=true`, checked at
+`COGNITO_CLIENT_SECRET`, `COGNITO_ALLOWED_GROUP`, `COGNITO_IDENTITY_PROVIDER` (the provider's name as it
+appears in the user pool) are all required when `AUTH_ENABLED=true`, checked at
 boot by `Nucleus.Auth.Config.verify!/0` (which replaces `build/1` as the boot check, since there is no
 session at boot). `SESSION_IDLE_TIMEOUT` (default 900) and `SESSION_MAX_AGE` (default 28800) are
 **integer seconds** — the wiki gives only the defaults in words — and are validated in every
@@ -187,6 +193,8 @@ None of these are code, and the first two will make sign-in fail until they are 
   separate dev app client.
 - The sign-in client must be a **confidential client with a secret**, using the Authorization Code
   grant, allowing the `openid` and `email` scopes. It is a different client from the `_API` M2M one.
+- **The identity provider named in `COGNITO_IDENTITY_PROVIDER` must be enabled on that client**, with
+  exactly the name it has in the pool.
 
 ## Consequences
 
@@ -217,6 +225,11 @@ None of these are code, and the first two will make sign-in fail until they are 
   `req`); those predate this ticket and are untouched by it.
 
 ## Alternatives considered
+
+**A Nucleus sign-in page that redirects automatically.** Rejected: it contradicts `AUTH-A01`, and
+logout, which lands on that page, would sign the user straight back in while the corporate session is
+alive. Naming the identity provider on the authorize request removes Cognito's chooser page instead,
+and keeps the page.
 
 **`ueberauth_cognito`.** Rejected for the reasons above; it fails `AUTH-A02`'s `nonce`/PKCE wording and
 cannot be stubbed with `Req.Test`. Dropping `nonce`/PKCE from the requirement, or forking the library,

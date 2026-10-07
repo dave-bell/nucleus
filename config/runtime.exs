@@ -245,7 +245,9 @@ end
 #
 # COGNITO_CLIENT_ID / COGNITO_CLIENT_SECRET are the *sign-in* client; the
 # `_API` pair above is Nucleus's own M2M client. COGNITO_DOMAIN is a bare host,
-# no scheme.
+# no scheme. COGNITO_IDENTITY_PROVIDER is the name of the corporate IdP as it
+# appears in the user pool (e.g. "Semaphore"); the authorize request names it so
+# Cognito skips its own provider-chooser page.
 case System.get_env("AUTH_ENABLED") do
   nil ->
     :ok
@@ -272,7 +274,8 @@ case System.get_env("AUTH_ENABLED") do
       user_pool_id: auth_env.("COGNITO_USER_POOL_ID"),
       client_id: auth_env.("COGNITO_CLIENT_ID"),
       client_secret: auth_env.("COGNITO_CLIENT_SECRET"),
-      allowed_group: auth_env.("COGNITO_ALLOWED_GROUP")
+      allowed_group: auth_env.("COGNITO_ALLOWED_GROUP"),
+      identity_provider: auth_env.("COGNITO_IDENTITY_PROVIDER")
 
   other ->
     raise "AUTH_ENABLED must be \"true\" or \"false\", got: #{inspect(other)}"

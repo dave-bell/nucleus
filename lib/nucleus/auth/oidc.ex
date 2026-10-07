@@ -57,6 +57,10 @@ defmodule Nucleus.Auth.OIDC do
   Builds the Hosted UI authorize URL and the three secrets the callback must
   be able to check later.
 
+  The URL names the corporate identity provider (`identity_provider`), so
+  Cognito redirects silently to it instead of showing its own provider-chooser
+  page. Cognito still federates and issues the token.
+
   The caller stores `:state`, `:nonce` and `:code_verifier` in the session and
   redirects the browser to `:url`.
   """
@@ -72,6 +76,7 @@ defmodule Nucleus.Auth.OIDC do
         client_id: Config.client_id(),
         redirect_uri: Config.redirect_uri(),
         scope: @scope,
+        identity_provider: Config.identity_provider(),
         state: state,
         nonce: nonce,
         code_challenge: code_challenge(code_verifier),

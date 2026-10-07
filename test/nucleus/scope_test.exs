@@ -117,7 +117,8 @@ defmodule Nucleus.ScopeTest do
         user_pool_id: "eu-west-1_abc",
         client_id: "cid",
         client_secret: "shh",
-        allowed_group: "nucleus-users"
+        allowed_group: "nucleus-users",
+        identity_provider: "Corp"
       )
 
       on_exit(fn ->

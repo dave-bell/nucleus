@@ -18,10 +18,12 @@ defmodule Nucleus.AuthFixtures do
   @client_id "test-client-id"
   @client_secret "test-client-secret"
   @group "nucleus-users"
+  @identity_provider "Corp"
 
   def client_id, do: @client_id
   def client_secret, do: @client_secret
   def allowed_group, do: @group
+  def identity_provider, do: @identity_provider
   def issuer, do: "https://cognito-idp.#{@region}.amazonaws.com/#{@pool}"
 
   @doc "Installs the full set of sign-in settings, with the Req stub, for one test."
@@ -39,6 +41,7 @@ defmodule Nucleus.AuthFixtures do
           client_id: @client_id,
           client_secret: @client_secret,
           allowed_group: @group,
+          identity_provider: @identity_provider,
           req_options: [plug: {Req.Test, @stub}]
         ],
         overrides
