@@ -90,7 +90,7 @@ defmodule Nucleus.Auth.SessionCheck do
   end
 
   defp active(%Session{} = auth, registry, now) do
-    SessionRegistry.touch(auth.id, registry)
+    SessionRegistry.touch(auth.id, nil, registry)
     {:ok, Session.touch(auth, now)}
   end
 

@@ -28,6 +28,7 @@ defmodule Nucleus.Auth.Config do
 
   @default_idle_timeout 15 * 60
   @default_max_age 8 * 60 * 60
+  @default_activity_throttle_ms 30_000
 
   @doc "Raises unless every sign-in setting is present. Called at boot when `AUTH_ENABLED=true`."
   @spec verify!() :: :ok
@@ -52,6 +53,15 @@ defmodule Nucleus.Auth.Config do
   @doc "Seconds a session may live since sign-in, regardless of activity."
   @spec max_age() :: pos_integer()
   def max_age, do: Keyword.get(env(), :max_age, @default_max_age)
+
+  @doc """
+  The least time between two `handle_event`-driven activity reports from one
+  tab, in milliseconds. A form field fires an event per keystroke; against a
+  15-minute idle limit, reporting more than twice a minute buys nothing.
+  """
+  @spec activity_throttle_ms() :: non_neg_integer()
+  def activity_throttle_ms,
+    do: Keyword.get(env(), :activity_throttle_ms, @default_activity_throttle_ms)
 
   @spec client_id() :: String.t()
   def client_id, do: fetch!(:client_id)

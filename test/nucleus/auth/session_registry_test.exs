@@ -98,7 +98,7 @@ defmodule Nucleus.Auth.SessionRegistryTest do
       a = attrs(%{signed_in_at: now - 1_000, last_active: now - 100})
       :ok = SessionRegistry.register(a, name)
       # ...but this touch grants a fresh 150ms.
-      SessionRegistry.touch(a.id, name)
+      SessionRegistry.touch(a.id, nil, name)
       sync(name)
 
       id = a.id
@@ -112,7 +112,7 @@ defmodule Nucleus.Auth.SessionRegistryTest do
       :ok = SessionRegistry.register(a, name)
       {:ok, _} = SessionRegistry.expire(a, :idle, name)
 
-      SessionRegistry.touch(a.id, name)
+      SessionRegistry.touch(a.id, nil, name)
       sync(name)
 
       assert SessionRegistry.status(a.id, name) == {:expired, :idle}
@@ -125,7 +125,7 @@ defmodule Nucleus.Auth.SessionRegistryTest do
       a = attrs(%{signed_in_at: now - 20_000, last_active: now - 11_000})
       :ok = SessionRegistry.register(a, name)
 
-      SessionRegistry.touch(a.id, name)
+      SessionRegistry.touch(a.id, nil, name)
       sync(name)
 
       assert SessionRegistry.status(a.id, name) == {:expired, :idle}
@@ -139,7 +139,7 @@ defmodule Nucleus.Auth.SessionRegistryTest do
       start.(max_age_ms: 80)
       a = attrs()
       :ok = SessionRegistry.register(a, name)
-      SessionRegistry.touch(a.id, name)
+      SessionRegistry.touch(a.id, nil, name)
 
       id = a.id
       assert_receive {:expired, ^id, :max_age}, 1_000

@@ -52,12 +52,16 @@ defmodule Nucleus.Auth.Session do
   def live_socket_id(%__MODULE__{id: id}), do: live_socket_id(id)
   def live_socket_id(id) when is_binary(id), do: "auth_sessions:" <> id
 
-  @doc "The identity to put on an audit event: email, else username, else `\"anonymous\"`."
-  @spec audit_user(t()) :: String.t()
-  def audit_user(%__MODULE__{email: email}) when is_binary(email) and email != "", do: email
+  @doc """
+  The identity to put on an audit event: email, else username, else
+  `"anonymous"`. Takes a session or any `%{email:, username:}` map, such as
+  `Nucleus.Auth.OIDC.user/1`.
+  """
+  @spec audit_user(%{optional(atom()) => term()}) :: String.t()
+  def audit_user(%{email: email}) when is_binary(email) and email != "", do: email
 
-  def audit_user(%__MODULE__{username: username}) when is_binary(username) and username != "",
+  def audit_user(%{username: username}) when is_binary(username) and username != "",
     do: username
 
-  def audit_user(%__MODULE__{}), do: "anonymous"
+  def audit_user(_other), do: "anonymous"
 end

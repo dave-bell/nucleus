@@ -1,0 +1,15 @@
+<.auth_card id="sign-in-page" title="Sign in to Nucleus">
+  <p class="text-base-content/70">
+    Use your organisation's single sign-on to continue.
+  </p>
+  <.form for={%{}} action={~p"/sign-in"} method="post" id="sign-in-form" class="w-full">
+    <input :if={@return_to} type="hidden" name="return_to" value={@return_to} />
+    <button
+      type="submit"
+      id="sign-in-sso"
+      class="btn btn-primary w-full transition-transform active:scale-95"
+    >
+      Sign in with SSO
+    </button>
+  </.form>
+</.auth_card>

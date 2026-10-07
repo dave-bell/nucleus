@@ -1,12 +1,30 @@
 defmodule NucleusWeb.Plugs.AssignScope do
   @moduledoc """
-  Assigns `conn.assigns.current_scope` on every `:browser` request.
+  Authorizes the request and assigns `conn.assigns.current_scope` on every
+  `:assign_scope` request.
 
   Builds the scope through `Nucleus.Scope.Provider.build/1`, capturing
   `source_ip` here — via `Nucleus.Audit.Source.from_conn/1` — because this is
   the last point at which a `Plug.Conn` (and so `X-Forwarded-For`) exists.
   `NucleusWeb.ScopeHook` reads the same source IP back out of the session for
   the LiveView socket that outlives this request.
+
+  ## Authorization (`AUTH_ENABLED=true`)
+
+  With the Cognito provider this is the HTTP half of `AUTH-A05` (the LiveView
+  half is `NucleusWeb.ScopeHook`): every request re-validates the session
+  through `Nucleus.Auth.SessionCheck` - signature (a tampered or undecryptable
+  cookie arrives here as an empty session), `SESSION_MAX_AGE`,
+  `SESSION_IDLE_TIMEOUT`, and the registry's verdict. A request that fails is
+  redirected to `/sign-in`, carrying the page it asked for as `return_to`
+  (`AUTH-A03`, `NAV-A10`) and **halted**, so no tenant data is rendered.
+
+  A visitor who was simply never signed in is redirected without an audit
+  event; one whose session expired is recorded as `sign_out`
+  (`reason=idle|max_age`) by `SessionCheck`, once. `auth_failure` is not
+  emitted here: it belongs to callback failures (`AUTH-A06`).
+
+  With `AUTH_ENABLED=false` the dev scope is assigned and nothing is checked.
 
   The scope is also stored in the session. `Nucleus.Scope` has no token field,
   so there is nothing credential-shaped to force out of it: the session is a
@@ -27,7 +45,9 @@ defmodule NucleusWeb.Plugs.AssignScope do
   import Plug.Conn
 
   alias Nucleus.Audit
+  alias Nucleus.Auth.SessionCheck
   alias Nucleus.Scope
+  alias NucleusWeb.ReturnTo
 
   @spec init(keyword()) :: keyword()
   def init(opts), do: opts
@@ -36,12 +56,35 @@ defmodule NucleusWeb.Plugs.AssignScope do
   def call(conn, _opts) do
     source_ip = Audit.Source.from_conn(conn)
 
-    {:ok, scope} = Scope.Provider.build(%{source_ip: source_ip})
+    if Scope.Provider.configured() == Scope.Provider.Cognito do
+      authorize(conn, source_ip)
+    else
+      {:ok, scope} = Scope.Provider.build(%{source_ip: source_ip})
+      conn |> assign_scope(scope) |> ensure_nav_session_id()
+    end
+  end
 
+  defp authorize(conn, source_ip) do
+    case SessionCheck.validate(get_session(conn)) do
+      {:ok, auth} ->
+        {:ok, scope} = Scope.Provider.build(%{session: auth, source_ip: source_ip})
+
+        conn
+        |> assign_scope(scope)
+        |> put_session(:auth, auth)
+        |> ensure_nav_session_id()
+
+      {:error, _no_valid_session} ->
+        conn
+        |> Phoenix.Controller.redirect(to: ReturnTo.sign_in_path(ReturnTo.from_conn(conn)))
+        |> halt()
+    end
+  end
+
+  defp assign_scope(conn, scope) do
     conn
     |> assign(:current_scope, scope)
     |> put_session(:current_scope, scope)
-    |> ensure_nav_session_id()
   end
 
   defp ensure_nav_session_id(conn) do

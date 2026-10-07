@@ -12,8 +12,9 @@ defmodule Nucleus.Auth.SessionRegistry do
 
   ## What a record holds
 
-  `%{id, user, tenant, signed_in_at, last_active, idle_ms, max_age_ms, status}`,
-  timestamps in milliseconds, `status` one of:
+  `%{id, user, tenant, signed_in_at, last_active, path, idle_ms, max_age_ms, status}`,
+  timestamps in milliseconds, `path` the last page the session was seen on
+  (see "Where the user was" below), `status` one of:
 
   - `:active`
   - `{:expired, :idle | :max_age | :user}` - ended; `:user` is a sign-out
@@ -22,6 +23,15 @@ defmodule Nucleus.Auth.SessionRegistry do
 
   Reads go straight to ETS in the caller's process. Every write goes through
   this process, which is what makes `expire/3` atomic.
+
+  ## Where the user was (`AUTH-A09`)
+
+  When a connected tab's session ends, the user is sent to sign in and then
+  back to "the page they were on". The reconnect that discovers the expiry
+  cannot say what that page was - a LiveView mount sees no page URL - so the
+  registry remembers it: every navigation reports its path through `touch/3`,
+  and `last_path/2` hands it to whoever redirects to sign-in. It is kept on
+  the ended record, so it is still there when the tab comes back.
 
   ## Expiry happens exactly once
 
@@ -96,9 +106,25 @@ defmodule Nucleus.Auth.SessionRegistry do
   @spec register(attrs(), GenServer.name()) :: :ok
   def register(attrs, server \\ __MODULE__), do: GenServer.call(server, {:register, attrs})
 
-  @doc "Records activity. A no-op on a session that has ended or is already past a deadline."
-  @spec touch(id(), GenServer.name()) :: :ok
-  def touch(id, server \\ __MODULE__), do: GenServer.cast(server, {:touch, id})
+  @doc """
+  Records activity, and the `path` the session is now on if given. A no-op on a
+  session that has ended or is already past a deadline.
+  """
+  @spec touch(id(), String.t() | nil, GenServer.name()) :: :ok
+  def touch(id, path \\ nil, server \\ __MODULE__) do
+    GenServer.cast(server, {:touch, id, path})
+  end
+
+  @doc "The last path `touch/3` reported for the session, ended or not; `nil` if none."
+  @spec last_path(id(), GenServer.name()) :: String.t() | nil
+  def last_path(id, server \\ __MODULE__) do
+    case :ets.lookup(server, id) do
+      [{^id, record}] -> record.path
+      [] -> nil
+    end
+  rescue
+    ArgumentError -> nil
+  end
 
   @doc """
   The session's status right now. A session past a deadline reads as expired
@@ -205,12 +231,12 @@ defmodule Nucleus.Auth.SessionRegistry do
   end
 
   @impl GenServer
-  def handle_cast({:touch, id}, state) do
+  def handle_cast({:touch, id, path}, state) do
     now = now_ms()
 
     with [{^id, %{status: :active} = record}] <- :ets.lookup(state.table, id),
          :active <- classify(record, now) do
-      :ets.insert(state.table, {id, %{record | last_active: now}})
+      :ets.insert(state.table, {id, %{record | last_active: now, path: path || record.path}})
     end
 
     {:noreply, state}
@@ -252,6 +278,10 @@ defmodule Nucleus.Auth.SessionRegistry do
     {:noreply, state}
   end
 
+  # Anything else (a stray reply, a late timer for a session that is gone) is not
+  # worth taking every session's clock down for.
+  def handle_info(_other, state), do: {:noreply, state}
+
   # --- internals ------------------------------------------------------------
 
   defp new_record(attrs, state, now) do
@@ -263,6 +293,7 @@ defmodule Nucleus.Auth.SessionRegistry do
       tenant: attrs.tenant,
       signed_in_at: signed_in_at,
       last_active: Map.get(attrs, :last_active, signed_in_at),
+      path: nil,
       idle_ms: state.idle_ms || Config.idle_timeout() * 1000,
       max_age_ms: state.max_age_ms || Config.max_age() * 1000,
       status: :active

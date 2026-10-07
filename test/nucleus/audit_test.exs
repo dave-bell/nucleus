@@ -231,9 +231,11 @@ defmodule Nucleus.AuditTest do
       m2m_client_created: {Nucleus.M2M, :create, 4},
       m2m_client_viewed: {Nucleus.M2M, :view, 2},
       m2m_secret_rotated: {Nucleus.M2M, :rotate, 2},
+      sign_in: {NucleusWeb.AuthController, :callback, 2},
+      auth_failure: {NucleusWeb.AuthController, :callback, 2},
       sign_out: {Nucleus.Auth.SessionRegistry, :announce_expiry, 2}
     }
-    @known_unwired [:sign_in, :auth_failure]
+    @known_unwired []
 
     @tag :unit
     @tag action: "AUD-A01"
