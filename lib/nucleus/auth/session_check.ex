@@ -4,7 +4,7 @@ defmodule Nucleus.Auth.SessionCheck do
   `AUTH-A06`, `AUTH-A08`).
 
   Called from exactly two places - `NucleusWeb.Plugs.AssignScope` for HTTP
-  requests and `NucleusWeb.AuthHook` for LiveView mounts and reconnects - so
+  requests and `NucleusWeb.ScopeHook` for LiveView mounts and reconnects - so
   the two cannot drift. It is *not* called per `handle_event`: `AUTH-A05`
   scopes independent re-validation to request and mount granularity.
 
