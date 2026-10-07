@@ -132,6 +132,38 @@ defmodule Nucleus.Auth.SessionRegistryTest do
     end
   end
 
+  describe "registration" do
+    @describetag action: "AUTH-A05"
+
+    test "cannot overwrite logout or termination during recovery", %{name: name, start: start} do
+      start.([])
+      logged_out = attrs()
+      terminated = attrs()
+      {:ok, _} = SessionRegistry.expire(logged_out, :user, name)
+      :ok = SessionRegistry.register(terminated, name)
+      :ok = SessionRegistry.terminate_session(terminated.id, name)
+
+      assert SessionRegistry.register(logged_out, name) == {:error, {:expired, :user}}
+      assert SessionRegistry.register(terminated, name) == {:error, :terminated}
+      assert SessionRegistry.status(logged_out.id, name) == {:expired, :user}
+      assert SessionRegistry.status(terminated.id, name) == :terminated
+    end
+
+    test "does not reset activity or the last path of an existing session",
+         %{name: name, start: start} do
+      start.([])
+      now = System.system_time(:millisecond)
+      a = attrs(%{signed_in_at: now - 20_000, last_active: now})
+      :ok = SessionRegistry.register(a, name)
+      SessionRegistry.touch(a.id, "/samples", name)
+      sync(name)
+
+      assert SessionRegistry.register(%{a | last_active: a.signed_in_at}, name) == :ok
+      assert SessionRegistry.status(a.id, name) == :active
+      assert SessionRegistry.last_path(a.id, name) == "/samples"
+    end
+  end
+
   describe "max age" do
     @describetag action: "AUTH-A08"
 
@@ -226,17 +258,106 @@ defmodule Nucleus.Auth.SessionRegistryTest do
   end
 
   describe "pruning" do
-    test "forgets sessions once their max age has passed", %{name: name, start: start} do
+    @describetag action: "AUTH-A08"
+
+    test "compacts ended sessions while preserving expiry deduplication",
+         %{name: name, start: start} do
       pid = start.(max_age_ms: 50)
       now = System.system_time(:millisecond)
       old = attrs(%{signed_in_at: now - 1_000})
-      :ok = SessionRegistry.register(old, name)
       {:ok, _} = SessionRegistry.expire(old, :idle, name)
 
       send(pid, :prune)
       sync(name)
 
+      assert SessionRegistry.status(old.id, name) == {:expired, :idle}
+      assert [{_, %{status: {:expired, :idle}, delete_at: delete_at}}] = :ets.lookup(name, old.id)
+      assert delete_at > System.system_time(:millisecond) + 100
+      assert SessionRegistry.last_path(old.id, name) == nil
+      assert SessionRegistry.expire(old, :max_age, name) == :already
+      assert SessionRegistry.register(old, name) == {:error, {:expired, :idle}}
+    end
+
+    test "deletes a marker once its retention has run out", %{name: name, start: start} do
+      pid = start.(max_age_ms: 50)
+      now = System.system_time(:millisecond)
+      old = attrs(%{signed_in_at: now - 1_000})
+      {:ok, _} = SessionRegistry.expire(old, :idle, name)
+      send(pid, :prune)
+      sync(name)
+      assert SessionRegistry.status(old.id, name) == {:expired, :idle}
+
+      # Age the marker past its retention rather than sleeping.
+      :sys.replace_state(name, fn state ->
+        :ets.insert(name, {old.id, %{status: {:expired, :idle}, delete_at: now - 1}})
+        state
+      end)
+
+      send(pid, :prune)
+      sync(name)
+
       assert SessionRegistry.status(old.id, name) == :unknown
+      assert :ets.lookup(name, old.id) == []
+    end
+
+    test "deletes an expired terminated marker too", %{name: name, start: start} do
+      pid = start.(max_age_ms: 50)
+      now = System.system_time(:millisecond)
+      old = attrs(%{signed_in_at: now - 1_000})
+      :ok = SessionRegistry.register(old, name)
+      :ok = SessionRegistry.terminate_session(old.id, name)
+      send(pid, :prune)
+      sync(name)
+      assert SessionRegistry.status(old.id, name) == :terminated
+
+      :sys.replace_state(name, fn state ->
+        :ets.insert(name, {old.id, %{status: :terminated, delete_at: now - 1}})
+        state
+      end)
+
+      send(pid, :prune)
+      sync(name)
+
+      assert SessionRegistry.status(old.id, name) == :unknown
+    end
+
+    test "keeps a marker whose retention has not run out", %{name: name, start: start} do
+      pid = start.(max_age_ms: 50)
+      now = System.system_time(:millisecond)
+      old = attrs(%{signed_in_at: now - 1_000})
+      {:ok, _} = SessionRegistry.expire(old, :idle, name)
+
+      send(pid, :prune)
+      sync(name)
+      send(pid, :prune)
+      sync(name)
+
+      assert SessionRegistry.status(old.id, name) == {:expired, :idle}
+    end
+
+    test "announces an active session if pruning beats its deadline timer",
+         %{name: name, start: start} do
+      start.([])
+      a = attrs()
+      :ok = SessionRegistry.register(a, name)
+      state = sync(name)
+      [{id, record}] = :ets.lookup(name, a.id)
+      record = %{record | signed_in_at: record.signed_in_at - 120_000}
+
+      # The callback executes in the ETS owner's process; no timer can interleave.
+      :sys.replace_state(name, fn ^state ->
+        :ets.insert(name, {id, record})
+        {:noreply, state} = SessionRegistry.handle_info(:prune, state)
+        state
+      end)
+
+      assert_receive {:expired, ^id, :max_age}
+      assert SessionRegistry.expire(a, :max_age, name) == :already
+      assert SessionRegistry.status(id, name) == {:expired, :max_age}
+      assert sync(name).timers == %{}
+      send(name, {:deadline, id})
+      sync(name)
+      refute_receive {:expired, ^id, _}
     end
   end
 end

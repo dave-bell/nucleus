@@ -21,6 +21,11 @@ defmodule Nucleus.Auth.SessionRegistry do
   - `:terminated` - ended by another user (`AUTH-A13`; nothing in `AUTH-S1`
     sets it, `terminate_session/2` is the seam that ticket will call)
 
+  Once `max_age` has passed, an ended session's record is compacted to a bare
+  marker, `%{status: status, delete_at: ms}`: no `path`, no session timestamps. A marker still answers
+  `status/2` and `register/2`, but `last_path/2` returns `nil` for it. Nothing
+  may assume the other fields are present on a record that might be a marker.
+
   Reads go straight to ETS in the caller's process. Every write goes through
   this process, which is what makes `expire/3` atomic.
 
@@ -59,8 +64,14 @@ defmodule Nucleus.Auth.SessionRegistry do
     which can only err towards signing out early. A *terminated* session is
     forgotten too, so its cookie works again until it ages out - a gap for
     `AUTH-A13`'s ticket to close.
-  - Records are pruned once `max_age` has passed, since the cookie's own
-    `signed_in_at` ends the session by then regardless of anything here.
+  - Full records are compacted once `max_age` has passed (see "What a record
+    holds"); a session still `:active` at that point is first announced as
+    `{:expired, :max_age}`. Markers deduplicate stale-cookie announcements and
+    are deleted three `max_age` periods after compaction, which bounds memory
+    and the prune scan. A cookie replayed after that is announced again - a
+    duplicate `sign_out` audit event, accepted in ADR-0040. Deleting a marker
+    (`:terminated` included) cannot revive a session: `SessionCheck` rejects a
+    cookie past `max_age` before it consults the registry.
   """
 
   use GenServer
@@ -69,6 +80,9 @@ defmodule Nucleus.Auth.SessionRegistry do
   alias Nucleus.Auth.{Config, Session}
 
   @prune_interval :timer.minutes(1)
+
+  # How many `max_age` periods an ended-session marker outlives its compaction.
+  @marker_retention_factor 3
 
   @type id :: String.t()
   @type status ::
@@ -101,9 +115,12 @@ defmodule Nucleus.Auth.SessionRegistry do
 
   @doc """
   Starts tracking a session. `attrs` times are in milliseconds; `:last_active`
-  defaults to `:signed_in_at`.
+  defaults to `:signed_in_at`. Existing records are never overwritten: an
+  active session returns `:ok`, and an ended session returns `{:error, status}`.
+  This makes cookie recovery conditional on the session still being absent.
   """
-  @spec register(attrs(), GenServer.name()) :: :ok
+  @spec register(attrs(), GenServer.name()) ::
+          :ok | {:error, {:expired, :idle | :max_age | :user} | :terminated}
   def register(attrs, server \\ __MODULE__), do: GenServer.call(server, {:register, attrs})
 
   @doc """
@@ -115,11 +132,14 @@ defmodule Nucleus.Auth.SessionRegistry do
     GenServer.cast(server, {:touch, id, path})
   end
 
-  @doc "The last path `touch/3` reported for the session, ended or not; `nil` if none."
+  @doc """
+  The last path `touch/3` reported for the session, ended or not; `nil` if none,
+  if the session is unknown, or if its record has been compacted to a marker.
+  """
   @spec last_path(id(), GenServer.name()) :: String.t() | nil
   def last_path(id, server \\ __MODULE__) do
     case :ets.lookup(server, id) do
-      [{^id, record}] -> record.path
+      [{^id, record}] -> Map.get(record, :path)
       [] -> nil
     end
   rescue
@@ -195,9 +215,22 @@ defmodule Nucleus.Auth.SessionRegistry do
   @impl GenServer
   def handle_call({:register, attrs}, _from, state) do
     now = now_ms()
-    record = new_record(attrs, state, now)
-    :ets.insert(state.table, {record.id, record})
-    {:reply, :ok, schedule(state, record, now)}
+
+    case :ets.lookup(state.table, attrs.id) do
+      [] ->
+        record = new_record(attrs, state, now)
+        :ets.insert(state.table, {record.id, record})
+        {:reply, :ok, schedule(state, record, now)}
+
+      [{_id, record}] ->
+        reply =
+          case classify(record, now) do
+            :active -> :ok
+            ended -> {:error, ended}
+          end
+
+        {:reply, reply, state}
+    end
   end
 
   def handle_call({:expire, attrs, reason}, _from, state) do
@@ -265,14 +298,35 @@ defmodule Nucleus.Auth.SessionRegistry do
   def handle_info(:prune, state) do
     now = now_ms()
 
-    :ets.foldl(
-      fn {id, record}, :ok ->
-        if now >= record.signed_in_at + record.max_age_ms, do: :ets.delete(state.table, id)
-        :ok
-      end,
-      :ok,
-      state.table
-    )
+    state =
+      :ets.foldl(
+        fn
+          # A marker whose retention has run out.
+          {id, %{delete_at: delete_at}}, state when now >= delete_at ->
+            :ets.delete(state.table, id)
+            state
+
+          # A full record past max age: announce if still active, then compact.
+          {id, %{signed_in_at: signed_in_at, max_age_ms: max_age_ms} = record}, state
+          when now >= signed_in_at + max_age_ms ->
+            status =
+              if record.status == :active do
+                run_on_expire(state.on_expire, record, :max_age)
+                {:expired, :max_age}
+              else
+                record.status
+              end
+
+            marker = %{status: status, delete_at: now + @marker_retention_factor * max_age_ms}
+            :ets.insert(state.table, {id, marker})
+            cancel_timer(state, id)
+
+          _record, state ->
+            state
+        end,
+        state,
+        state.table
+      )
 
     schedule_prune()
     {:noreply, state}

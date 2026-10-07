@@ -63,6 +63,45 @@ defmodule Nucleus.Auth.SessionCheckTest do
 
       assert {:ok, %Session{last_active: ^now}} = validate(auth, registry, now)
     end
+
+    test "rejects recovery when logout wins after the unknown-status read",
+         %{registry: registry, now: now} do
+      auth = session(now)
+      pid = Process.whereis(registry)
+      supervisor = start_supervised!(Task.Supervisor)
+      :sys.suspend(pid)
+
+      try do
+        logout_ref = make_ref()
+
+        send(
+          pid,
+          {:"$gen_call", {self(), logout_ref}, {:expire, SessionCheck.attrs(auth), :user}}
+        )
+
+        task =
+          Task.Supervisor.async_nolink(supervisor, fn ->
+            receive do
+              :validate -> validate(auth, registry, now)
+            end
+          end)
+
+        :erlang.trace(task.pid, true, [:send])
+        send(task.pid, :validate)
+        task_pid = task.pid
+
+        assert_receive {:trace, ^task_pid, :send, {:"$gen_call", _from, {:register, _attrs}},
+                        ^pid}
+
+        :sys.resume(pid)
+        assert_receive {^logout_ref, {:ok, _record}}
+        assert Task.await(task) == {:error, {:expired, :user}}
+        assert SessionRegistry.status(auth.id, registry) == {:expired, :user}
+        assert audit_events() == []
+      after
+        :sys.resume(pid)
+      end
+    end
   end
 
   describe "max age" do
@@ -83,6 +122,24 @@ defmodule Nucleus.Auth.SessionCheckTest do
       assert validate(auth, registry, now) == {:error, {:expired, :max_age}}
 
       assert [_one] = Enum.filter(audit_events(), &(&1.event == :sign_out))
+    end
+
+    test "stale-cookie replays after repeated pruning do not announce expiry again",
+         %{registry: registry, now: now} do
+      auth = session(now, signed_in_at: now - Config.max_age() - 1)
+      NucleusWeb.Endpoint.subscribe(Session.live_socket_id(auth.id))
+
+      assert validate(auth, registry, now) == {:error, {:expired, :max_age}}
+      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
+
+      for _ <- 1..2 do
+        send(registry, :prune)
+        :sys.get_state(registry)
+        assert validate(auth, registry, now) == {:error, {:expired, :max_age}}
+      end
+
+      assert [%{reason: "max_age"}] = Enum.filter(audit_events(), &(&1.event == :sign_out))
+      refute_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
     end
   end
 

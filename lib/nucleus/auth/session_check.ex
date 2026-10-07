@@ -84,8 +84,11 @@ defmodule Nucleus.Auth.SessionCheck do
     if now >= auth.last_active + Config.idle_timeout() do
       end_session(auth, :idle, registry)
     else
-      :ok = SessionRegistry.register(attrs(auth), registry)
-      active(auth, registry, now)
+      case SessionRegistry.register(attrs(auth), registry) do
+        :ok -> active(auth, registry, now)
+        {:error, {:expired, reason}} -> end_session(auth, reason, registry)
+        {:error, :terminated} -> {:error, :terminated}
+      end
     end
   end
 

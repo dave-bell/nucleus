@@ -89,7 +89,12 @@ navigation and throttled events, with one timer per session.
   broadcasts `"disconnect"` on the session's `live_socket_id`, closing every tab. The timer, a
   request and a mount can all find a session expired at about the same moment and it is still one
   event. A session the registry has never heard of is recorded as ended too, so a stale cookie
-  replayed after a restart cannot announce twice.
+  replayed after a restart cannot announce twice. Once max age has passed, pruning replaces
+  the full record with a minimal ended-status marker, which keeps the expiry-deduplication state.
+  Markers are deleted three `max_age` periods after compaction. A stale cookie replayed after that
+  is announced a second time, an accepted duplicate `sign_out`; it cannot revive a session, because
+  `SessionCheck` rejects a cookie past max age before consulting the registry (this holds for
+  `:terminated` markers too). If pruning wins before the deadline timer, it announces the expiry itself.
 - **Max age needs no server state.** `signed_in_at` is in the cookie, so it is enforced from there
   and survives a restart; the registry's copy only lets the timer close open tabs on time.
 - **It remembers the last path** each session was seen on. A mount is not told the page URL
@@ -105,7 +110,9 @@ here so that it is a decision rather than a discovery.
 
 **A restart forgets.** A session the registry no longer holds falls back to the timestamps in its
 cookie (`last_active` is advanced on every HTTP request) and is re-registered if still valid, which
-can only err towards signing out early. A *terminated* session is forgotten too, so its cookie works
+can only err towards signing out early. Registration is conditional on absence, serialized with
+logout and termination; recovery rejects an ended status that wins concurrently. A *terminated*
+session is forgotten on restart too, so its cookie works
 again until it ages out — a gap `AUTH-A13`'s ticket has to close, recorded in `living-notes.md`.
 
 Presence was considered for the clock and rejected: its entries vanish when the last tab closes
@@ -194,6 +201,10 @@ None of these are code, and the first two will make sign-in fail until they are 
 ### Negative
 
 - **Single node, and a restart forgets terminations.** See above; both are stated limits, not bugs.
+- **Expiry-deduplication markers are bounded, not permanent.** Full session metadata is compacted at
+  max age and the marker is deleted three `max_age` periods later, so memory and the one-minute
+  prune scan are bounded by sign-ins in that window. A cookie replayed after deletion produces one
+  further `sign_out` audit event (`reason=max_age`), accepted by product decision.
 - **The real Hosted UI round-trip is not automated** (`0008`: no browser driver). Everything on
   Nucleus's side of it is tested against a `Req.Test` stub and a generated signing key; the browser's
   redirect to Cognito and back, and the tab's automatic reconnect after a disconnect broadcast, are a
