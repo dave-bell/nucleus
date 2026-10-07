@@ -95,12 +95,38 @@ defmodule Nucleus.ScopeTest do
     end
 
     @tag :unit
-    test "raises rather than warning when the Cognito provider is configured" do
+    test "raises when the Cognito provider is configured without its sign-in settings" do
       Application.put_env(:nucleus, Scope, provider: Nucleus.Scope.Provider.Cognito)
+      previous = Application.get_env(:nucleus, Nucleus.Auth)
+      Application.delete_env(:nucleus, Nucleus.Auth)
+      on_exit(fn -> if previous, do: Application.put_env(:nucleus, Nucleus.Auth, previous) end)
 
-      assert_raise RuntimeError, ~r/AUTH-A01\.\.A11/, fn ->
+      assert_raise RuntimeError, ~r/Nucleus.Auth is not configured/, fn ->
         Scope.verify_provider_at_boot!()
       end
+    end
+
+    @tag :unit
+    test "passes when the Cognito provider is configured with every sign-in setting" do
+      Application.put_env(:nucleus, Scope, provider: Nucleus.Scope.Provider.Cognito)
+      previous = Application.get_env(:nucleus, Nucleus.Auth)
+
+      Application.put_env(:nucleus, Nucleus.Auth,
+        domain: "auth.example.com",
+        region: "eu-west-1",
+        user_pool_id: "eu-west-1_abc",
+        client_id: "cid",
+        client_secret: "shh",
+        allowed_group: "nucleus-users"
+      )
+
+      on_exit(fn ->
+        if previous,
+          do: Application.put_env(:nucleus, Nucleus.Auth, previous),
+          else: Application.delete_env(:nucleus, Nucleus.Auth)
+      end)
+
+      assert Scope.verify_provider_at_boot!() == :ok
     end
   end
 end

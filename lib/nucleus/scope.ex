@@ -105,35 +105,37 @@ defmodule Nucleus.Scope do
   @doc """
   Called once from `Nucleus.Application.start/2`.
 
-  Builds a scope through the configured `Nucleus.Scope.Provider` unconditionally,
-  the same way `Nucleus.Backend.warn_on_local_backends/0` verifies backend
-  configuration at boot rather than on first use:
+  Verifies the configured `Nucleus.Scope.Provider` at boot rather than on first
+  use, the same way `Nucleus.Backend.warn_on_local_backends/0` does:
 
   - `Nucleus.Scope.Provider.Disabled` (default, `AUTH_ENABLED=false`) never
-    fails, so this always succeeds — and logs one prominent warning naming the
-    assumed dev identity and tenant, so the insecure-but-convenient mode is
-    never silently in effect.
-  - `Nucleus.Scope.Provider.Cognito` (`AUTH_ENABLED=true`) raises
-    unconditionally. That raise propagates straight out of `start/2` and fails
-    the boot — a loud failure at the earliest possible point, not a silent
-    fallback to the disabled provider on the first request.
+    fails, and logs one prominent warning naming the assumed dev identity and
+    tenant, so the insecure-but-convenient mode is never silently in effect.
+  - `Nucleus.Scope.Provider.Cognito` (`AUTH_ENABLED=true`) has no identity to
+    build until someone signs in, so the check is that its configuration is
+    complete: `Nucleus.Auth.Config.verify!/0` raises otherwise. That raise
+    propagates out of `start/2` and fails the boot - a loud failure at the
+    earliest possible point, not a silent fallback or a broken first sign-in.
   """
   @spec verify_provider_at_boot!() :: :ok
   def verify_provider_at_boot! do
-    provider = Provider.configured()
-    {:ok, scope} = provider.build(%{})
+    case Provider.configured() do
+      Nucleus.Scope.Provider.Disabled = provider ->
+        {:ok, scope} = provider.build(%{})
 
-    if provider == Nucleus.Scope.Provider.Disabled do
-      Logger.warning("""
-      AUTH DISABLED — every session is assigned the dev identity below. This \
-      must never reach a deployed environment; see AUTH_ENABLED and \
-      docs/adr/0005-deferred-authentication.md.
-        * user   -> #{audit_user(scope)}
-        * tenant -> #{scope.tenant}
-        * scopes -> #{inspect(scope.scopes)}
-      """)
+        Logger.warning("""
+        AUTH DISABLED - every session is assigned the dev identity below. This \
+        must never reach a deployed environment; see AUTH_ENABLED and \
+        docs/adr/0040-cognito-sign-in-and-session-lifecycle.md.
+          * user   -> #{audit_user(scope)}
+          * tenant -> #{scope.tenant}
+          * scopes -> #{inspect(scope.scopes)}
+        """)
+
+        :ok
+
+      _cognito ->
+        Nucleus.Auth.Config.verify!()
     end
-
-    :ok
   end
 end

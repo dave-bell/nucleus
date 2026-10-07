@@ -236,13 +236,16 @@ end
 
 # Identity/scope seam (EN-6). AUTH_ENABLED selects the scope provider;
 # "false" or unset (the default) keeps Nucleus.Scope.Provider.Disabled.
-# "true" switches to Nucleus.Scope.Provider.Cognito, a stub that raises
-# unconditionally — Nucleus.Scope.verify_provider_at_boot!/0 calls it during
-# Nucleus.Application.start/2, so a misread flag fails the boot rather than
-# silently keeping the disabled provider. Anything else raises here, at boot,
-# rather than being silently treated as "false" — same reasoning as the
+# "true" switches to Nucleus.Scope.Provider.Cognito and requires every sign-in
+# setting below (AUTH-S1) - a missing one raises here, at boot, rather than on
+# the first sign-in attempt. Anything other than "true"/"false" raises too,
+# rather than being silently treated as "false" - same reasoning as the
 # boot-time validation elsewhere in this file. See
-# docs/adr/0005-deferred-authentication.md.
+# docs/adr/0040-cognito-sign-in-and-session-lifecycle.md.
+#
+# COGNITO_CLIENT_ID / COGNITO_CLIENT_SECRET are the *sign-in* client; the
+# `_API` pair above is Nucleus's own M2M client. COGNITO_DOMAIN is a bare host,
+# no scheme.
 case System.get_env("AUTH_ENABLED") do
   nil ->
     :ok
@@ -253,8 +256,44 @@ case System.get_env("AUTH_ENABLED") do
   "true" ->
     config :nucleus, Nucleus.Scope, provider: Nucleus.Scope.Provider.Cognito
 
+    auth_env = fn name ->
+      case System.get_env(name) do
+        value when value in [nil, ""] ->
+          raise "environment variable #{name} is missing (required when AUTH_ENABLED=true)"
+
+        value ->
+          value
+      end
+    end
+
+    config :nucleus, Nucleus.Auth,
+      domain: auth_env.("COGNITO_DOMAIN"),
+      region: auth_env.("COGNITO_REGION"),
+      user_pool_id: auth_env.("COGNITO_USER_POOL_ID"),
+      client_id: auth_env.("COGNITO_CLIENT_ID"),
+      client_secret: auth_env.("COGNITO_CLIENT_SECRET"),
+      allowed_group: auth_env.("COGNITO_ALLOWED_GROUP")
+
   other ->
     raise "AUTH_ENABLED must be \"true\" or \"false\", got: #{inspect(other)}"
+end
+
+# Session lifetime (AUTH-A08), integer seconds. Read in every environment so a
+# typo fails at boot; unset keeps the Nucleus.Auth.Config defaults (15 minutes
+# idle, 8 hours absolute).
+for {env, key} <- [
+      {"SESSION_IDLE_TIMEOUT", :idle_timeout},
+      {"SESSION_MAX_AGE", :max_age}
+    ],
+    value = System.get_env(env),
+    value != "" do
+  seconds =
+    case Integer.parse(value) do
+      {n, ""} when n > 0 -> n
+      _ -> raise "#{env} must be a positive integer number of seconds, got: #{inspect(value)}"
+    end
+
+  config :nucleus, Nucleus.Auth, [{key, seconds}]
 end
 
 # The tenant this deployment serves, carried on every Nucleus.Scope (EN-5's
