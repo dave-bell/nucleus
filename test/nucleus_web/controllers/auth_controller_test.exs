@@ -61,6 +61,26 @@ defmodule NucleusWeb.AuthControllerTest do
       assert audit_events() == []
     end
 
+    test "its form still posts after a visit that cleared a stale cookie", %{conn: conn} do
+      csrf = fn conn -> Plug.Conn.put_private(conn, :plug_skip_csrf_protection, false) end
+
+      # The first visit leaves a CSRF secret in the cookie, as any page does; the
+      # second then clears the (dead) session around it.
+      conn = conn |> csrf.() |> get(~p"/sign-in")
+      conn = conn |> recycle() |> csrf.() |> get(~p"/sign-in")
+
+      token =
+        conn
+        |> page()
+        |> LazyHTML.query("#sign-in-form input[name=_csrf_token]")
+        |> LazyHTML.attribute("value")
+        |> hd()
+
+      conn = conn |> recycle() |> csrf.() |> post(~p"/sign-in", %{"_csrf_token" => token})
+
+      assert redirected_to(conn) =~ "/oauth2/authorize"
+    end
+
     test "redirects an already signed-in visitor on to where they were going", %{conn: conn} do
       {conn, _session} = sign_in_session(conn)
 

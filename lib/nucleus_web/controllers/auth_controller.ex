@@ -69,6 +69,14 @@ defmodule NucleusWeb.AuthController do
         # Anything left in the cookie is dead; start the page from a clean one.
         # `clear_session`, not `configure_session(drop: true)`: a dropped session
         # also drops the CSRF secret this page's form is about to need.
+        #
+        # But `clear_session` also removes the *existing* CSRF secret from the
+        # cookie while `protect_from_forgery` still holds it, so the form would be
+        # rendered with a token for a secret the cookie no longer has, and the
+        # POST would fail. `delete_csrf_token/0` makes the form mint a new secret,
+        # which is then written to the fresh cookie.
+        Plug.CSRFProtection.delete_csrf_token()
+
         conn
         |> clear_session()
         |> render(:new, return_to: return_to)
