@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/notes | Priority: high | Version: 1.35 | Updated: 2026-10-02 -->
+<!-- Context: project-intelligence/notes | Priority: high | Version: 1.36 | Updated: 2026-10-07 -->
 
 # Living Notes
 
@@ -18,6 +18,8 @@
 | LiveDashboard at `/dev/dashboard` unauthenticated | Fine in dev; a leak if ever exposed in prod | Medium | Gate behind auth before any production deploy |
 | Nucleus's own AWS identity (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_SESSION_TOKEN`) is read ambiently by the `aws` package, with no boot-time check or ops-facing doc — unlike `TENANT_ROLE_ARN`/`AWS_REGION`/`CLUSTER_NAME`/`DEPLOYMENT_NAME`, which all raise at boot | A misconfigured deployment fails per-request as `:not_configured` on first `AssumeRole` call, not at boot | Low | `CLUSTER_NAME`/`DEPLOYMENT_NAME` are now correctly documented in the wiki's `Platform-Operations.md` config reference (issue #22). The ambient `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_SESSION_TOKEN` doc gap remains open — was out of scope for #22 |
 | No browser-driven test coverage for `SEC-A02` (the `navigator.clipboard.writeText` call itself, the confirmation face swap/revert — an icon in a row, the word "Copied" in the modal — the non-secure-context `execCommand` fallback, the failure indication, and the hover/`:focus-visible` reveal of any tooltip, now on path and ARN values as well as the copy buttons) or for modal dismissal — `SEC-A13`'s focus trap and focus restoration (both the reveal modal's and the create modal's), plus `SEC-A04`'s Escape and backdrop-click routes, which reach the server only by running the `JS` chain in `data-cancel`. `M2M-A04`–`A07`'s create modal (M2M-S4/#37) has the identical gap — Escape, backdrop click, focus trap/restoration, and typing-lag are all client-side. `M2M-A08`'s one-time credentials panel (M2M-S5/#38) has the clipboard-write half of the same gap for its own two copy buttons, plus focus trap/restoration — but *not* the Escape/backdrop half, since that panel deliberately carries no `data-cancel`/`phx-click-away`/`phx-window-keydown` wiring at all (see `NucleusWeb.M2MClientsLive.CredentialsPanel`'s moduledoc). `M2M-A10`'s `beforeunload` warning (M2M-S7/#40) is the same story again, one level further: the dialog itself is a browser API no LiveViewTest run can trigger at all, not even partially. `M2M-A11`/`M2M-A12`'s rotation confirmation modal (M2M-S6/#39) is a real `<.modal>` (unlike the credentials panel), so it has the *full* gap — Escape, backdrop click, focus trap/restoration — same as `SEC-A04`/`SEC-A13`/the create modal; the credentials panel it opens on success is `CredentialsPanel` reused verbatim (only a `title` attribute differs), so its own clipboard-write and focus trap/restoration gap applies again, unchanged, for the same two copy buttons | Tests assert wiring only (hook attached, `data-value` full/untruncated, `phx-update="ignore"` present or, for `M2M-A10`, deliberately absent, `data-tip` set, `on_cancel`/`phx-key`/`phx-click-away` present, `data-dirty`'s transitions), and claim `@tag action:` for `SEC-A04`/`SEC-A13`/`M2M-A04`–`A07`/`M2M-A08`/`M2M-A12` **only** via each modal's plain-`phx-click` dismiss control (Close, Cancel, the credentials panel's own explicit dismiss), which `render_click/1` can actually drive. `M2M-A10` claims no `@tag action:` at all — none of its wiring tests prove a dialog appeared | Medium | Add Wallaby once sign-in exists (deferred, EN-8); see `docs/adr/0008-test-strategy.md`. Six gap sets are skipped `:browser`-tagged placeholder modules — `secrets_live_test.exs`'s `CopyButtonBrowserGaps` (4), `SecretRevealModalBrowserGaps` (5), and `NewSecretModalBrowserGaps` (5), and `m2m_clients_live_test.exs`'s `NewClientModalBrowserGaps` (5), `CredentialsPanelBrowserGaps` (7), and `UnsavedGuardBrowserGaps` (5). `M2M-A10` additionally records a manual, two-browser checklist in its PR description (not in the codebase), per `docs/requirements/M2M-Clients.md`'s `Test layer: e2e` — `m2m_clients_live_test.exs`'s `UnsavedGuardBrowserGaps` module names the same scenarios as skipped placeholder tests, so the intent survives here even though the checklist itself lives only in the PR |
+| `Nucleus.Auth.SessionRegistry` is per node and in memory, and forgets on restart | Idle clocks are per node — scaling out needs sticky sessions (the decided path). After a restart a session is restored from its cookie's timestamps, which can only sign out early; but a *terminated* session (`AUTH-A13`) is forgotten too, so its cookie works again until it reaches `SESSION_MAX_AGE`. Nothing sets `:terminated` yet, so this is latent | Medium | `AUTH-A13`'s ticket must decide: a persisted/replicated termination list, or accept the window and document it. See `docs/adr/0040-cognito-sign-in-and-session-lifecycle.md` |
+| Real Cognito sign-in is exercised only against a `Req.Test` stub and a generated signing key; the Hosted UI redirect, the corporate IdP hop, and a tab's automatic reconnect after a `live_socket_id` disconnect are not automated | A change that passes every test could still fail against the real pool (callback URL not registered, client not confidential, wrong scopes) | Medium | Manual/staging check at each deploy until a browser driver exists (`test/README.md`); the ADR lists the app-client prerequisites |
 | `LOCAL_FORCE_ERROR` (`Nucleus.Backend.Faults`) is node-global, not per-boundary — a fault set for one boundary is seen by every local implementation's next call | A test targeting the `:secrets` boundary's error path is actually caught by whichever boundary is called first; SEC-S2 found this when `Nucleus.Secrets.list/2`'s `Environments.fetch/2` gate always intercepted the fault before `Store.list_secrets/1` ran | Low | Swap in a real/failing module via `Application.put_env(:nucleus, :backends, ...)` instead of `force_error/2` for a specific-boundary test — see `SecretsLiveTest.FailingSecretsStore` |
 | `config/runtime.exs`'s `:secrets`, `:m2m` and Nomad gates ask `Application.get_env(:nucleus, :backends, [])` whether a boundary is real, but `config/3` calls earlier in that same file are not visible to `get_env` until the file has finished evaluating | A `*_BACKEND=real` override does not trigger the boot check that boundary's real implementation needs, and a `*_BACKEND=local` override in production still demands its variables. EN-13 found this writing the `:tenant_api` and `:service_token` gates, which read the override variable themselves | Low | Reuse the `real?` helper in `runtime.exs` for the older gates — out of scope for EN-13, which only changed the two it added. See `docs/adr/0039-tenant-api-service-credential.md` |
 | `Nucleus.Backend.Seed.read/2` cannot distinguish a boundary's section being entirely absent from the seed document from that section being present with an explicit JSON `null` value — `get_in/2` returns `nil` for both once decoded | EN-12 needed exactly this distinction (`:not_configured` vs. a specific tenant lacking a feature) and worked around it locally in `Nucleus.NomadVars.Store.Local` with a `false` sentinel instead of `null`, rather than fixing `Seed` itself | Low | Reuse the `false`-sentinel pattern for the next boundary that needs this, or add a key-presence check (e.g. `has_section?/1`) to `Nucleus.Backend.Seed` if a third boundary needs the same distinction — see `docs/adr/0027-nomad-vars-adapter.md` |
@@ -43,8 +45,8 @@ not the signed-in user. Harmless while Nucleus only reads. Before it first write
 some way to record *who* asked. A lead, from PLAT-faas: it got an unusable user access token
 because sign-in requested only `openid` at `/oauth2/authorize`; requesting the API scope there
 likely yields a usable one. That would reverse `0038`'s "no token survives sign-in" for that one
-token, so it is a decision for whoever adds the first write, not a default. `AUTH-S1` (#113) is
-unchanged: sign-in requests no API scope and keeps no tokens.
+token, so it is a decision for whoever adds the first write, not a default. `AUTH-S1` (#113) shipped
+as designed and left this open: sign-in requests no API scope and keeps no tokens.
 
 *(the two prior entries here — token passthrough, and whether `AUTH-*` still describes the intended
 flow — were resolved by `AUTH-D1`; see Archive)*
@@ -53,20 +55,8 @@ flow — were resolved by `AUTH-D1`; see Archive)*
 
 | Issue | Severity | Workaround | Status |
 |-------|----------|------------|--------|
-| `context-indexer` agent fails: `Model not found: haiku/.` | Low | Do the coverage check manually | Known |
 
-### Issue Details
-
-**`context-indexer` subagent is misconfigured**
-*Severity*: Low
-*Impact*: Context-system tooling that delegates to `context-indexer` fails immediately. Does
-not affect application code.
-*Reproduction*: Invoke the `context-indexer` subagent; it returns `Model not found: haiku/.`
-*Root Cause*: The agent definition in `.opencode/agents/context-indexer.md` references a
-model alias that does not resolve in this environment.
-*Fix Plan*: Correct the model reference in the agent definition, or the `apm` package that
-deploys it.
-*Status*: Known
+*(no open known issues — the `context-indexer` misconfiguration entry that sat here was stale: the agent resolves and runs, as it did for `AUTH-S1`)*
 
 ## Insights & Lessons Learned
 

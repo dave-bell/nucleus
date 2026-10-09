@@ -22,7 +22,9 @@ defmodule Nucleus.Audit.Event do
   """
 
   @type event ::
-          :auth_failure
+          :sign_in
+          | :sign_out
+          | :auth_failure
           | :nomad_vars_listed
           | :nomad_var_updated
           | :env_names_updated
@@ -58,11 +60,29 @@ defmodule Nucleus.Audit.Event do
   # Built directly from the wiki catalogue table — do not invent a field here
   # that table does not list.
   @catalogue %{
-    auth_failure: %{
-      allowed: [:user, :tenant, :source_ip, :reason, :details],
+    # The three session-lifecycle events (AUTH-S1). Their wiki field lists
+    # (docs/requirements/Authentication-and-Access.md "Audit events") carry no
+    # resource/path - the event name, the user and the reason are the record.
+    sign_in: %{
+      allowed: [:user, :tenant, :source_ip],
+      required: [:tenant],
+      details_allowed: [],
+      details_required: []
+    },
+    # reason: user | idle | max_age | terminated
+    sign_out: %{
+      allowed: [:user, :tenant, :reason],
       required: [:tenant, :reason],
-      details_allowed: [:path],
-      details_required: [:path]
+      details_allowed: [],
+      details_required: []
+    },
+    # Callback-time failures only (AUTH-A02/A04/A06): never a routine
+    # unauthenticated visit.
+    auth_failure: %{
+      allowed: [:user, :tenant, :source_ip, :reason],
+      required: [:tenant, :reason],
+      details_allowed: [],
+      details_required: []
     },
     nomad_vars_listed: %{
       allowed: [:user, :tenant, :details],

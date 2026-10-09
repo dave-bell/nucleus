@@ -1,5 +1,9 @@
 import Config
 
+# The session cookie is served over plain http here, so it cannot be `Secure`
+# (config/config.exs sets it for everywhere else). The cookie is still encrypted.
+config :nucleus, :session_cookie_secure, false
+
 # For development, we disable any cache and enable
 # debugging and code reloading.
 #

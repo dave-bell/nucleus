@@ -108,7 +108,8 @@ config :nucleus, Nucleus.Nomad.Transport,
 # Nucleus.Scope.Provider.Disabled is the default in every environment: it
 # never fails and returns a single configured dev identity. AUTH_ENABLED=true
 # switches `:provider` to Nucleus.Scope.Provider.Cognito in runtime.exs, which
-# raises unconditionally — there is no AUTH_ENABLED default here because
+# also requires the COGNITO_* sign-in settings (docs/adr/0040) — there is no
+# AUTH_ENABLED default here because
 # "false" and "unset" must behave identically, and the config default already
 # gives that.
 #
@@ -116,6 +117,11 @@ config :nucleus, Nucleus.Nomad.Transport,
 # deliberately obvious placeholder — runtime.exs fills it from
 # TENANT_NAMESPACE in any environment where the tenant is known.
 config :nucleus, Nucleus.Scope, tenant_namespace: "local"
+
+# The session cookie's `Secure` flag (NucleusWeb.Endpoint). On everywhere
+# except where config/dev.exs and config/test.exs say otherwise: dev is served
+# over plain http://localhost, and tests never speak TLS.
+config :nucleus, :session_cookie_secure, true
 
 # Compliance audit trail (SOC2 CC7.2 / HIPAA 164.312(b)) — bypasses Logger and
 # writes synchronously to a dedicated sink, distinct from application logs

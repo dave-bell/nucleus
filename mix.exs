@@ -82,7 +82,10 @@ defmodule Nucleus.MixProject do
       {:bandit, "~> 1.5"},
       # Structured JSON formatting for Logger's default handler in prod only — see
       # config/prod.exs and docs/adr/0036-structured-prod-logging.md.
-      {:logger_json, "~> 7.0"}
+      {:logger_json, "~> 7.0"},
+      # ID token signature verification for the Cognito sign-in callback
+      # (Nucleus.Auth.OIDC) - docs/adr/0040-cognito-sign-in-and-session-lifecycle.md.
+      {:jose, "~> 1.11"}
     ]
   end
 

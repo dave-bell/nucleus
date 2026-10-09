@@ -24,6 +24,13 @@ defmodule NucleusWeb.Router do
     pipe_through :browser
 
     delete "/logout", SessionController, :delete
+
+    # Sign-in (AUTH-S1). Public by definition, and on plain :browser for the
+    # same reason as /logout: signing in must work when there is no scope to
+    # assign yet.
+    get "/sign-in", AuthController, :new
+    post "/sign-in", AuthController, :create
+    get "/auth/callback", AuthController, :callback
   end
 
   scope "/", NucleusWeb do

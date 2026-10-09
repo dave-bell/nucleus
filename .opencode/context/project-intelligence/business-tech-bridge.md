@@ -1,4 +1,4 @@
-<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.35 | Updated: 2026-10-02 -->
+<!-- Context: project-intelligence/bridge | Priority: high | Version: 1.36 | Updated: 2026-10-07 -->
 
 # Business ↔ Tech Bridge
 
@@ -143,11 +143,28 @@ the next call refetching), `test/nucleus/tenant_api/service_token_test.exs` (the
 `test/nucleus/tenant_api/service_token/{cognito,local}_test.exs`. See
 `docs/adr/0039-tenant-api-service-credential.md`.
 
+`AUTH-S1` (#113) claims and covers `AUTH-A01`–`A06`, `A08` and `A09`, and `NAV-A10` (taken over from
+`NAV-S4`/#90); `AUTH-A10` (the Hosted UI sign-out) and `NAV-A09` stay with `AUTH-S2`, and
+`A12`–`A14` (active sessions, termination) with their own tickets. The planned single
+`test/nucleus_web/auth_test.exs` became several files, each by layer: `test/nucleus/auth/`
+(`oidc_test.exs`, `session_registry_test.exs`, `session_check_test.exs`, `config_test.exs`),
+`test/nucleus_web/controllers/auth_controller_test.exs` (`A01`–`A04`: the sign-in page and every
+callback outcome, against `Req.Test` stubs and a generated signing key),
+`test/nucleus_web/auth_test.exs` (`A05`, `A06`, `A08`, `A09`, `NAV-A10`: the `:assign_scope` plug,
+the `ScopeHook` mount, activity, logout), `test/nucleus_web/session_cookie_test.exs`, and
+`test/nucleus_web/return_to_test.exs`. Test support: `NucleusWeb.AuthCase` composes the
+`AUTH_ENABLED=true` environment; `Nucleus.AuthFixtures` supplies the signing key, tokens and the
+Cognito stub. `auth_failure`, `sign_in` and `sign_out` are now wired
+(`test/nucleus/audit_test.exs`'s call-site list has no unwired event left). `A01` is `Test layer:
+e2e` and is proven here by the controller test only; the real Hosted UI round-trip and a tab's
+reconnect after a disconnect broadcast are manual/staging checks (`test/README.md`). See
+`docs/adr/0040-cognito-sign-in-and-session-lifecycle.md`.
+
 **Most "Planned" columns are still unimplemented.** `NucleusWeb.Layouts` (app shell, header,
 sidebar) and `test/nucleus_web/live/shell_test.exs` now exist (EN-7) — a deliberate subset only.
 `NAV-A04`–`A07` are now claimed and covered too (`NAV-S1`/#53, see below); `NAV-A01`–`A03`
-are now also claimed and covered (`NAV-S2`/#88, see below); `A08`–`A10` remain uncovered,
-needing authentication (`AUTH-A10`) and the identity menu (`NAV-S3`/`NAV-S4`).
+are now also claimed and covered (`NAV-S2`/#88, see below); `A08` and `A10` are covered too
+(`NAV-S3`, `AUTH-S1`); only `A09` remains, needing sign-out through the Hosted UI (`AUTH-S2`).
 `NucleusWeb.SecretsLive` and `test/nucleus_web/live/secrets_live_test.exs`
 also now exist (SEC-S1/#9, SEC-S2/#10, SEC-S3/#11, SEC-S4/#12, SEC-S5/#13, SEC-S6/#14) —
 `SEC-A01`–`A14`, `A17` are claimed and covered; the module validates and resolves the environment,
@@ -548,8 +565,8 @@ Click-away dismissal is recorded as a `test/README.md` gap, matching the `SEC-A0
 `APP-A02` partial-claim precedent — every other `NAV-A08` clause (open, close, Escape, email,
 Logout, scopes removed) is claimed and tagged. See `docs/adr/0034` for the full reasoning and
 the alternatives rejected. `mix nucleus.trace --feature NAV` moves from 7/10 to 8/10; only
-`NAV-A09`/`A10` (sign-out landing on a sign-in page, and the unauthenticated redirect — both
-`NAV-S4`, blocked on `AUTH-A01`) remain.
+`NAV-A09`/`A10` (sign-out landing on a sign-in page, and the unauthenticated redirect) remained —
+`NAV-A10` was then claimed by `AUTH-S1`, and `NAV-A09` waits on `AUTH-S2`.
 
 `DEX-A10` and `A11` are now claimed and covered (`DEX-S4`/#76), the last of the fourteen `DEX-A*`
 ids — `mix nucleus.trace --feature DEX` now reports full coverage. `Nucleus.NomadVars` gains

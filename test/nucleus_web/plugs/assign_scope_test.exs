@@ -38,14 +38,16 @@ defmodule NucleusWeb.Plugs.AssignScopeTest do
   end
 
   @tag :unit
-  test "AUTH_ENABLED=true raises rather than falling back to the disabled provider", %{
+  test "AUTH_ENABLED=true does not fall back to the disabled provider: no session, no scope", %{
     conn: conn
   } do
     Application.put_env(:nucleus, Scope, provider: Nucleus.Scope.Provider.Cognito)
 
-    assert_raise RuntimeError, ~r/AUTH-A01\.\.A11/, fn ->
-      AssignScope.call(conn, [])
-    end
+    conn = AssignScope.call(conn, [])
+
+    assert conn.halted
+    assert redirected_to(conn) =~ "/sign-in"
+    refute Map.has_key?(conn.assigns, :current_scope)
   end
 
   @tag :unit

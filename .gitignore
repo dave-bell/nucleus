@@ -45,3 +45,5 @@ apm_modules/
 
 # Scratch space for agent tooling (e.g. external-lookup's cached docs).
 /.tmp/
+
+.env
